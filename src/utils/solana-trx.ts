@@ -1,10 +1,20 @@
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { ComputeBudgetProgram, Connection, PublicKey, TransactionInstruction, TransactionSignature } from "@solana/web3.js";
-import { RpcConfig } from "../config/rpc";
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import {
+	ComputeBudgetProgram,
+	Connection,
+	PublicKey,
+	SYSVAR_CLOCK_PUBKEY,
+	TransactionInstruction,
+	TransactionSignature,
+} from '@solana/web3.js';
+import { RpcConfig } from '../config/rpc';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function safeSendAuxiliaryTrx(conn: Connection, rawTrx: Buffer | Uint8Array): Promise<TransactionSignature | undefined> {
+async function safeSendAuxiliaryTrx(
+	conn: Connection,
+	rawTrx: Buffer | Uint8Array,
+): Promise<TransactionSignature | undefined> {
 	try {
 		return await conn.sendRawTransaction(rawTrx, { skipPreflight: true });
 	} catch (e) {
@@ -16,14 +26,14 @@ export class SolanaMultiTxSender {
 	private readonly connection: Connection;
 	private readonly otherConnections: Connection[];
 	constructor(private rpcConfig: RpcConfig) {
-		this.connection = new Connection(rpcConfig.solana.solanaMainRpc, "confirmed");
-		this.otherConnections = rpcConfig.solana.solanaSendRpcs.map((url) => new Connection(url, "confirmed"));
+		this.connection = new Connection(rpcConfig.solana.solanaMainRpc, 'confirmed');
+		this.otherConnections = rpcConfig.solana.solanaSendRpcs.map((url) => new Connection(url, 'confirmed'));
 	}
 
 	async sendAndConfirmTransaction(
 		rawTrx: Buffer | Uint8Array,
 		maxConcurrentSends: number,
-		confirmationLevel: "confirmed" | "finalized" = "confirmed",
+		confirmationLevel: 'confirmed' | 'finalized' = 'confirmed',
 		timeoutSeconds: number = 59,
 		maxTotalSendCount: number = 150,
 	): Promise<string> {
@@ -54,7 +64,11 @@ export class SolanaMultiTxSender {
 		let ongoingSends2: any[] = [];
 		const otherEnginesBackgroundSend = async () => {
 			let totalSent2 = 0;
-			while (!done && new Date().getTime() - startTime < timeoutSeconds * 1000 && totalSent2 < maxTotalSendCount) {
+			while (
+				!done &&
+				new Date().getTime() - startTime < timeoutSeconds * 1000 &&
+				totalSent2 < maxTotalSendCount
+			) {
 				for (let engine of this.otherConnections) {
 					ongoingSends2.push(safeSendAuxiliaryTrx(engine, rawTrx));
 				}
@@ -85,7 +99,7 @@ export class SolanaMultiTxSender {
 		}
 
 		done = true;
-		throw new Error("CONFIRM_TIMED_OUT");
+		throw new Error('CONFIRM_TIMED_OUT');
 	}
 }
 
@@ -119,4 +133,79 @@ export function isBadJupAggIns(
 		return true;
 	}
 	return false;
+}
+
+export class PriorityFeeHelper {
+	constructor(private rpcConfig: RpcConfig) {}
+
+	private async getPriorityFeeEstimate(priorityLevel: string, accountKeys: string[]): Promise<number | null> {
+		// const response = await axios.post(this.providersConfig.heliusRpc, {
+		// 	jsonrpc: '2.0',
+		// 	id: '1',
+		// 	method: 'getPriorityFeeEstimate',
+		// 	params: [
+		// 		{
+		// 			accountKeys: accountKeys,
+		// 			options: { priority_level: priorityLevel },
+		// 		},
+		// 	],
+		// });
+		// const priorityFeeEstimate = +response.data.result.priorityFeeEstimate;
+
+		return this.rpcConfig.solana.priorityFee;
+	}
+
+	public async getPriorityFeeInstruction(
+		accountKeys: string[],
+		minLamports?: number,
+	): Promise<TransactionInstruction> {
+		let estimatedPriorityFee = await this.getPriorityFeeEstimate('VERY_HIGH', accountKeys);
+
+		if (minLamports && (!estimatedPriorityFee || estimatedPriorityFee < minLamports)) {
+			estimatedPriorityFee = minLamports;
+		}
+
+		return ComputeBudgetProgram.setComputeUnitPrice({
+			microLamports: Number(estimatedPriorityFee),
+		});
+	}
+
+	public async addPriorityFeeInstruction(
+		currentIxs: TransactionInstruction[],
+		accountKeys: string[],
+		minLamports?: number,
+	): Promise<TransactionInstruction[]> {
+		let estimatedPriorityFee = await this.getPriorityFeeEstimate('VERY_HIGH', accountKeys);
+		if (isNaN(Number(estimatedPriorityFee))) {
+			return currentIxs;
+		}
+
+		if (minLamports && (!estimatedPriorityFee || estimatedPriorityFee < minLamports)) {
+			estimatedPriorityFee = minLamports;
+		}
+
+		const priorityFeeIx = ComputeBudgetProgram.setComputeUnitPrice({
+			microLamports: Number(estimatedPriorityFee),
+		});
+		currentIxs.unshift(priorityFeeIx);
+		return currentIxs;
+	}
+}
+
+export async function getCurrentSolanaTimeMS(connection: Connection, retry: number = 4): Promise<number> {
+	try {
+		const info = await connection.getAccountInfo(SYSVAR_CLOCK_PUBKEY);
+		if (!info) {
+			throw new Error('Failed to get clock account');
+		}
+		const x = info.data.subarray(32, 40).reverse();
+		const y = Buffer.from(x).toString('hex');
+		return Number(`0x${y}`) * 1000;
+	} catch (err) {
+		if (retry > 0) {
+			const result = await getCurrentSolanaTimeMS(connection, retry - 1);
+			return result;
+		}
+		throw err;
+	}
 }

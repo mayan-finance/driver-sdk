@@ -1,5 +1,5 @@
-import Decimal from "decimal.js";
-import { Token } from "./config/tokens";
+import Decimal from 'decimal.js';
+import { Token } from './config/tokens';
 
 export type Swap = {
 	trader: string;
@@ -47,4 +47,18 @@ export type Swap = {
 	gaslessPermit: string;
 
 	createTxHash: string;
+
+	retries: number;
+};
+
+export const SWAP_STATUS = {
+	ORDER_SUBMITTED: 'ORDER_SUBMITTED',
+	ORDER_EXPIRED: 'ORDER_EXPIRED',
+	ORDER_CREATED: 'ORDER_CREATED',
+	ORDER_FULFILLED: 'ORDER_FULFILLED',
+	ORDER_SETTLED: 'ORDER_SETTLED',
+	ORDER_UNLOCKED: 'ORDER_UNLOCKED',
+	UNLOCK_SEQUENCE_RECEIVED: 'UNLOCK_SEQUENCE_RECEIVED',
+	ORDER_CANCELED: 'ORDER_CANCELED',
+	ORDER_REFUNDED: 'ORDER_REFUNDED',
 };

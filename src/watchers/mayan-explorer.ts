@@ -1,10 +1,10 @@
-import Decimal from "decimal.js";
-import * as io from "socket.io-client";
-import { MayanEndpoints } from "../config/endpoints";
-import { TokenList } from "../config/tokens";
-import { Relayer } from "../relayer";
-import { Swap } from "../swap.dto";
-import logger from "../utils/logger";
+import Decimal from 'decimal.js';
+import * as io from 'socket.io-client';
+import { MayanEndpoints } from '../config/endpoints';
+import { TokenList } from '../config/tokens';
+import { Relayer } from '../relayer';
+import { Swap } from '../swap.dto';
+import logger from '../utils/logger';
 
 export class MayanExplorerWatcher {
 	private readonly endpoints: MayanEndpoints;
@@ -23,6 +23,7 @@ export class MayanExplorerWatcher {
 		const fromToken = this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
 		const toToken = this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
 		const swap: Swap = {
+			retries: 0,
 			trader: rawSwap.trader,
 			sourceTxHash: rawSwap.sourceTxHash,
 			orderHash: rawSwap.orderHash,
@@ -71,23 +72,23 @@ export class MayanExplorerWatcher {
 
 	init() {
 		const socket = io.io(this.endpoints.explorerWsAddress, {
-			transports: ["websocket"],
+			transports: ['websocket'],
 		});
 
-		socket.on("connect", () => {
-			logger.info("Connected to Mayan Explorer Socket");
+		socket.on('connect', () => {
+			logger.info('Connected to Mayan Explorer Socket');
 
 			// Listen for Swap creations
-			socket.on("SWAP_CREATED", async (data) => {
+			socket.on('SWAP_CREATED', async (data) => {
 				try {
 					const rawSwap = JSON.parse(data);
-					if (!rawSwap.orderHash || !["SWIFT_NFT", "SWIFT_SWAP"].includes(rawSwap.service)) {
+					if (!rawSwap.orderHash || !['SWIFT_NFT', 'SWIFT_SWAP'].includes(rawSwap.service)) {
 						return;
 					}
 
 					const swap = this.createSwapFromJson(rawSwap);
 
-					logger.info(`Received explorer swap with ` + "\x1b[32m" + `https://explorer.mayan.finance/swap/${swap.sourceTxHash}`);
+					logger.info(`Received explorer swap with ` + '\x1b[32m' + `https://explorer.mayan.finance/swap/${swap.sourceTxHash}`);
 
 					await this.relayer.relay(swap);
 				} catch (err) {
@@ -96,8 +97,8 @@ export class MayanExplorerWatcher {
 			});
 		});
 
-		socket.on("disconnect", () => {
-			logger.info("Disconnected from Explorer Socket");
+		socket.on('disconnect', () => {
+			logger.info('Disconnected from Explorer Socket');
 		});
 	}
 

@@ -24,6 +24,8 @@
     "typescript-eslint": "^7.10.0"
   },
   "dependencies": {
+    "@certusone/wormhole-sdk-proto-web": "^0.0.7",
+    "@improbable-eng/grpc-web-node-http-transport": "^0.15.0",
     "@solana/buffer-layout": "^4.0.1",
     "@solana/spl-token": "^0.4.6",
     "@solana/web3.js": "^1.91.8",
@@ -31,6 +33,7 @@
     "decimal.js": "^10.4.3",
     "dotenv": "^16.4.5",
     "ethers": "^6.12.1",
+    "mathjs": "^12.4.2",
     "socket.io-client": "^4.7.5",
     "winston": "^3.13.0"
   }

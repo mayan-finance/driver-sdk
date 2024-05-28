@@ -46,3 +46,17 @@ export const supportedChainIds: number[] = [
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_BASE,
 ];
+
+export const ETH_CHAINS: number[] = [CHAIN_ID_ETH, CHAIN_ID_ARBITRUM, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE];
+
+export const WhChainIdToEvm: { [chainId: number]: number } = {
+	[CHAIN_ID_ETH]: 1,
+	[CHAIN_ID_BSC]: 56,
+	[CHAIN_ID_BASE]: 8453,
+	[CHAIN_ID_AVAX]: 43114,
+	[CHAIN_ID_OPTIMISM]: 10,
+	[CHAIN_ID_ARBITRUM]: 42161,
+	[CHAIN_ID_POLYGON]: 137,
+};
+
+export const WORMHOLE_DECIMALS = 8;
