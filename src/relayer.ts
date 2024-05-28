@@ -10,7 +10,6 @@ import { RpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { DriverService } from './driver/driver';
-import { WalletsHelper } from './driver/wallet-helper';
 import { SWAP_STATUS, Swap } from './swap.dto';
 import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
@@ -28,6 +27,7 @@ import {
 } from './utils/state-parser';
 import { delay } from './utils/util';
 import { getSignedVaa } from './utils/wormhole';
+import { WalletsHelper } from './driver/wallet-helper';
 
 export class Relayer {
 	private relayingSwaps: Swap[] = [];
