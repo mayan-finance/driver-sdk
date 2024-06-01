@@ -1,5 +1,4 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { ethers } from 'ethers';
 import { CHAIN_ID_SOLANA } from '../config/chains';
 import { tryUint8ArrayToNative } from './buffer';
 
@@ -49,28 +48,8 @@ export class SwiftStateParser {
 			seqMsg: data.readBigUInt64LE(401),
 		};
 		return {
-			trader: tryUint8ArrayToNative(rawData.trader, rawData.sourceChainId),
-			sourceChainId: rawData.sourceChainId,
-			tokenIn: tryUint8ArrayToNative(rawData.tokenIn, rawData.sourceChainId),
-			amountIn: rawData.amountIn,
-			tokenOut: tryUint8ArrayToNative(rawData.tokenOut, rawData.destChainId),
-			minAmountOut: rawData.minAmountOut,
-			gasDropAmount: rawData.gasDropAmount,
-			refundFeeDst: rawData.refundFeeDest,
-			refundFeeSrc: rawData.refundFeeSrc,
-			deadline: Number(rawData.deadline),
-			destAddress: tryUint8ArrayToNative(rawData.destinationAddress, rawData.destChainId),
-			destChainId: rawData.destChainId,
-			referrerAddress: tryUint8ArrayToNative(rawData.referrerAddress, rawData.destChainId),
-			randomKey: ethers.hexlify(rawData.randomKey),
-			orderHash: '0x' + Buffer.from(rawData.orderHash).toString('hex'),
 			status: rawData.status,
-			sequence: Number(rawData.seqMsg) - 1,
 			winner: tryUint8ArrayToNative(rawData.winner, CHAIN_ID_SOLANA),
-			amountOut: rawData.amountOutput,
-			auctionMode: Number(rawData.auctionMode),
-			mayanBpsFee: Number(rawData.mayanBpsFee),
-			referrerBpsFee: Number(rawData.referrerBpsFee),
 		};
 	}
 }
@@ -94,9 +73,7 @@ export class SwiftAuctionParser {
 		};
 
 		return {
-			orderHash: tryUint8ArrayToNative(rawData.orderHash, CHAIN_ID_SOLANA),
 			winner: tryUint8ArrayToNative(rawData.winner, CHAIN_ID_SOLANA),
-			amountPromised: rawData.amountPromised,
 			validFrom: Number(rawData.validFrom),
 			validUntil: Number(rawData.validUntil),
 			sequence: rawData.lastSequence,
@@ -105,37 +82,15 @@ export class SwiftAuctionParser {
 }
 
 export type ParsedAuctionState = {
-	orderHash: string;
 	winner: string;
-	amountPromised: bigint;
 	validFrom: number;
 	validUntil: number;
 	sequence: bigint;
 };
 
 export type ParsedState = {
-	trader: string;
-	sourceChainId: number;
-	tokenIn: string;
-	amountIn: bigint;
-	tokenOut: string;
-	minAmountOut: bigint;
-	gasDropAmount: bigint;
-	refundFeeSrc: bigint;
-	refundFeeDst: bigint;
-	deadline: number;
-	destAddress: string;
-	destChainId: number;
-	referrerAddress: string;
-	randomKey: string;
-	orderHash: string;
 	status: number;
-	sequence: number;
-	amountOut: bigint;
 	winner: string;
-	auctionMode: number;
-	mayanBpsFee: number;
-	referrerBpsFee: number;
 } | null;
 
 export type EvmStoredOrder = {

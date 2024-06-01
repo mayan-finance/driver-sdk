@@ -13,7 +13,7 @@ function NodeHttpTransport(httpsOptions?: https.RequestOptions, totalTimeoutMS?:
 
 class NodeHttp implements grpc.Transport {
 	options: grpc.TransportOptions;
-	request: http.ClientRequest;
+	request: http.ClientRequest | null = null;
 	private canceled: boolean;
 
 	constructor(
@@ -28,10 +28,10 @@ class NodeHttp implements grpc.Transport {
 	sendMessage(msgBytes: Uint8Array) {
 		if (!this.options.methodDefinition.requestStream && !this.options.methodDefinition.responseStream) {
 			// Disable chunked encoding if we are not using streams
-			this.request.setHeader('Content-Length', msgBytes.byteLength);
+			this.request!.setHeader('Content-Length', msgBytes.byteLength);
 		}
-		this.request.write(toBuffer(msgBytes));
-		this.request.end();
+		this.request!.write(toBuffer(msgBytes));
+		this.request!.end();
 	}
 
 	finishSend() {}
@@ -87,7 +87,7 @@ class NodeHttp implements grpc.Transport {
 			return;
 		}
 		this.options.debug && console.log('NodeHttp.abort');
-		this.request.destroy();
+		this.request!.destroy();
 		this.canceled = true;
 	}
 }

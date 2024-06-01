@@ -1,23 +1,20 @@
+import axios from 'axios';
 import Decimal from 'decimal.js';
 import * as io from 'socket.io-client';
 import { MayanEndpoints } from '../config/endpoints';
+import { GlobalConf } from '../config/global';
 import { TokenList } from '../config/tokens';
 import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
 
 export class MayanExplorerWatcher {
-	private readonly endpoints: MayanEndpoints;
-	private readonly relayer: Relayer;
-
 	constructor(
-		endpoints: MayanEndpoints,
-		relayer: Relayer,
+		private readonly endpoints: MayanEndpoints,
+		private readonly gConf: GlobalConf,
+		private readonly relayer: Relayer,
 		private readonly tokenList: TokenList,
-	) {
-		this.endpoints = endpoints;
-		this.relayer = relayer;
-	}
+	) {}
 
 	private createSwapFromJson(rawSwap: any) {
 		const fromToken = this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
@@ -88,7 +85,11 @@ export class MayanExplorerWatcher {
 
 					const swap = this.createSwapFromJson(rawSwap);
 
-					logger.info(`Received explorer swap with ` + '\x1b[32m' + `https://explorer.mayan.finance/swap/${swap.sourceTxHash}`);
+					logger.info(
+						`Received explorer swap with ` +
+							'\x1b[32m' +
+							`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
+					);
 
 					await this.relayer.relay(swap);
 				} catch (err) {
@@ -106,9 +107,5 @@ export class MayanExplorerWatcher {
 		// TODO fill and use this
 		return [];
 	}
-
-	async getOwnedCompletedLockedSwaps(driverAddress: string): Promise<Swap[]> {
-		// TODO fill and use this
-		return [];
-	}
 }
+
