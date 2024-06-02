@@ -1,6 +1,7 @@
 import axios from 'axios';
 import Decimal from 'decimal.js';
 import * as io from 'socket.io-client';
+import { ContractsConfig, MayanForwarderAddress } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConf } from '../config/global';
 import { TokenList } from '../config/tokens';
@@ -9,12 +10,24 @@ import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
 
 export class MayanExplorerWatcher {
+	private initiateAddresses: string[] = [];
+	private interval: NodeJS.Timeout | null = null;
+
 	constructor(
-		private readonly endpoints: MayanEndpoints,
 		private readonly gConf: GlobalConf,
-		private readonly relayer: Relayer,
+		private readonly endpoints: MayanEndpoints,
+		contracts: ContractsConfig,
 		private readonly tokenList: TokenList,
-	) {}
+		private readonly relayer: Relayer,
+	) {
+		this.initiateAddresses = [];
+		this.initiateAddresses.push(MayanForwarderAddress);
+		this.initiateAddresses.push(MayanForwarderAddress.toLowerCase());
+		for (let chainId of Object.keys(contracts.contracts)) {
+			this.initiateAddresses.push(contracts.contracts[+chainId]);
+			this.initiateAddresses.push(contracts.contracts[+chainId].toLowerCase());
+		}
+	}
 
 	private createSwapFromJson(rawSwap: any) {
 		const fromToken = this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
@@ -83,6 +96,11 @@ export class MayanExplorerWatcher {
 						return;
 					}
 
+					if (!this.initiateAddresses.includes(rawSwap.initiateContractAddress)) {
+						logger.info(`Swap droppped because initiateAddress not supported ${rawSwap.sourceTxHash}`);
+						return;
+					}
+
 					const swap = this.createSwapFromJson(rawSwap);
 
 					logger.info(
@@ -101,11 +119,40 @@ export class MayanExplorerWatcher {
 		socket.on('disconnect', () => {
 			logger.info('Disconnected from Explorer Socket');
 		});
+
+		this.interval = setInterval(this.pollPendingSwaps.bind(this), this.gConf.pollExplorerInterval * 1000);
 	}
 
-	async getOwnedInProgressSwaps(driverAddress: string): Promise<Swap[]> {
-		// TODO fill and use this
-		return [];
+	async pollPendingSwaps(): Promise<void> {
+		try {
+			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swaps', {
+				params: {
+					format: 'raw',
+					status: 'inprogress',
+					service: 'SWIFT_SWAP',
+					initiateContractAddresses: this.initiateAddresses.join(','),
+					limit: 100,
+				},
+			});
+
+			const swaps = result.data.data;
+
+			for (let s of swaps) {
+				if (!s.orderHash || !['SWIFT_SWAP'].includes(s.service)) {
+					continue;
+				}
+
+				if (this.relayer.relayingSwaps.find((x) => x.orderHash === s.orderHash)) {
+					logger.verbose(`Already progressing swap ${s.sourceTxHash}`);
+					return;
+				}
+
+				const swap = this.createSwapFromJson(s);
+
+				await this.relayer.relay(swap);
+			}
+		} catch (err) {
+			logger.error(`error in polling explorer ${err}`);
+		}
 	}
 }
-

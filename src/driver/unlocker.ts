@@ -110,6 +110,7 @@ export class Unlocker {
 	}
 
 	private async fetchAndProgressUnlocks() {
+		return;
 		try {
 			if (Object.keys(this.locks).length > 1000) {
 				throw new Error('Too many ongoing unlocks... Waiting for some of them to finish');

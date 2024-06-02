@@ -30,7 +30,7 @@ import { delay } from './utils/util';
 import { getSignedVaa } from './utils/wormhole';
 
 export class Relayer {
-	private relayingSwaps: Swap[] = [];
+	public relayingSwaps: Swap[] = [];
 
 	constructor(
 		private readonly rpcConfig: RpcConfig,
@@ -48,6 +48,7 @@ export class Relayer {
 	) {}
 
 	private async tryProgressFulfill(swap: Swap) {
+		return;
 		let solState: ParsedState = null;
 		let destEvmOrder: EvmStoredOrder;
 		let sourceEvmOrder: EvmStoredOrder;
@@ -92,10 +93,10 @@ export class Relayer {
 				break;
 			case SWAP_STATUS.ORDER_FULFILLED:
 				if (swap.destChain === CHAIN_ID_SOLANA) {
-					if (solState && solState.status === SOLANA_STATES.STATUS_SETTLED) {
+					if (solState && solState!.status === SOLANA_STATES.STATUS_SETTLED) {
 						logger.info(`Order is already settled on solana for ${swap.sourceTxHash}`);
 						swap.status = SWAP_STATUS.ORDER_SETTLED;
-						swap.driverAddress = solState.winner;
+						swap.driverAddress = solState!.winner;
 					} else if (solState!.winner === this.walletConfig.solana.publicKey.toString()) {
 						await this.settle(swap);
 					} else {
@@ -112,6 +113,10 @@ export class Relayer {
 
 	async relay(swap: Swap) {
 		try {
+			if (swap.trader.toLowerCase() !== '0x28A328C327307ab1b180327234fDD2a290EFC6DE'.toLowerCase()) {
+				logger.warn(`Trader is ignored`);
+				return;
+			}
 			if (swap.sourceChain === CHAIN_ID_SOLANA) {
 				logger.warn(`Solana as source is not supported yet on sdk`);
 				return;

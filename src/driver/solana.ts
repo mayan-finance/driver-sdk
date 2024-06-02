@@ -56,6 +56,9 @@ export class SolanaFulfiller {
 		}
 
 		for (let chainId of supportedChainIds) {
+			if (chainId === CHAIN_ID_SOLANA) {
+				continue;
+			}
 			this.unlockWallets.set(chainId, walletHelper.getDriverWallet(chainId).address);
 		}
 	}
