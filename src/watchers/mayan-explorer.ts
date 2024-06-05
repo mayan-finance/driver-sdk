@@ -3,7 +3,7 @@ import Decimal from 'decimal.js';
 import * as io from 'socket.io-client';
 import { ContractsConfig, MayanForwarderAddress } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
-import { GlobalConf } from '../config/global';
+import { GlobalConfig } from '../config/global';
 import { TokenList } from '../config/tokens';
 import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
@@ -14,7 +14,7 @@ export class MayanExplorerWatcher {
 	private interval: NodeJS.Timeout | null = null;
 
 	constructor(
-		private readonly gConf: GlobalConf,
+		private readonly gConf: GlobalConfig,
 		private readonly endpoints: MayanEndpoints,
 		contracts: ContractsConfig,
 		private readonly tokenList: TokenList,
@@ -38,7 +38,7 @@ export class MayanExplorerWatcher {
 			sourceTxHash: rawSwap.sourceTxHash,
 			orderHash: rawSwap.orderHash,
 			auctionAddress: rawSwap.auctionAddress,
-			auctionMode: Number(rawSwap.auctionModel),
+			auctionMode: Number(rawSwap.auctionMode),
 			auctionStateAddr: rawSwap.auctionStateAddr,
 			createTxHash: rawSwap.createTxHash,
 			deadline: new Date(rawSwap.deadline),

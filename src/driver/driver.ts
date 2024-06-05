@@ -20,6 +20,7 @@ import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { Swap } from '../swap.dto';
 import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
+import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
 import { PriorityFeeHelper, SolanaMultiTxSender } from '../utils/solana-trx';
 import { AUCTION_MODES } from '../utils/state-parser';
@@ -29,7 +30,6 @@ import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { SolanaIxHelper } from './solana-ix-helper';
 import { WalletsHelper } from './wallet-helper';
-import { FeeService } from '../utils/fees';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;

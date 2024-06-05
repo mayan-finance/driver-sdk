@@ -1,15 +1,9 @@
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers';
 import { abi as SwiftAbi } from '../abis/swift';
-import {
-	CHAIN_ID_ETH,
-	CHAIN_ID_SOLANA,
-	ETH_CHAINS,
-	WORMHOLE_DECIMALS,
-	WhChainIdToEvm,
-	supportedChainIds,
-} from '../config/chains';
+import { CHAIN_ID_SOLANA, ETH_CHAINS, WORMHOLE_DECIMALS, WhChainIdToEvm, supportedChainIds } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
+import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
@@ -29,6 +23,7 @@ export class EvmFulfiller {
 	private readonly swiftInterface = new ethers.Interface(SwiftAbi);
 
 	constructor(
+		private readonly gConf: GlobalConfig,
 		private readonly walletConfig: WalletConfig,
 		private readonly rpcConfig: RpcConfig,
 		private readonly contractsConfig: ContractsConfig,
@@ -159,7 +154,7 @@ export class EvmFulfiller {
 		overrides['value'] = gasDrop;
 		const unlockAddress32 = this.getUnlockAddress32(swap.sourceChain);
 
-		const batch = swap.destChain === CHAIN_ID_ETH ? false : true; // batch-post except for eth
+		const batch = this.gConf.singleBatchChainIds.includes(+swap.destChain) ? false : true; // batch-post except for eth and expensive chains
 
 		const swiftCallData = this.generateAuctionFulfillCalldata(
 			0n, // this param doesn't matter and is overridden by swap amount in fulfill helper
@@ -171,10 +166,10 @@ export class EvmFulfiller {
 		let fulfillTx: ethers.TransactionResponse;
 		if (driverToken.contract === ethers.ZeroAddress) {
 			logger.info(`Sending swap fulfill with fulfillWithEth for tx=${swap.sourceTxHash}`);
-			overrides['value'] = overrides['value'].add(amountIn64);
+			overrides['value'] = overrides['value'] + amountIn64;
 
 			fulfillTx = await this.walletHelper
-				.getWriteContract(swap.destChain)
+				.getFulfillHelperWriteContract(swap.destChain)
 				.fulfillWithEth(
 					amountIn64,
 					toToken.contract,
@@ -293,8 +288,8 @@ export class EvmFulfiller {
 	async submitGaslessOrder(swap: Swap) {
 		const fromToken = swap.fromToken;
 		const fromNormalizedDecimals = Math.min(WORMHOLE_DECIMALS, fromToken.decimals);
-		let trader32Hex = '0x' + tryNativeToHexString(swap.trader, swap.sourceChain);
-		let tokenOut32Hex = '0x' + tryNativeToHexString(swap.toTokenAddress, swap.destChain);
+		let trader32Hex = tryNativeToHexString(swap.trader, swap.sourceChain);
+		let tokenOut32Hex = tryNativeToHexString(swap.toTokenAddress, swap.destChain);
 		let minAmountOut64 = swap.minAmountOut64;
 		let gasDrop64 = swap.gasDrop64;
 		let referrerBps = swap.referrerBps;
@@ -307,9 +302,9 @@ export class EvmFulfiller {
 			fromNormalizedDecimals,
 		);
 		let deadline64 = BigInt(Math.floor(swap.deadline.getTime() / 1000));
-		let destAddr32Hex = '0x' + tryNativeToHexString(swap.destAddress, swap.destChain);
+		let destAddr32Hex = tryNativeToHexString(swap.destAddress, swap.destChain);
 		let destChain = swap.destChain;
-		let referrerAddr32Hex = '0x' + tryNativeToHexString(swap.referrerAddress, swap.destChain);
+		let referrerAddr32Hex = tryNativeToHexString(swap.referrerAddress, swap.destChain);
 		let random32Hex = swap.randomKey;
 
 		const permitParams = deserializePermitFromHex(swap.gaslessPermit);
@@ -409,17 +404,17 @@ export class EvmFulfiller {
 		overrides['value'] = gasDrop;
 
 		if (chosenDriverToken.contract === ethers.ZeroAddress) {
-			overrides['value'] = overrides['value'].add(ethers.parseUnits(availableAmountIn.toFixed(18), 18));
+			overrides['value'] = overrides['value'] + ethers.parseUnits(availableAmountIn.toFixed(18), 18);
 		}
 
 		const fromToken = swap.fromToken;
 		const fromNormalizedDecimals = Math.min(WORMHOLE_DECIMALS, fromToken.decimals);
 
 		let orderHashHex = swap.orderHash;
-		let trader32Hex = '0x' + tryNativeToHexString(swap.trader, swap.sourceChain);
+		let trader32Hex = tryNativeToHexString(swap.trader, swap.sourceChain);
 		let srcChain = swap.sourceChain;
-		let tokenIn32Hex = '0x' + tryNativeToHexString(swap.fromTokenAddress, swap.sourceChain);
-		let tokenOut32Hex = '0x' + tryNativeToHexString(swap.toTokenAddress, swap.destChain);
+		let tokenIn32Hex = tryNativeToHexString(swap.fromTokenAddress, swap.sourceChain);
+		let tokenOut32Hex = tryNativeToHexString(swap.toTokenAddress, swap.destChain);
 		let minAmountOut64 = swap.minAmountOut64;
 		let gasDrop64 = swap.gasDrop64;
 		let protocolBps = swap.mayanBps;
@@ -434,16 +429,16 @@ export class EvmFulfiller {
 		);
 		let deadline64 = BigInt(Math.floor(swap.deadline.getTime() / 1000));
 
-		let destAddr32Hex = '0x' + tryNativeToHexString(swap.destAddress, swap.destChain);
+		let destAddr32Hex = tryNativeToHexString(swap.destAddress, swap.destChain);
 		let destChain = swap.destChain;
 
-		let referrerAddr32Hex = '0x' + tryNativeToHexString(swap.referrerAddress, swap.destChain);
+		let referrerAddr32Hex = tryNativeToHexString(swap.referrerAddress, swap.destChain);
 
 		let random32Hex = swap.randomKey;
 
 		const unlockAddress32 = this.getUnlockAddress32(swap.sourceChain);
 
-		const batch = swap.destChain === CHAIN_ID_ETH ? false : true; // batch-post except for eth
+		const batch = this.gConf.singleBatchChainIds.includes(+swap.destChain) ? false : true; // batch-post except for eth and expensive chains
 
 		const fulfillTx: ethers.TransactionResponse = await this.walletHelper
 			.getWriteContract(swap.destChain)

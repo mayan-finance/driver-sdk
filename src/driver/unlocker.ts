@@ -5,7 +5,7 @@ import { abi as WormholeAbi } from '../abis/wormhole';
 import { CHAIN_ID_SOLANA } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
-import { GlobalConf } from '../config/global';
+import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
 import { WalletConfig } from '../config/wallet';
 import { hexToUint8Array, uint8ArrayToHex } from '../utils/buffer';
@@ -52,7 +52,7 @@ export class Unlocker {
 	private sequenceStore: SequenceStore;
 
 	constructor(
-		private readonly gConf: GlobalConf,
+		private readonly gConf: GlobalConfig,
 		private readonly endpoints: MayanEndpoints,
 		private readonly contracts: ContractsConfig,
 		private readonly rpcConfig: RpcConfig,
@@ -110,10 +110,9 @@ export class Unlocker {
 	}
 
 	private async fetchAndProgressUnlocks() {
-		return;
 		try {
 			if (Object.keys(this.locks).length > 1000) {
-				throw new Error('Too many ongoing unlocks... Waiting for some of them to finish');
+				throw new Error('Too many ongoing unlocks... Waiting for some of them to finish unlocking');
 			}
 			const freshExplorerData = await this.getOwnedUnlockableSwaps(this.driverAddresses);
 			let promises: Promise<void>[] = [];
@@ -149,7 +148,7 @@ export class Unlocker {
 
 			await Promise.all(promises);
 		} catch (error) {
-			logger.error(`Error in schedulePending for unlock ${error}`);
+			logger.error(`Unable to schedulePending for unlock ${error}`);
 		}
 	}
 
@@ -157,13 +156,23 @@ export class Unlocker {
 		const lockKey = `lock:selectAndPost:${sourceChainId}:${destChainId}`;
 		try {
 			const locked = this.locks[lockKey];
-			if (!locked) {
+			if (locked) {
 				return;
+			} else {
+				this.locks[lockKey] = true;
 			}
 
 			if (!orderHashes || orderHashes.length < 1) {
 				delete this.locks[lockKey];
 				return;
+			}
+
+			for (let orderHash of orderHashes) {
+				if (this.sequenceStore.isOrderAlreadyPosted(orderHash)) {
+					logger.warn(`Has already pending order hashes ignoring ${sourceChainId}-${destChainId}`);
+					delete this.locks[lockKey];
+					return;
+				}
 			}
 
 			if (orderHashes.length > 20) {
@@ -217,13 +226,16 @@ export class Unlocker {
 		const lockKey = `lock:getPendingBatchUnlockAndRefund:${postTxHash}`;
 		try {
 			const locked = this.locks[lockKey];
-			if (!locked) {
+			if (locked) {
 				return;
+			} else {
+				this.locks[lockKey] = true;
 			}
 
 			logger.info(`Getting batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
 			let signedVaa = await this.getSignedVaa(sequence, destChainId, 60);
 			logger.info(`Got batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
+
 			const txHash = await this.unlockOnEvm(signedVaa, sourceChainId, destChainId, true);
 			logger.info(`Unlocked batch evm for ${sourceChainId} to ${destChainId} with ${txHash}`);
 
@@ -244,8 +256,10 @@ export class Unlocker {
 		const lockKey = `lock:getPendingSingleUnlocksForEth:${sourceChainId}:${destChainId}:${orderHash}`;
 		try {
 			const locked = this.locks[lockKey];
-			if (!locked) {
+			if (locked) {
 				return;
+			} else {
+				this.locks[lockKey] = true;
 			}
 
 			const sourceOrder = await this.walletsHelper.getReadContract(sourceChainId).orders(orderHash);
@@ -367,9 +381,9 @@ export class Unlocker {
 		const swiftContract = this.walletsHelper.getWriteContract(sourceChain);
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
-		let overrides = getSuggestedOverrides(destChain, networkFeeData);
+		let overrides = await getSuggestedOverrides(destChain, networkFeeData);
 
-		let tx;
+		let tx: ethers.TransactionResponse;
 		if (isBatch) {
 			tx = await swiftContract.unlockBatch(hexToUint8Array(signedVaa), overrides);
 		} else {
@@ -377,7 +391,7 @@ export class Unlocker {
 		}
 		const txResp = await tx.wait();
 
-		if (txResp.status !== 1) {
+		if (!txResp || txResp.status !== 1) {
 			throw new Error(`unlocking for ${sourceChain}-${destChain} failed with tx ${tx.hash} , isBatch=${isBatch}`);
 		}
 

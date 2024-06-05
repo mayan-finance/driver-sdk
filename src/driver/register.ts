@@ -1,7 +1,7 @@
 import { ed25519 } from '@noble/curves/ed25519';
 import axios from 'axios';
 import { MayanEndpoints } from '../config/endpoints';
-import { GlobalConf } from '../config/global';
+import { GlobalConfig } from '../config/global';
 import { WalletConfig } from '../config/wallet';
 
 export class RegisterService {
@@ -9,7 +9,7 @@ export class RegisterService {
 	private readonly signedSolanaHex: string;
 	private readonly signedEvmHex: string;
 	constructor(
-		private readonly gConf: GlobalConf,
+		private readonly gConf: GlobalConfig,
 		private readonly walletConfig: WalletConfig,
 		private readonly endpoints: MayanEndpoints,
 	) {
@@ -24,11 +24,11 @@ export class RegisterService {
 	}
 
 	async register() {
-		ed25519.verify(
-			this.signedSolanaHex,
-			Buffer.from(this.signMessage),
-			this.walletConfig.solana.publicKey.toBuffer(),
-		);
+		// ed25519.verify(
+		// 	this.signedSolanaHex,
+		// 	Buffer.from(this.signMessage),
+		// 	this.walletConfig.solana.publicKey.toBuffer(),
+		// );
 		await axios.post(`${this.endpoints.priceApiUrl}/v3/driver/register/`, {
 			evmAddress: this.walletConfig.evm.address,
 			evmSignature: this.signedEvmHex,

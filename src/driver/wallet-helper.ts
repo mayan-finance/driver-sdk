@@ -12,7 +12,7 @@ export class WalletsHelper {
 	private evmWallets: {
 		[chainId: number]: ethers.Wallet;
 	} = {};
-
+	private flashBotWallet: ethers.Wallet;
 	private readonly flashBotSwiftContract: ethers.Contract;
 	private readonly flashBotFulfillHelperContract: ethers.Contract;
 	private swiftContracts: {
@@ -47,8 +47,10 @@ export class WalletsHelper {
 
 		const flashbotsProvider = new ethers.JsonRpcProvider(this.rpcConfig.evmEndpoints.ethereumFlashBot, 1, {
 			staticNetwork: ethers.Network.from(1),
+			batchMaxCount: 1,
 		});
 		const flashbotWallet = new ethers.Wallet(this.walletConfig.evm.privateKey, flashbotsProvider);
+		this.flashBotWallet = flashbotWallet;
 		this.flashBotSwiftContract = new ethers.Contract(
 			this.contracts.contracts[CHAIN_ID_ETH],
 			SwiftAbi,
@@ -73,7 +75,7 @@ export class WalletsHelper {
 		}
 	}
 
-	getFulfillHelperEthersContract(chainId: number): ethers.Contract {
+	getFulfillHelperWriteContract(chainId: number): ethers.Contract {
 		if (chainId === CHAIN_ID_ETH) {
 			return this.flashBotFulfillHelperContract;
 		} else {

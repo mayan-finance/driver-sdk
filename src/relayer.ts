@@ -5,7 +5,7 @@ import { ethers } from 'ethers';
 import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS, supportedChainIds } from './config/chains';
 import { ContractsConfig } from './config/contracts';
 import { MayanEndpoints } from './config/endpoints';
-import { GlobalConf } from './config/global';
+import { GlobalConfig } from './config/global';
 import { RpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { WalletConfig } from './config/wallet';
@@ -35,7 +35,7 @@ export class Relayer {
 	constructor(
 		private readonly rpcConfig: RpcConfig,
 		private readonly endpoints: MayanEndpoints,
-		private readonly gConf: GlobalConf,
+		private readonly gConf: GlobalConfig,
 		private readonly tokenList: TokenList,
 		private readonly contractsConfig: ContractsConfig,
 		private readonly stateParser: SwiftStateParser,
@@ -48,7 +48,6 @@ export class Relayer {
 	) {}
 
 	private async tryProgressFulfill(swap: Swap) {
-		return;
 		let solState: ParsedState = null;
 		let destEvmOrder: EvmStoredOrder;
 		let sourceEvmOrder: EvmStoredOrder;
@@ -71,10 +70,11 @@ export class Relayer {
 					logger.info(`Order is expired for tx: ${swap.sourceTxHash}`);
 					break;
 				}
-				await this.waitForFinalizeOnSource(swap);
 
 				if (swap.destChain === CHAIN_ID_SOLANA) {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
+						await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+						await this.waitForFinalizeOnSource(swap);
 						await this.simpleFulfillAndSettle(swap, solState);
 					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 						await this.bidAndFulfillSolana(swap, solState, sourceEvmOrder);
@@ -83,6 +83,8 @@ export class Relayer {
 					}
 				} else {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
+						await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+						await this.waitForFinalizeOnSource(swap);
 						await this.simpleFulfillEvm(swap, destEvmOrder);
 					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 						await this.bidAndFulfillEvm(swap, solState, sourceEvmOrder, destEvmOrder);
@@ -201,9 +203,17 @@ export class Relayer {
 		}
 	}
 
-	async submitGaslessOrder(swap: Swap, sourceEvmOrder: EvmStoredOrder) {
+	async submitGaslessOrderIfRequired(swap: Swap, sourceEvmOrder: EvmStoredOrder) {
+		if (!swap.gaslessPermit || !swap.gaslessSignature) {
+			return; // not gasless
+		}
+
 		if (sourceEvmOrder && sourceEvmOrder.destChainId == +swap.destChain) {
 			logger.warn(`Order already submitted for ${swap.sourceTxHash}`);
+			swap.status = 'ORDER_CREATED';
+			if (!swap.createTxHash) {
+				throw new Error('Gasless swap is already registered but createTxHash is missing');
+			}
 			return;
 		}
 
@@ -261,9 +271,8 @@ export class Relayer {
 			return;
 		}
 
-		if (swap.status === SWAP_STATUS.ORDER_SUBMITTED) {
-			await this.submitGaslessOrder(swap, sourceEvmOrder);
-		}
+		await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+		await this.waitForFinalizeOnSource(swap);
 
 		logger.info(`Got sequence ${auctionState!.sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
 		const sequence = auctionState!.sequence - 1n;
@@ -334,9 +343,10 @@ export class Relayer {
 			return;
 		}
 
-		if (swap.status === SWAP_STATUS.ORDER_SUBMITTED) {
-			await this.submitGaslessOrder(swap, sourceEvmOrder);
-		}
+		await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+		await this.waitForFinalizeOnSource(swap);
+
+		await this.waitForFinalizeOnSource(swap);
 
 		logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
 		let fulfillRetries = 0;

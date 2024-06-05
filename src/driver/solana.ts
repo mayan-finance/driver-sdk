@@ -338,7 +338,7 @@ export class SolanaFulfiller {
 			payerKey: this.walletConfig.solana.publicKey,
 			recentBlockhash: blockhash,
 			instructions: instructions,
-		}).compileToV0Message();
+		}).compileToV0Message(optimizedLuts);
 		const transaction = new VersionedTransaction(messageV0);
 		transaction.sign([this.walletConfig.solana]);
 

@@ -1,7 +1,7 @@
 import axios from 'axios';
 import { supportedChainIds } from './chains';
 import { ContractsConfig } from './contracts';
-import { GlobalConf } from './global';
+import { GlobalConfig } from './global';
 import { RpcConfig } from './rpc';
 
 const initEndpoint = 'https://price-api.mayan.finance/v3/driver/init';
@@ -28,7 +28,7 @@ export async function fetchDynamicSdkParams(): Promise<{
 	return result.data;
 }
 
-export async function refershAndPatchConfigs(gConf: GlobalConf, contracts: ContractsConfig, rpcConfig: RpcConfig) {
+export async function refershAndPatchConfigs(gConf: GlobalConfig, contracts: ContractsConfig, rpcConfig: RpcConfig) {
 	const data = await fetchDynamicSdkParams();
 
 	for (let key of Object.keys(data.swiftContracts)) {

@@ -3,9 +3,9 @@ import { PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers';
 import { CHAIN_ID_SOLANA } from '../config/chains';
+import { NodeHttpTransportWithDefaultTimeout } from './grpc';
 import logger from './logger';
 import { delay } from './util';
-import { NodeHttpTransportWithDefaultTimeout } from './grpc';
 const { GrpcWebImpl, PublicRPCServiceClientImpl } = publicrpc;
 
 export function get_wormhole_core_accounts(emitterAddr: PublicKey): {
@@ -34,11 +34,13 @@ export function getWormholeSequenceFromPostedMessage(messageData: Buffer): bigin
 }
 
 export function getEmitterAddressEth(contractAddress: ethers.BytesLike) {
-	return Buffer.from(ethers.zeroPadValue(contractAddress, 32)).toString('hex');
+	return ethers.zeroPadValue(contractAddress, 32).replace('0x', '');
 }
 
 export function getEmitterAddressSolana(programAddress: string) {
-	return PublicKey.findProgramAddressSync([Buffer.from('emitter')], new PublicKey(programAddress))[0].toString();
+	return PublicKey.findProgramAddressSync([Buffer.from('emitter')], new PublicKey(programAddress))[0]
+		.toBuffer()
+		.toString('hex');
 }
 
 export async function getSignedVaa(guardianRpcs: string[], chainId: number, contractAddress: string, sequence: string) {

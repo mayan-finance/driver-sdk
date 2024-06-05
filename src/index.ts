@@ -9,7 +9,7 @@ import {
 	fulfillHelpers,
 } from './config/contracts';
 import { mayanEndpoints } from './config/endpoints';
-import { GlobalConf } from './config/global';
+import { GlobalConfig } from './config/global';
 import { fetchDynamicSdkParams } from './config/init';
 import { rpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
@@ -40,14 +40,14 @@ export async function main() {
 	const initialDynamicConfig = await fetchDynamicSdkParams();
 	rpcConfig.wormholeGuardianRpcs = initialDynamicConfig.wormholeGuardianRpcs.split(',');
 
-	const globalConfig: GlobalConf = {
-		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
+	const globalConfig: GlobalConfig = {
+		auctionTimeSeconds: 0 || initialDynamicConfig.auctionTimeSeconds, // TODO: remove hardcode values
 		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,
 		registerInterval: initialDynamicConfig.registerInterval,
-		scheduleUnlockInterval: 5 || initialDynamicConfig.scheduleUnlockInterval,
+		scheduleUnlockInterval: initialDynamicConfig.scheduleUnlockInterval,
 		singleBatchChainIds: initialDynamicConfig.singleBatchChainIds.split(',').map((x) => +x),
 		pollExplorerInterval: 5,
-		registerAgainInterval: 3600,
+		registerAgainInterval: initialDynamicConfig.registerInterval,
 	};
 
 	const contracts: ContractsConfig = {
@@ -110,7 +110,15 @@ export async function main() {
 		walletHelper,
 		tokenList,
 	);
-	const evmFulFiller = new EvmFulfiller(walletConf, rpcConfig, contracts, walletHelper, evmProviders, tokenList);
+	const evmFulFiller = new EvmFulfiller(
+		globalConfig,
+		walletConf,
+		rpcConfig,
+		contracts,
+		walletHelper,
+		evmProviders,
+		tokenList,
+	);
 	const driverSvc = new DriverService(
 		solanaConnection,
 		walletConf,
