@@ -252,13 +252,11 @@ export class Relayer {
 		) {
 			logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
 			let shouldRegisterOrder = !state;
-			await this.driverService.bid(swap, false, shouldRegisterOrder, true);
+			await this.driverService.bid(swap, shouldRegisterOrder);
 			logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 		}
 
 		await delay(this.gConf.auctionTimeSeconds * 1000);
-
-		// TODO: register winner here?
 
 		auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
 		let maxRetries = 10;
@@ -273,16 +271,17 @@ export class Relayer {
 			return;
 		}
 
+		const sequence = await this.driverService.postBid(swap, false, true);
+
 		await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
 		await this.waitForFinalizeOnSource(swap);
 
-		logger.info(`Got sequence ${auctionState!.sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
-		const sequence = auctionState!.sequence - 1n;
+		logger.info(`Got sequence ${sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
 		const signedVaa = await getSignedVaa(
 			this.rpcConfig.wormholeGuardianRpcs,
 			CHAIN_ID_SOLANA,
 			this.contractsConfig.auctionAddr,
-			sequence.toString(),
+			sequence!.toString(),
 		);
 		logger.info(`Got auction signed VAA for ${swap.sourceTxHash}. Fulfilling...`);
 
@@ -326,7 +325,7 @@ export class Relayer {
 		) {
 			logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
 			let shouldRegisterOrder = !state;
-			await this.driverService.bid(swap, true, shouldRegisterOrder, false);
+			await this.driverService.bid(swap, shouldRegisterOrder);
 			logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
 		}
 
@@ -344,6 +343,8 @@ export class Relayer {
 			logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
 			return;
 		}
+
+		await this.driverService.postBid(swap, true, false);
 
 		await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
 		await this.waitForFinalizeOnSource(swap);

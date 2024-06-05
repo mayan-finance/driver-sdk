@@ -259,17 +259,9 @@ export class DriverService {
 		}
 	}
 
-	async bid(
-		swap: Swap,
-		createStateAss: boolean,
-		registerOrder: boolean,
-		postAuction: boolean,
-	): Promise<bigint | undefined> {
+	async bid(swap: Swap, registerOrder: boolean): Promise<void> {
 		const stateAddr = this.getStateAddr(swap);
-
-		const fromTokenAddr = swap.fromTokenAddress;
 		const srcChain = swap.sourceChain;
-		const toTokenAddr = swap.toTokenAddress;
 		const dstChain = swap.destChain;
 
 		const fromToken = swap.fromToken;
@@ -333,6 +325,37 @@ export class DriverService {
 		);
 
 		let instructions = [bidIx];
+		if (registerOrder) {
+			instructions.unshift(this.getRegisterOrderFromSwap(swap));
+		}
+
+		let keyAccs = [];
+		for (let ix of instructions) {
+			for (const key of ix.keys) {
+				keyAccs.push(key.pubkey.toString());
+			}
+		}
+		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(keyAccs);
+		instructions.unshift(priorityFeeIx);
+
+		let signers = [this.walletConfig.solana];
+
+		await this.doTransaction(this.walletConfig.solana.publicKey, instructions, signers, `bid_${swap.sourceTxHash}`);
+		swap.bidAmount = bidAmount;
+	}
+
+	async postBid(
+		swap: Swap,
+		createStateAss: boolean,
+		postAuction: boolean,
+	): Promise<bigint | null> {
+		const stateAddr = this.getStateAddr(swap);
+
+		const srcChain = swap.sourceChain;
+		const dstChain = swap.destChain;
+		const toToken = swap.toToken;
+
+		let instructions: TransactionInstruction[] = [];
 		let newMessageAccount: Keypair | null = null;
 		if (!postAuction) {
 			instructions.push(this.getRegisterWinnerIx(swap));
@@ -373,25 +396,18 @@ export class DriverService {
 			instructions.unshift(createdAtaIx);
 		}
 
-		if (registerOrder) {
-			instructions.unshift(this.getRegisterOrderFromSwap(swap));
-		}
-
-		let keyAccs = [];
-		for (let ix of instructions) {
-			for (const key of ix.keys) {
-				keyAccs.push(key.pubkey.toString());
-			}
-		}
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(keyAccs);
-		instructions.unshift(priorityFeeIx);
-
-		let signers = [this.walletConfig.solana];
+		const signers = [this.walletConfig.solana];
 		if (postAuction) {
 			signers.push(newMessageAccount!);
 		}
-		await this.doTransaction(this.walletConfig.solana.publicKey, instructions, signers, `bid_${swap.sourceTxHash}`);
-		swap.bidAmount = bidAmount;
+
+		await this.doTransaction(
+			this.walletConfig.solana.publicKey,
+			instructions,
+			signers,
+			`postbid_${swap.sourceTxHash}`,
+		);
+
 		if (postAuction) {
 			let whMessageInfo = await this.solanaConnection.getAccountInfo(newMessageAccount!.publicKey);
 
@@ -402,6 +418,7 @@ export class DriverService {
 
 			return getWormholeSequenceFromPostedMessage(whMessageInfo.data);
 		}
+		return null;
 	}
 
 	private getRegisterWinnerIx(swap: Swap): TransactionInstruction {
