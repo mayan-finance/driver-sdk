@@ -182,7 +182,7 @@ export class EvmFulfiller {
 		} else {
 			logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
 
-			fulfillTx = await this.walletHelper.getWriteContract(swap.destChain).fulfillWithERC20(
+			fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
 				driverToken.contract,
 				amountIn64,
 				toToken.contract,
