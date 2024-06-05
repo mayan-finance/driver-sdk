@@ -51,6 +51,7 @@ export async function main() {
 		pollExplorerInterval: 5,
 		registerAgainInterval: initialDynamicConfig.registerInterval,
 		disableUnlocker: process.env.DISABLE_UNLOCKER === 'true',
+		closeLutsInterval: 1800,
 	};
 
 	const contracts: ContractsConfig = {
@@ -97,12 +98,14 @@ export async function main() {
 	const auctionParser = new SwiftAuctionParser(solanaConnection);
 	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList);
 	const lutOptimizer = new LookupTableOptimizer(
+		globalConfig,
 		walletConf,
 		mayanEndpoints,
 		solanaConnection,
 		priorityFeeHelper,
 		solanaTxSender,
 	);
+	await lutOptimizer.initAndScheduleLutClose();
 	const solanaFulfiller = new SolanaFulfiller(
 		solanaConnection,
 		rpcConfig,

@@ -6,6 +6,6 @@ export type GlobalConfig = {
 	registerInterval: number; // Seconds to register evm and solana address again
 	pollExplorerInterval: number; // Interval to poll mayan explorer for new swaps
 	registerAgainInterval: number; // Interval to register driver wallets again
-
+	closeLutsInterval: number;
 	disableUnlocker: boolean;
 };

@@ -175,7 +175,12 @@ export class SolanaIxHelper {
 		});
 	}
 
-	getSplTransferIx(fromAss: PublicKey, toAss: PublicKey, fromOwner: PublicKey, amount: bigint): TransactionInstruction {
+	getSplTransferIx(
+		fromAss: PublicKey,
+		toAss: PublicKey,
+		fromOwner: PublicKey,
+		amount: bigint,
+	): TransactionInstruction {
 		const ix = createTransferInstruction(fromAss, toAss, fromOwner, amount);
 		return ix;
 	}
@@ -218,7 +223,11 @@ export class SolanaIxHelper {
 		});
 	}
 
-	getRegisterWinnerIx(swiftProgram: PublicKey, stateAddr: PublicKey, auctionStateAddr: PublicKey): TransactionInstruction {
+	getRegisterWinnerIx(
+		swiftProgram: PublicKey,
+		stateAddr: PublicKey,
+		auctionStateAddr: PublicKey,
+	): TransactionInstruction {
 		const accounts: Array<AccountMeta> = [
 			{ pubkey: stateAddr, isWritable: true, isSigner: false },
 			{ pubkey: auctionStateAddr, isWritable: false, isSigner: false },
@@ -285,7 +294,13 @@ export class SolanaIxHelper {
 		});
 	}
 
-	getBidIx(auctionProgram: PublicKey, amount: bigint, stateAddr: PublicKey, bidder: PublicKey, payer: PublicKey): TransactionInstruction {
+	getBidIx(
+		auctionProgram: PublicKey,
+		amount: bigint,
+		stateAddr: PublicKey,
+		bidder: PublicKey,
+		payer: PublicKey,
+	): TransactionInstruction {
 		const [auctionStateAddr] = this.getAuctionStateAddr(stateAddr, auctionProgram);
 		const [bidStateAddr] = this.getBidStateAddr(auctionStateAddr, auctionProgram, bidder);
 
@@ -356,7 +371,10 @@ export class SolanaIxHelper {
 		const amountIn64 = this.getAmountOfFractionalAmount(fromAmount, Math.min(fromTokenDecimals, WORMHOLE_DECIMALS));
 		const gasDrop64 = this.getAmountOfFractionalAmount(gasDrop, WORMHOLE_DECIMALS);
 
-		const minAmountOut64 = this.getAmountOfFractionalAmount(minAmountOut, Math.min(toTokenDecimals, WORMHOLE_DECIMALS));
+		const minAmountOut64 = this.getAmountOfFractionalAmount(
+			minAmountOut,
+			Math.min(toTokenDecimals, WORMHOLE_DECIMALS),
+		);
 
 		let data = Buffer.alloc(RegisterOrderLayout.span);
 		const fields = {
@@ -414,10 +432,18 @@ export class SolanaIxHelper {
 		auctionProgram: PublicKey,
 		bidder: PublicKey,
 	): [address: PublicKey, nonce: number] {
-		return PublicKey.findProgramAddressSync([Buffer.from('BID'), auctionStateAddr.toBytes(), bidder.toBytes()], auctionProgram);
+		return PublicKey.findProgramAddressSync(
+			[Buffer.from('BID'), auctionStateAddr.toBytes(), bidder.toBytes()],
+			auctionProgram,
+		);
 	}
 
-	isBadAggIns(instruction: TransactionInstruction, address: PublicKey, mints: Array<PublicKey>, mintsAss: Array<PublicKey>): boolean {
+	isBadAggIns(
+		instruction: TransactionInstruction,
+		address: PublicKey,
+		mints: Array<PublicKey>,
+		mintsAss: Array<PublicKey>,
+	): boolean {
 		if (instruction.programId.equals(ComputeBudgetProgram.programId)) {
 			return true;
 		}
