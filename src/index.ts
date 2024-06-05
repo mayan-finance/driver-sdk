@@ -50,6 +50,7 @@ export async function main() {
 		singleBatchChainIds: initialDynamicConfig.singleBatchChainIds.split(',').map((x) => +x),
 		pollExplorerInterval: 5,
 		registerAgainInterval: initialDynamicConfig.registerInterval,
+		disableUnlocker: process.env.DISABLE_UNLOCKER === 'true',
 	};
 
 	const contracts: ContractsConfig = {

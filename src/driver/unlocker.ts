@@ -86,6 +86,10 @@ export class Unlocker {
 	}
 
 	scheduleUnlockJobs() {
+		if (this.gConf.disableUnlocker) {
+			logger.info(`Unlocker is disabled and ignored.`);
+			return;
+		}
 		this.interval = setInterval(this.fetchAndProgressUnlocks.bind(this), this.gConf.scheduleUnlockInterval * 1000);
 		this.unlockInterval = setInterval(
 			this.unlockPostedBatches.bind(this),
