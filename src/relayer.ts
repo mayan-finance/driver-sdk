@@ -258,6 +258,8 @@ export class Relayer {
 
 		await delay(this.gConf.auctionTimeSeconds * 1000);
 
+		// TODO: register winner here?
+
 		auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
 		let maxRetries = 10;
 		while (maxRetries > 0 && (!auctionState || auctionState.sequence < 1n)) {
@@ -375,14 +377,7 @@ export class Relayer {
 		}
 		await this.driverService.auctionLessFulfillAndSettleSolana(swap);
 
-		let newState = await this.stateParser.parseSwiftStateAccount(swap.stateAddr);
-		while (!newState) {
-			await delay(1500);
-			newState = await this.stateParser.parseSwiftStateAccount(swap.stateAddr);
-		}
-
 		swap.status = SWAP_STATUS.ORDER_SETTLED;
-		swap.driverAddress = newState.winner;
 	}
 
 	private async settle(swap: Swap) {

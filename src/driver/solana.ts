@@ -154,7 +154,7 @@ export class SolanaFulfiller {
 		}
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
-			normalizedBidAmount = normalizedMinAmountOut;
+			throw new Error(`normalizedBidAmount is less than minAmountOut`);
 		}
 
 		return normalizedBidAmount;

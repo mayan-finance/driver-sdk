@@ -1,5 +1,6 @@
 import { Connection } from '@solana/web3.js';
 import 'dotenv/config';
+import { AuctionFulfillerConfig } from './auction';
 import { CHAIN_ID_SOLANA, supportedChainIds } from './config/chains';
 import {
 	AuctionAddressSolana,
@@ -22,6 +23,7 @@ import { SolanaIxHelper } from './driver/solana-ix-helper';
 import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
 import { Relayer } from './relayer';
+import { SimpleFulfillerConfig } from './simple';
 import { makeEvmProviders } from './utils/evm-providers';
 import { FeeService } from './utils/fees';
 import { ChainFinality } from './utils/finality';
@@ -120,6 +122,8 @@ export async function main() {
 		tokenList,
 	);
 	const driverSvc = new DriverService(
+		new SimpleFulfillerConfig(),
+		new AuctionFulfillerConfig(),
 		solanaConnection,
 		walletConf,
 		rpcConfig,

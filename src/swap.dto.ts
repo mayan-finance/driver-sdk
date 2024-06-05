@@ -49,6 +49,8 @@ export type Swap = {
 	createTxHash: string;
 
 	retries: number;
+
+	bidAmount?: number;
 };
 
 export const SWAP_STATUS = {

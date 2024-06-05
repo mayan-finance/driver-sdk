@@ -13,11 +13,13 @@ import {
 } from '@solana/web3.js';
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers';
+import { AuctionFulfillerConfig } from '../auction';
 import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
+import { SimpleFulfillerConfig } from '../simple';
 import { Swap } from '../swap.dto';
 import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
 import { FeeService } from '../utils/fees';
@@ -35,6 +37,8 @@ export class DriverService {
 	private readonly swiftProgram: PublicKey;
 	private readonly swiftAuctionProgram: PublicKey;
 	constructor(
+		private readonly simpleFulfillerCfg: SimpleFulfillerConfig,
+		private readonly auctionFulfillerCfg: AuctionFulfillerConfig,
 		private readonly solanaConnection: Connection,
 		private readonly walletConfig: WalletConfig,
 		private readonly rpcConfig: RpcConfig,
@@ -290,14 +294,14 @@ export class DriverService {
 			throw new Error('Shall not bid because effectiveAmountIn is less than 0');
 		}
 
-		const effectiveAmountInDriverToken = effectiveAmountIn;
+		const bidAmount = await this.auctionFulfillerCfg.bidAmount(swap, effectiveAmountIn, expenses);
 
 		let normalizedBidAmount: bigint;
 		if (dstChain === CHAIN_ID_SOLANA) {
 			const driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
 			normalizedBidAmount = await this.solanaFulfiller.getNormalizedBid(
 				driverToken,
-				effectiveAmountInDriverToken * 0.95,
+				bidAmount,
 				normalizedMinAmountOut,
 				toToken,
 			);
@@ -306,7 +310,7 @@ export class DriverService {
 			normalizedBidAmount = await this.evmFulFiller.getNormalizedBid(
 				dstChain,
 				driverToken,
-				effectiveAmountInDriverToken * 0.95,
+				bidAmount,
 				normalizedMinAmountOut,
 				toToken,
 			);
@@ -387,7 +391,7 @@ export class DriverService {
 			signers.push(newMessageAccount!);
 		}
 		await this.doTransaction(this.walletConfig.solana.publicKey, instructions, signers, `bid_${swap.sourceTxHash}`);
-
+		swap.bidAmount = bidAmount;
 		if (postAuction) {
 			let whMessageInfo = await this.solanaConnection.getAccountInfo(newMessageAccount!.publicKey);
 
@@ -449,7 +453,9 @@ export class DriverService {
 			throw new Error(`Can not fulfill ${swap.sourceTxHash} on evm. min amount out issue`);
 		}
 
-		await this.evmFulFiller.simpleFulfill(swap, effectiveAmountIn, toToken);
+		const fulfillAmount = await this.simpleFulfillerCfg.fulfillAmount(swap, effectiveAmountIn, expenses);
+
+		await this.evmFulFiller.simpleFulfill(swap, fulfillAmount, toToken);
 	}
 
 	async getSimpleFulfillIxsPackage(swap: Swap): Promise<TransactionInstruction[]> {
@@ -481,6 +487,8 @@ export class DriverService {
 			throw new Error(`Can not fulfill ${swap.sourceTxHash} on solana. min amount out issue`);
 		}
 
+		const fulfillAmount = await this.simpleFulfillerCfg.fulfillAmount(swap, effectiveAmountIn, expenses);
+
 		const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true);
 
 		let result: TransactionInstruction[] = [];
@@ -497,7 +505,7 @@ export class DriverService {
 			stateAddr,
 			stateToAss,
 			toToken,
-			effectiveAmountIn,
+			fulfillAmount,
 			swap,
 		);
 		result.push(...fulfillIxs);
@@ -526,14 +534,17 @@ export class DriverService {
 			toToken: toToken,
 			gasDrop: swap.gasDrop.toNumber(),
 		});
-		const effectiveAmountIn =
+		const effectiveAmntIn =
 			swap.fromAmount.toNumber() - expenses.fulfillCost - expenses.unlockSource - expenses.submissionCost;
 
-		if (effectiveAmountIn < 0) {
+		if (effectiveAmntIn < 0) {
 			logger.error(`effectiveAmountIn is less than 0
-			${effectiveAmountIn} for swap ${swap.sourceTxHash}`);
+			${effectiveAmntIn} for swap ${swap.sourceTxHash}`);
 			throw new Error('Shall not bid because effectiveAmountIn is less than 0');
 		}
+
+		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(swap, effectiveAmntIn, expenses);
+
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			let driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
@@ -547,7 +558,7 @@ export class DriverService {
 				this.swiftProgram,
 				stateAddr,
 				stateToAss,
-				effectiveAmountIn,
+				fulfillAmount,
 				realMinAmountOut,
 				fromToken,
 				toToken,
@@ -563,7 +574,7 @@ export class DriverService {
 
 			await this.evmFulFiller.fulfillAuction(
 				swap,
-				effectiveAmountIn,
+				fulfillAmount,
 				toToken,
 				dstChain,
 				driverToken,

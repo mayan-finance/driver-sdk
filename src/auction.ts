@@ -1,7 +1,7 @@
 import { Swap } from './swap.dto';
 import { SwiftCosts } from './utils/fees';
 
-export class Auction {
+export class AuctionFulfillerConfig {
 	/**
 	 * Specfiy if the driver will participate in the auction for this `swap` or not
 	 * @param swap User's order details
@@ -23,6 +23,18 @@ export class Auction {
 	 * @returns the amount to bid
 	 **/
 	async bidAmount(swap: Swap, effectiveAmountIn: number, costDetails: SwiftCosts): Promise<number> {
+		const minOut = swap.minAmountOut.toNumber();
+		if (effectiveAmountIn * 0.98 >= minOut) {
+			return effectiveAmountIn * 0.98;
+		} else if (effectiveAmountIn * 0.99 >= minOut) {
+			return effectiveAmountIn * 0.99;
+		} else if (effectiveAmountIn * 0.999 >= minOut) {
+			return effectiveAmountIn * 0.999;
+		}
+		return effectiveAmountIn;
+	}
+
+	async fulfillAmount(swap: Swap, effectiveAmountIn: number, costDetails: SwiftCosts): Promise<number> {
 		return effectiveAmountIn;
 	}
 }
