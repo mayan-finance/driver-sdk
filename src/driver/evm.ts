@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers';
-import { abi as SwiftAbi } from '../abis/swift';
+import { abi as SwiftAbi } from '../abis/swift.abi';
 import { CHAIN_ID_SOLANA, ETH_CHAINS, WORMHOLE_DECIMALS, WhChainIdToEvm, supportedChainIds } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { GlobalConfig } from '../config/global';

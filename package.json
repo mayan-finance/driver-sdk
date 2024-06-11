@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@certusone/wormhole-sdk-proto-web": "^0.0.7",
+    "@coral-xyz/anchor": "^0.29.0",
     "@improbable-eng/grpc-web-node-http-transport": "^0.15.0",
     "@solana/buffer-layout": "^4.0.1",
     "@solana/spl-token": "^0.4.6",

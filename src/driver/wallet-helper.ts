@@ -1,5 +1,5 @@
-import { abi as FulfillHelperAbi } from '../abis/fulfill-helper';
-import { abi as SwiftAbi } from '../abis/swift';
+import { abi as FulfillHelperAbi } from '../abis/fulfill-helper.abi';
+import { abi as SwiftAbi } from '../abis/swift.abi';
 
 import { ethers } from 'ethers';
 import { CHAIN_ID_ETH, CHAIN_ID_SOLANA } from '../config/chains';

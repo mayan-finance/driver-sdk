@@ -1,7 +1,7 @@
 import { Connection, Keypair, MessageV0, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers';
-import { abi as WormholeAbi } from '../abis/wormhole';
+import { abi as WormholeAbi } from '../abis/wormhole.abi';
 import { CHAIN_ID_SOLANA } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
