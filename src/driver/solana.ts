@@ -18,7 +18,7 @@ import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
 import { LookupTableOptimizer } from '../utils/lut';
 import { PriorityFeeHelper } from '../utils/solana-trx';
-import { SolanaIxHelper } from './solana-ix-helper';
+import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 
 type WalletAss = {
@@ -41,7 +41,7 @@ export class SolanaFulfiller {
 		private readonly solanaConnection: Connection,
 		private readonly rpcConfig: RpcConfig,
 		private readonly walletConfig: WalletConfig,
-		private readonly solanaIxHelper: SolanaIxHelper,
+		private readonly solanaIxHelper: NewSolanaIxHelper,
 		private readonly priorityFeeHelper: PriorityFeeHelper,
 		private readonly lutOptimizer: LookupTableOptimizer,
 		walletHelper: WalletsHelper,
@@ -191,16 +191,12 @@ export class SolanaFulfiller {
 		);
 
 		result.push(
-			this.solanaIxHelper.getFullfillIx(
-				swiftProgram,
-				stateAddress,
+			await this.solanaIxHelper.getFullfillIx(
+				swap.destAddress,
 				this.walletConfig.solana.publicKey,
 				new PublicKey(targetToken.mint),
+				stateAddress,
 				stateToAss,
-				new PublicKey(swap.destAddress),
-				this.walletConfig.solana.publicKey,
-				this.getUnlockAddress(swap.sourceChain),
-				swap.sourceChain,
 			),
 		);
 
@@ -209,25 +205,19 @@ export class SolanaFulfiller {
 
 	async getFulfillTransferTrx(
 		driverToken: Token,
-		swiftProgram: PublicKey,
 		stateAddress: PublicKey,
 		stateToAss: PublicKey,
 		effectiveAmountInDriverToken: number,
 		realMinAmountOut: bigint,
-		fromToken: Token,
 		toToken: Token,
 		swap: Swap,
 	): Promise<VersionedTransaction> {
-		const fullFillIx = this.solanaIxHelper.getFullfillIx(
-			swiftProgram,
-			stateAddress,
+		const fullFillIx = await this.solanaIxHelper.getFullfillIx(
+			swap.destAddress,
 			this.walletConfig.solana.publicKey,
 			new PublicKey(toToken.mint),
+			stateAddress,
 			stateToAss,
-			new PublicKey(swap.destAddress),
-			this.walletConfig.solana.publicKey,
-			this.getUnlockAddress(swap.sourceChain),
-			swap.sourceChain,
 		);
 
 		let fulfillAmountIxs = [];

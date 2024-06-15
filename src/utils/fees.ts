@@ -1,5 +1,4 @@
 import axios from 'axios';
-import { ethers } from 'ethers';
 import * as mathjs from 'mathjs';
 import {
 	CHAIN_ID_ARBITRUM,
@@ -148,19 +147,20 @@ export class FeeService {
 
 		let submissionCost: number = 0;
 		if (qr.isGasless) {
-			let submissionGas;
-			if (qr.fromToken.contract === ethers.ZeroAddress) {
-				submissionGas = 120_000 * this.getChainPriceFactor(qr.fromChainId); // ETH
-			} else {
-				submissionGas = 250_000 * this.getChainPriceFactor(qr.fromChainId); // ERC20
-			}
-			submissionCost = await this.calculateGenericEvmFee(
-				submissionGas,
-				srcFeeData!.gasPrice!,
-				nativeFromPrice,
-				fromTokenPrice,
-				0,
-			);
+			// gasless swaps are registed via mayan relayer and taken into account separately
+			// let submissionGas;
+			// if (qr.fromToken.contract === ethers.ZeroAddress) {
+			// 	submissionGas = 120_000 * this.getChainPriceFactor(qr.fromChainId); // ETH
+			// } else {
+			// 	submissionGas = 250_000 * this.getChainPriceFactor(qr.fromChainId); // ERC20
+			// }
+			// submissionCost = await this.calculateGenericEvmFee(
+			// 	submissionGas,
+			// 	srcFeeData!.gasPrice!,
+			// 	nativeFromPrice,
+			// 	fromTokenPrice,
+			// 	0,
+			// );
 		}
 
 		return {

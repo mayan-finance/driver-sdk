@@ -23,7 +23,7 @@ import {
 	getWormholeSequenceFromPostedMessage,
 	get_wormhole_core_accounts,
 } from '../utils/wormhole';
-import { SolanaIxHelper } from './solana-ix-helper';
+import { NewSolanaIxHelper, SolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 const LogMessagePublishedSig = 'LogMessagePublished(address,uint64,uint32,bytes,uint8)';
 
@@ -59,10 +59,11 @@ export class Unlocker {
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaConnection: Connection,
 		private readonly evmProviders: EvmProviders,
-		private readonly solanaIx: SolanaIxHelper,
+		private readonly solanaIx: NewSolanaIxHelper,
 		private readonly priorityFeeService: PriorityFeeHelper,
 		private readonly solanaSender: SolanaMultiTxSender,
 		private readonly walletsHelper: WalletsHelper,
+		private readonly vaaPoster: Va
 	) {
 		this.sequenceStore = new SequenceStore();
 

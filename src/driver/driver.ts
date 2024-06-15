@@ -11,8 +11,6 @@ import {
 	TransactionInstruction,
 	VersionedTransaction,
 } from '@solana/web3.js';
-import Decimal from 'decimal.js';
-import { ethers } from 'ethers';
 import { AuctionFulfillerConfig } from '../auction';
 import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
@@ -30,7 +28,7 @@ import { delay } from '../utils/util';
 import { getWormholeSequenceFromPostedMessage, get_wormhole_core_accounts } from '../utils/wormhole';
 import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
-import { SolanaIxHelper } from './solana-ix-helper';
+import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 
 export class DriverService {
@@ -43,7 +41,7 @@ export class DriverService {
 		private readonly walletConfig: WalletConfig,
 		private readonly rpcConfig: RpcConfig,
 		private readonly contractsConfig: ContractsConfig,
-		private readonly solanaIxService: SolanaIxHelper,
+		private readonly solanaIxService: NewSolanaIxHelper,
 		private readonly priorityFeeHelper: PriorityFeeHelper,
 		private readonly feeService: FeeService,
 		private readonly solanaFulfiller: SolanaFulfiller,
@@ -81,15 +79,17 @@ export class DriverService {
 		destChain: number,
 		toTokenMint: PublicKey,
 		stateAddr: PublicKey,
-	): { ixs: TransactionInstruction[]; mayanAss: PublicKey; referrerAss: PublicKey } {
+	): { ixs: TransactionInstruction[]; mayan: PublicKey; mayanAss: PublicKey; referrerAss: PublicKey } {
 		let result: {
 			ixs: TransactionInstruction[];
 			mayanAss: PublicKey;
 			referrerAss: PublicKey;
+			mayan: PublicKey;
 		} = {
 			ixs: [],
 			mayanAss: stateAddr,
 			referrerAss: stateAddr,
+			mayan: new PublicKey(this.contractsConfig.feeCollectorSolana),
 		};
 
 		let referrer: string | Uint8Array = referrerAddress;
@@ -176,46 +176,20 @@ export class DriverService {
 		return [mayanFeeAss, referrerAss];
 	}
 
-	getRegisterOrderFromSwap(swap: Swap): TransactionInstruction {
-		const stateAddr = this.getStateAddr(swap);
+	async getRegisterOrderFromSwap(swap: Swap): Promise<TransactionInstruction> {
 		const fromToken = swap.fromToken;
 
-		const instruction = this.solanaIxService.getRegisterOrderIx(
-			this.swiftProgram,
-			stateAddr,
+		const instruction = await this.solanaIxService.getRegisterOrderIx(
 			this.walletConfig.solana.publicKey,
-			swap.sourceChain,
-			swap.destChain,
-			swap.trader,
-			swap.destAddress,
-			swap.fromTokenAddress,
+			new PublicKey(swap.stateAddr),
+			swap,
 			fromToken.decimals,
-			swap.fromAmount.toFixed(swap.fromToken.decimals, Decimal.ROUND_DOWN),
-			swap.toTokenAddress,
-			swap.toToken.decimals,
-			swap.minAmountOut.toFixed(Math.min(WORMHOLE_DECIMALS, swap.toToken.decimals), Decimal.ROUND_DOWN),
-			swap.randomKey,
-			swap.referrerAddress,
-			swap.gasDrop.toFixed(WORMHOLE_DECIMALS, Decimal.ROUND_DOWN),
-			swap.auctionMode,
-			swap.mayanBps,
-			swap.referrerBps,
-			swap.orderHash,
-			ethers.parseUnits(
-				swap.refundRelayerFee.toFixed(Math.min(8, fromToken.decimals), Decimal.ROUND_DOWN),
-				Math.min(WORMHOLE_DECIMALS, fromToken.decimals),
-			),
-			ethers.parseUnits(
-				swap.redeemRelayerFee.toFixed(Math.min(8, fromToken.decimals), Decimal.ROUND_DOWN), // redeem relayer fee is considered as dst refund fee for swifts
-				Math.min(WORMHOLE_DECIMALS, fromToken.decimals),
-			),
-			BigInt(Math.floor(swap.deadline.getTime() / 1000)),
 		);
 		return instruction;
 	}
 
 	async registerOrder(swap: Swap): Promise<void> {
-		const instruction = this.getRegisterOrderFromSwap(swap);
+		const instruction = await this.getRegisterOrderFromSwap(swap);
 		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
 			instruction.keys.map((accMeta) => accMeta.pubkey.toString()),
 		);
@@ -260,7 +234,6 @@ export class DriverService {
 	}
 
 	async bid(swap: Swap, registerOrder: boolean): Promise<void> {
-		const stateAddr = this.getStateAddr(swap);
 		const srcChain = swap.sourceChain;
 		const dstChain = swap.destChain;
 
@@ -269,7 +242,7 @@ export class DriverService {
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
-			isGasless: !!swap.gaslessSignature,
+			isGasless: swap.gasless,
 			auctionMode: AUCTION_MODES.ENGLISH,
 			exactCalculation: false,
 			fromChainId: srcChain,
@@ -316,17 +289,17 @@ export class DriverService {
 			throw new Error('`Shall not bid on tx because bid amount is less than min amount out`');
 		}
 
-		const bidIx = this.solanaIxService.getBidIx(
-			this.swiftAuctionProgram,
+		const bidIx = await this.solanaIxService.getBidIx(
+			this.walletConfig.solana.publicKey,
+			new PublicKey(swap.auctionStateAddr),
 			normalizedBidAmount,
-			stateAddr,
-			this.walletConfig.solana.publicKey,
-			this.walletConfig.solana.publicKey,
+			swap,
+			fromToken.decimals,
 		);
 
 		let instructions = [bidIx];
 		if (registerOrder) {
-			instructions.unshift(this.getRegisterOrderFromSwap(swap));
+			instructions.unshift(await this.getRegisterOrderFromSwap(swap));
 		}
 
 		let keyAccs = [];
@@ -344,11 +317,7 @@ export class DriverService {
 		swap.bidAmount = bidAmount;
 	}
 
-	async postBid(
-		swap: Swap,
-		createStateAss: boolean,
-		postAuction: boolean,
-	): Promise<bigint | null> {
+	async postBid(swap: Swap, createStateAss: boolean, postAuction: boolean): Promise<bigint | null> {
 		const stateAddr = this.getStateAddr(swap);
 
 		const srcChain = swap.sourceChain;
@@ -358,28 +327,28 @@ export class DriverService {
 		let instructions: TransactionInstruction[] = [];
 		let newMessageAccount: Keypair | null = null;
 		if (!postAuction) {
-			instructions.push(this.getRegisterWinnerIx(swap));
+			instructions.push(await this.getRegisterWinnerIx(swap));
 		} else {
 			const auctionEmitter = PublicKey.findProgramAddressSync(
 				[Buffer.from('emitter')],
 				this.swiftAuctionProgram,
 			)[0];
 
-			const wormholeAccs = await get_wormhole_core_accounts(auctionEmitter);
+			const wormholeAccs = get_wormhole_core_accounts(auctionEmitter);
 			newMessageAccount = Keypair.generate();
 
-			const postAuctionIx = this.solanaIxService.getPostAuctionIx(
-				this.swiftAuctionProgram,
-				stateAddr,
+			const postAuctionIx = await this.solanaIxService.getPostAuctionIx(
 				this.walletConfig.solana.publicKey,
-				this.walletConfig.solana.publicKey,
+				new PublicKey(swap.auctionStateAddr),
+				wormholeAccs.bridge_config,
+				wormholeAccs.coreBridge,
 				auctionEmitter,
+				wormholeAccs.fee_collector,
 				wormholeAccs.sequence_key,
 				newMessageAccount.publicKey,
-				wormholeAccs.bridge_config,
-				wormholeAccs.fee_collector,
+				swap,
+				swap.fromToken.decimals,
 				tryNativeToUint8Array(this.walletsHelper.getDriverWallet(srcChain).address, dstChain),
-				wormholeAccs.coreBridge,
 			);
 			instructions.push(postAuctionIx);
 		}
@@ -421,15 +390,19 @@ export class DriverService {
 		return null;
 	}
 
-	private getRegisterWinnerIx(swap: Swap): TransactionInstruction {
+	private async getRegisterWinnerIx(swap: Swap): Promise<TransactionInstruction> {
 		const stateAddr = this.getStateAddr(swap);
 		const auctionAddr = this.getAuctionStateAddr(stateAddr);
-		const registerWinnerIx = this.solanaIxService.getRegisterWinnerIx(this.swiftProgram, stateAddr, auctionAddr);
+		const registerWinnerIx = await this.solanaIxService.getRegisterWinnerIx(
+			this.walletConfig.solana.publicKey,
+			stateAddr,
+			auctionAddr,
+		);
 		return registerWinnerIx;
 	}
 
 	async registerAsWinner(swap: Swap): Promise<void> {
-		const registerWinnerIx = this.getRegisterWinnerIx(swap);
+		const registerWinnerIx = await this.getRegisterWinnerIx(swap);
 		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
 			registerWinnerIx.keys.map((accMeta) => accMeta.pubkey.toString()),
 		);
@@ -453,7 +426,7 @@ export class DriverService {
 		const toToken = swap.toToken;
 
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
-			isGasless: !!swap.gaslessSignature,
+			isGasless: swap.gasless,
 			auctionMode: AUCTION_MODES.DONT_CARE,
 			exactCalculation: false,
 			fromChainId: srcChain,
@@ -487,7 +460,7 @@ export class DriverService {
 		const toToken = swap.toToken;
 
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
-			isGasless: !!swap.gaslessSignature,
+			isGasless: swap.gasless,
 			auctionMode: AUCTION_MODES.DONT_CARE,
 			exactCalculation: false,
 			fromChainId: srcChain,
@@ -542,7 +515,7 @@ export class DriverService {
 		const toToken = swap.toToken;
 
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
-			isGasless: !!swap.gaslessSignature,
+			isGasless: swap.gasless,
 			auctionMode: AUCTION_MODES.ENGLISH,
 			exactCalculation: false,
 			fromChainId: srcChain,
@@ -572,12 +545,10 @@ export class DriverService {
 
 			const trx = await this.solanaFulfiller.getFulfillTransferTrx(
 				driverToken,
-				this.swiftProgram,
 				stateAddr,
 				stateToAss,
 				fulfillAmount,
 				realMinAmountOut,
-				fromToken,
 				toToken,
 				swap,
 			);
@@ -602,7 +573,7 @@ export class DriverService {
 	}
 
 	async auctionLessFulfillAndSettleSolana(swap: Swap): Promise<string> {
-		const registerOrderIx = this.getRegisterOrderFromSwap(swap);
+		const registerOrderIx = await this.getRegisterOrderFromSwap(swap);
 		const fulfillIxs = await this.getSimpleFulfillIxsPackage(swap);
 		const settleIxs = await this.getSettleIxsPackage(swap);
 
@@ -669,15 +640,17 @@ export class DriverService {
 			),
 		);
 
-		const settleIx = this.solanaIxService.getSettleIx(
+		const settleIx = await this.solanaIxService.getSettleIx(
 			this.swiftProgram,
 			stateAddr,
 			stateToAss,
 			to,
 			toAss,
+			mayanAndReferrerAssInfo.mayan,
 			mayanAndReferrerAssInfo.mayanAss,
+			toMint,
+			new PublicKey(swap.referrerAddress),
 			mayanAndReferrerAssInfo.referrerAss,
-			this.walletConfig.solana.publicKey,
 		);
 
 		return [...instructions, settleIx];
@@ -719,15 +692,17 @@ export class DriverService {
 			),
 		);
 
-		const settleIx = this.solanaIxService.getSettleIx(
+		const settleIx = await this.solanaIxService.getSettleIx(
 			this.swiftProgram,
 			stateAddr,
 			stateToAss.address,
 			to,
 			toAss,
+			new PublicKey(this.contractsConfig.feeCollectorSolana),
 			mayanFeeAss,
+			toMint,
+			new PublicKey(swap.referrerAddress),
 			referrerFeeAss,
-			this.walletConfig.solana.publicKey,
 		);
 		instructions.push(settleIx);
 
@@ -742,38 +717,6 @@ export class DriverService {
 			instructions,
 			[this.walletConfig.solana],
 			`settle_${swap.sourceTxHash}`,
-		);
-	}
-
-	async post(swap: Swap): Promise<void> {
-		const stateAddr = this.getStateAddr(swap);
-
-		const swiftEmitter = PublicKey.findProgramAddressSync([Buffer.from('emitter')], this.swiftProgram)[0];
-
-		const wormholeAccs = await get_wormhole_core_accounts(swiftEmitter);
-
-		const newMessageAccount = Keypair.generate();
-
-		const postIx = this.solanaIxService.getPostIx(
-			this.swiftProgram,
-			stateAddr,
-			swiftEmitter,
-			wormholeAccs.sequence_key,
-			newMessageAccount.publicKey,
-			wormholeAccs.bridge_config,
-			wormholeAccs.fee_collector,
-			this.walletConfig.solana.publicKey,
-			wormholeAccs.coreBridge,
-		);
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
-			postIx.keys.map((accMeta) => accMeta.pubkey.toString()),
-		);
-		let instructions = [priorityFeeIx, postIx];
-		await this.doTransaction(
-			this.walletConfig.solana.publicKey,
-			instructions,
-			[this.walletConfig.solana, newMessageAccount],
-			`post_${swap.sourceTxHash}`,
 		);
 	}
 

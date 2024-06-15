@@ -8,13 +8,38 @@ import logger from './logger';
 import { delay } from './util';
 const { GrpcWebImpl, PublicRPCServiceClientImpl } = publicrpc;
 
+export const WORMHOLE_CORE_BRIDGE = new PublicKey('worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth');
+
+function serializePayload(parsedVaa: any) {
+	const x = Buffer.alloc(51 + parsedVaa.payload.length);
+	x.writeUint32BE(parsedVaa.timestamp);
+	x.writeUint32BE(parsedVaa.nonce, 4);
+	x.writeUint16BE(parsedVaa.emitterChain, 8);
+	const e = Buffer.from(parsedVaa.emitterAddress);
+	e.copy(x, 10);
+	x.writeBigInt64BE(BigInt(parsedVaa.sequence), 42);
+	x.writeUInt8(parsedVaa.consistencyLevel, 50);
+	const v = Buffer.from(parsedVaa.payload);
+	v.copy(x, 51);
+	return x;
+}
+
+export async function findVaaAddress(vaa: Buffer): Promise<PublicKey> {
+	const parsedVaa = parseVaa(vaa);
+	const serializedVaa = serializePayload(parsedVaa);
+	const vaaHash = Buffer.from(ethers.keccak256(serializedVaa).replace('0x', ''), 'hex');
+	const [vaaAddr] = PublicKey.findProgramAddressSync([Buffer.from('PostedVAA'), vaaHash], WORMHOLE_CORE_BRIDGE);
+
+	return vaaAddr;
+}
+
 export function get_wormhole_core_accounts(emitterAddr: PublicKey): {
 	coreBridge: PublicKey;
 	bridge_config: PublicKey;
 	fee_collector: PublicKey;
 	sequence_key: PublicKey;
 } {
-	const coreBridge = new PublicKey('worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth');
+	const coreBridge = WORMHOLE_CORE_BRIDGE;
 	const [bridge_config] = PublicKey.findProgramAddressSync([Buffer.from('Bridge')], coreBridge);
 	const [fee_collector] = PublicKey.findProgramAddressSync([Buffer.from('fee_collector')], coreBridge);
 	const [sequence_key] = PublicKey.findProgramAddressSync(
@@ -127,6 +152,12 @@ async function getSignedVaaFromWormholeScan(
 	}
 }
 
+export function chunks<T>(array: T[], size: number): T[][] {
+	return Array.apply<number, T[], T[][]>(0, new Array(Math.ceil(array.length / size))).map((_, index) =>
+		array.slice(index * size, (index + 1) * size),
+	);
+}
+
 export async function getSignedVAARaw(
 	host: string,
 	emitterChainId: number,
@@ -143,4 +174,35 @@ export async function getSignedVAARaw(
 			sequence,
 		},
 	});
+}
+
+function parseVaa(signedVaa: Buffer) {
+	const sigStart = 6;
+	const numSigners = signedVaa[5];
+	const sigLength = 66;
+
+	const guardianSignatures = [];
+	for (let i = 0; i < numSigners; ++i) {
+		const start = sigStart + i * sigLength;
+		guardianSignatures.push({
+			index: signedVaa[start],
+			signature: signedVaa.subarray(start + 1, start + 66),
+		});
+	}
+
+	const body = signedVaa.subarray(sigStart + sigLength * numSigners);
+
+	return {
+		version: signedVaa[0],
+		guardianSetIndex: signedVaa.readUInt32BE(1),
+		guardianSignatures,
+		timestamp: body.readUInt32BE(0),
+		nonce: body.readUInt32BE(4),
+		emitterChain: body.readUInt16BE(8),
+		emitterAddress: body.subarray(10, 42),
+		sequence: body.readBigUInt64BE(42),
+		consistencyLevel: body[50],
+		payload: body.subarray(51),
+		hash: ethers.keccak256(body),
+	};
 }

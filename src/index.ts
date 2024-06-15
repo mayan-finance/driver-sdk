@@ -1,4 +1,4 @@
-import { Connection } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import 'dotenv/config';
 import { AuctionFulfillerConfig } from './auction';
 import { CHAIN_ID_SOLANA, supportedChainIds } from './config/chains';
@@ -19,7 +19,7 @@ import { DriverService } from './driver/driver';
 import { EvmFulfiller } from './driver/evm';
 import { RegisterService } from './driver/register';
 import { SolanaFulfiller } from './driver/solana';
-import { SolanaIxHelper } from './driver/solana-ix-helper';
+import { NewSolanaIxHelper } from './driver/solana-ix';
 import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
 import { Relayer } from './relayer';
@@ -30,7 +30,6 @@ import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
 import { LookupTableOptimizer } from './utils/lut';
 import { PriorityFeeHelper, SolanaMultiTxSender } from './utils/solana-trx';
-import { SwiftAuctionParser, SwiftStateParser } from './utils/state-parser';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
 
 export async function main() {
@@ -73,7 +72,11 @@ export async function main() {
 	const tokenList = new TokenList(mayanEndpoints);
 	await tokenList.init();
 
-	const solanaIxHelper = new SolanaIxHelper();
+	const solanaIxHelper = new NewSolanaIxHelper(
+		new PublicKey(contracts.contracts[CHAIN_ID_SOLANA]),
+		new PublicKey(contracts.auctionAddr),
+		solanaConnection,
+	);
 
 	const registerSvc = new RegisterService(globalConfig, walletConf, mayanEndpoints);
 	await registerSvc.register();
@@ -94,8 +97,6 @@ export async function main() {
 	);
 	unlocker.scheduleUnlockJobs();
 
-	const stateParser = new SwiftStateParser(solanaConnection);
-	const auctionParser = new SwiftAuctionParser(solanaConnection);
 	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList);
 	const lutOptimizer = new LookupTableOptimizer(
 		globalConfig,
@@ -148,8 +149,6 @@ export async function main() {
 		globalConfig,
 		tokenList,
 		contracts,
-		stateParser,
-		auctionParser,
 		walletHelper,
 		walletConf,
 		solanaConnection,

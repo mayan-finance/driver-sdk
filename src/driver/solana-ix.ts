@@ -1,16 +1,23 @@
+import { AnchorProvider, Program, Wallet } from '@coral-xyz/anchor';
 import { blob, struct, u16, u8 } from '@solana/buffer-layout';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, createTransferInstruction } from '@solana/spl-token';
 import {
 	AccountMeta,
 	ComputeBudgetProgram,
+	Connection,
+	Keypair,
 	PublicKey,
 	SYSVAR_CLOCK_PUBKEY,
 	SYSVAR_RENT_PUBKEY,
 	SystemProgram,
 	TransactionInstruction,
 } from '@solana/web3.js';
+import Decimal from 'decimal.js';
 import { ethers } from 'ethers';
-import { WORMHOLE_DECIMALS } from '../config/chains';
+import { IDL as AuctionIdl, SwiftAuction as AuctionT } from '../abis/swift-auction.idl';
+import { IDL as SwiftIdl, Swift as SwiftT } from '../abis/swift.idl';
+import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
+import { Swap } from '../swap.dto';
 import { getSafeU64Blob, hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
 
 const BatchPostLayout = struct<any>([u8('instruction'), u8('states_len')]);
@@ -436,6 +443,205 @@ export class SolanaIxHelper {
 			[Buffer.from('BID'), auctionStateAddr.toBytes(), bidder.toBytes()],
 			auctionProgram,
 		);
+	}
+
+	isBadAggIns(
+		instruction: TransactionInstruction,
+		address: PublicKey,
+		mints: Array<PublicKey>,
+		mintsAss: Array<PublicKey>,
+	): boolean {
+		if (instruction.programId.equals(ComputeBudgetProgram.programId)) {
+			return true;
+		}
+		if (!instruction.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+			return false;
+		}
+		if (instruction.data.length > 0) {
+			return false;
+		}
+		if (!instruction.keys[2].pubkey.equals(address)) {
+			return false;
+		}
+		const currentMint = instruction.keys[3].pubkey;
+		if (mints.find((m) => m.equals(currentMint))) {
+			return true;
+		}
+		return false;
+	}
+}
+
+export class NewSolanaIxHelper {
+	private readonly swiftProgram: Program<SwiftT>;
+	private readonly auctionProgram: Program<AuctionT>;
+
+	constructor(swiftProgramId: PublicKey, auctionProgramId: PublicKey, connection: Connection) {
+		// Use a random keypair wallet because we won't be sending tx using anchor wrapper
+		const provider = new AnchorProvider(connection, new Wallet(Keypair.generate()), {
+			commitment: 'confirmed',
+		});
+		this.swiftProgram = new Program(SwiftIdl, swiftProgramId, provider);
+		this.auctionProgram = new Program(AuctionIdl, auctionProgramId, provider);
+	}
+
+	private createOrderParams(swap: Swap, fromTokenDecimals: number) {
+		return {
+			addrDest: Array.from(tryNativeToUint8Array(swap.destAddress, swap.destChain)),
+			addrRef: Array.from(tryNativeToUint8Array(swap.referrerAddress, swap.destChain)),
+			amountOutMin: swap.minAmountOut64,
+			auctionMode: swap.auctionMode,
+			chainDest: swap.destChain,
+			chainSource: swap.sourceChain,
+			deadline: BigInt(Math.floor(swap.deadline.getTime() / 1000)),
+			feeRefund: ethers.parseUnits(
+				swap.refundRelayerFee.toFixed(Math.min(8, fromTokenDecimals), Decimal.ROUND_DOWN),
+				Math.min(WORMHOLE_DECIMALS, fromTokenDecimals),
+			),
+			feeCancel: ethers.parseUnits(
+				swap.redeemRelayerFee.toFixed(Math.min(8, fromTokenDecimals), Decimal.ROUND_DOWN), // redeem relayer fee is considered as dst refund fee for swifts
+				Math.min(WORMHOLE_DECIMALS, fromTokenDecimals),
+			), // redeem relayer fee is considered as dst refund fee (cancel fee) for swifts
+			feeRateMayan: swap.mayanBps,
+			feeRateRef: swap.referrerBps,
+			gasDrop: swap.gasDrop64,
+			keyRnd: Array.from(hexToUint8Array(swap.randomKey)),
+			tokenIn: Array.from(tryNativeToUint8Array(swap.fromTokenAddress, swap.sourceChain)),
+			tokenOut: Array.from(tryNativeToUint8Array(swap.toTokenAddress, swap.destChain)),
+			trader: Array.from(tryNativeToUint8Array(swap.trader, swap.sourceChain)),
+		};
+	}
+
+	async getRegisterOrderIx(
+		relayer: PublicKey,
+		state: PublicKey,
+
+		swap: Swap,
+		fromTokenDecimals: number,
+	): Promise<TransactionInstruction> {
+		return this.swiftProgram.methods
+			.registerOrder(this.createOrderParams(swap, fromTokenDecimals))
+			.accounts({
+				relayer: relayer,
+				state: state,
+				systemProgram: SystemProgram.programId,
+			})
+			.instruction();
+	}
+
+	async getFullfillIx(
+		destAddress: string,
+		driver: PublicKey,
+		mintTo: PublicKey,
+		state: PublicKey,
+		stateToAss: PublicKey,
+	): Promise<TransactionInstruction> {
+		return this.swiftProgram.methods
+			.fulfill(Array.from(tryNativeToUint8Array(destAddress, CHAIN_ID_SOLANA)))
+			.accounts({
+				systemProgram: SystemProgram.programId,
+				dest: new PublicKey(destAddress),
+				driver: driver,
+				mintTo: mintTo,
+				state: state,
+				stateToAcc: stateToAss,
+			})
+			.instruction();
+	}
+
+	async getBidIx(
+		driver: PublicKey,
+		auctionState: PublicKey,
+		normalizedBidAmount: bigint,
+
+		swap: Swap,
+		fromTokenDecimals: number,
+	): Promise<TransactionInstruction> {
+		return this.auctionProgram.methods
+			.bid(this.createOrderParams(swap, fromTokenDecimals), normalizedBidAmount)
+			.accounts({
+				systemProgram: SystemProgram.programId,
+				driver: driver,
+				auctionState: auctionState,
+			})
+			.instruction();
+	}
+
+	async getPostAuctionIx(
+		driver: PublicKey,
+		auctionState: PublicKey,
+		whConf: PublicKey,
+		whCore: PublicKey,
+		whEmitter: PublicKey,
+		whFee: PublicKey,
+		whSeq: PublicKey,
+		whMessage: PublicKey,
+
+		swap: Swap,
+		fromTokenDecimals: number,
+		driverDestChainAddress: Uint8Array,
+	): Promise<TransactionInstruction> {
+		return this.auctionProgram.methods
+			.postAuction(this.createOrderParams(swap, fromTokenDecimals), Array.from(driverDestChainAddress))
+			.accounts({
+				driver: driver,
+				systemProgram: SystemProgram.programId,
+				rent: SYSVAR_RENT_PUBKEY,
+				clock: SYSVAR_CLOCK_PUBKEY,
+				auction: auctionState,
+				config: whConf,
+				coreBridgeProgram: whCore,
+				emitter: whEmitter,
+				emitterSequence: whSeq,
+				feeCollector: whFee,
+				message: whMessage,
+			})
+			.instruction();
+	}
+
+	async getRegisterWinnerIx(
+		driver: PublicKey,
+		state: PublicKey,
+		auctionAddr: PublicKey,
+	): Promise<TransactionInstruction> {
+		return this.swiftProgram.methods
+			.setAuctionWinner(driver)
+			.accounts({
+				auction: auctionAddr,
+				state: state,
+			})
+			.instruction();
+	}
+
+	async getSettleIx(
+		driver: PublicKey,
+		state: PublicKey,
+		stateToAss: PublicKey,
+		destAddr: PublicKey,
+		destAssAddr: PublicKey,
+		mayanFeeCollector: PublicKey,
+		mayanFeeCollectorAss: PublicKey,
+		mintTo: PublicKey,
+		referrerAddr: PublicKey,
+		referrerAddrAss: PublicKey,
+	): Promise<TransactionInstruction> {
+		return this.swiftProgram.methods
+			.settle()
+			.accounts({
+				relayer: driver,
+				state: state,
+				stateToAcc: stateToAss,
+				associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+				dest: destAddr,
+				destAcc: destAssAddr,
+				feeCollector: mayanFeeCollector,
+				mayanFeeAcc: mayanFeeCollectorAss,
+				mintTo,
+				referrer: referrerAddr,
+				referrerFeeAcc: referrerAddrAss,
+				systemProgram: SystemProgram.programId,
+				tokenProgram: TOKEN_PROGRAM_ID,
+			})
+			.instruction();
 	}
 
 	isBadAggIns(

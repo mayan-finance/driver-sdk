@@ -1,97 +1,155 @@
+import { BorshAccountsCoder } from '@coral-xyz/anchor';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { CHAIN_ID_SOLANA } from '../config/chains';
-import { tryUint8ArrayToNative } from './buffer';
+import { IDL as AuctionIdl } from '../abis/swift-auction.idl';
+import { IDL as SwiftIdl } from '../abis/swift.idl';
 
-export class SwiftStateParser {
-	constructor(private connection: Connection) {}
+const SWIFT_SOLANA_SOURCE_STATE_SEED = Buffer.from('STATE_SOURCE');
+const SWIFT_SOLANA_DEST_STATE_SEED = Buffer.from('STATE_DEST');
+const accCoder = new BorshAccountsCoder(SwiftIdl);
+const auctionAccCoder = new BorshAccountsCoder(AuctionIdl);
 
-	async parseSwiftStateAccount(swiftStateAddress: string): Promise<ParsedState | null> {
-		const swiftStateAccount = new PublicKey(swiftStateAddress);
-		const account = await this.connection.getAccountInfo(swiftStateAccount);
-		if (!account || !account.data) {
-			return null;
-		}
-		const data = account.data;
-		const rawData = {
-			status: data[0],
+export async function getSwiftStateDest(connection: Connection, stateAddr: PublicKey): Promise<SwiftDestState | null> {
+	const stateAccount = await connection.getAccountInfo(stateAddr);
 
-			trader: Uint8Array.from(data.subarray(1, 33)),
+	if (!stateAccount || !stateAccount.data) {
+		return null;
+	}
 
-			sourceChainId: Number(data.readUint16LE(33)),
-			tokenIn: Uint8Array.from(data.subarray(35, 67)),
-			amountIn: data.readBigUInt64LE(67),
-
-			destinationAddress: Uint8Array.from(data.subarray(75, 107)),
-			destChainId: Number(data.readUint16LE(107)),
-			tokenOut: Uint8Array.from(data.subarray(109, 141)),
-			minAmountOut: data.readBigUInt64LE(141),
-			gasDropAmount: data.readBigUInt64LE(149),
-
-			refundFeeDest: data.readBigUInt64LE(157),
-			refundFeeSrc: data.readBigUInt64LE(165),
-
-			deadline: data.readBigUInt64LE(173),
-
-			referrerAddress: Uint8Array.from(data.subarray(181, 213)),
-			referrerBpsFee: data[213],
-			mayanBpsFee: data[214],
-			auctionMode: data[215],
-			randomKey: Uint8Array.from(data.subarray(216, 248)),
-			orderHash: Uint8Array.from(data.subarray(248, 280)),
-			relayer: Uint8Array.from(data.subarray(280, 312)),
-			winner: Uint8Array.from(data.subarray(312, 344)),
-			amountPromised: data.readBigUInt64LE(344),
-			amountOutput: data.readBigUInt64LE(352),
-			patchVersion: data[360],
-			timeFulfill: data.readBigUInt64LE(361),
-			addrUnlocker: Uint8Array.from(data.subarray(369, 401)),
-			seqMsg: data.readBigUInt64LE(401),
-		};
+	if (stateAccount.data.length === 9) {
 		return {
-			status: rawData.status,
-			winner: tryUint8ArrayToNative(rawData.winner, CHAIN_ID_SOLANA),
+			status: stateAccount.data[8] ? SOLANA_DEST_STATUSES.CLOSED_SETTLE : SOLANA_DEST_STATUSES.CLOSED_CANCEL,
 		};
+	}
+
+	const data = accCoder.decode('swiftDestSolanaState', stateAccount.data);
+
+	if (data.status.created) {
+		return {
+			status: SOLANA_DEST_STATUSES.CREATED,
+		};
+	} else if (data.status.fulfilled) {
+		return {
+			status: SOLANA_DEST_STATUSES.FULFILLED,
+			winner: data.fulfill.winner.toString(),
+		};
+	} else if (data.status.settled) {
+		return {
+			status: SOLANA_DEST_STATUSES.SETTLED,
+			winner: data.fulfill.winner.toString(),
+		};
+	} else if (data.status.posted) {
+		return {
+			status: SOLANA_DEST_STATUSES.POSTED,
+		};
+	} else if (data.status.cancelled) {
+		return {
+			status: SOLANA_DEST_STATUSES.CANCELLED,
+		};
+	} else {
+		throw new Error('Invalid status for dest');
 	}
 }
 
-export class SwiftAuctionParser {
-	constructor(private readonly connection: Connection) {}
+export async function getSwiftStateSrc(connection: Connection, stateAddr: PublicKey): Promise<SwiftSourceState | null> {
+	const stateAccount = await connection.getAccountInfo(stateAddr);
 
-	async parseState(accountAddress: string): Promise<ParsedAuctionState | null> {
-		const account = await this.connection.getAccountInfo(new PublicKey(accountAddress));
-		if (!account || !account.data) {
-			return null;
-		}
-		const data = account.data;
-		const rawData = {
-			orderHash: Uint8Array.from(data.subarray(0, 32)),
-			winner: Uint8Array.from(data.subarray(32, 64)),
-			amountPromised: data.readBigUInt64LE(64),
-			validFrom: data.readBigUInt64LE(72),
-			validUntil: data.readBigUInt64LE(80),
-			lastSequence: data.readBigUInt64LE(88),
-		};
+	if (!stateAccount || !stateAccount.data) {
+		return null;
+	}
 
+	const data = accCoder.decode('swiftSourceSolanaState', stateAccount.data);
+
+	if (data.status.locked) {
 		return {
-			winner: tryUint8ArrayToNative(rawData.winner, CHAIN_ID_SOLANA),
-			validFrom: Number(rawData.validFrom),
-			validUntil: Number(rawData.validUntil),
-			sequence: rawData.lastSequence,
+			status: SOLANA_SRC_STATUSES.LOCKED,
 		};
+	} else if (data.status.unlocked) {
+		return {
+			status: SOLANA_SRC_STATUSES.UNLOCKED,
+		};
+	} else if (data.status.refunded) {
+		return {
+			status: SOLANA_SRC_STATUSES.REFUNDED,
+		};
+	} else {
+		throw new Error('Invalid status for source');
 	}
 }
 
-export type ParsedAuctionState = {
+export async function getAuctionState(
+	connection: Connection,
+	auctionStateAddr: PublicKey,
+): Promise<AuctionState | null> {
+	const stateAccount = await connection.getAccountInfo(auctionStateAddr);
+
+	if (!stateAccount || !stateAccount.data) {
+		return null;
+	}
+
+	const data = auctionAccCoder.decode('auctionState', stateAccount.data);
+
+	return {
+		winner: data.winner.toString(),
+		validFrom: data.validFrom.toNumber(),
+		validUntil: data.validUntil.toNumber(),
+		sequence: BigInt(data.lastSeqMsg),
+	};
+}
+
+export function getSwiftStateAddrSrc(programId: PublicKey, orderHash: Buffer): PublicKey {
+	return PublicKey.findProgramAddressSync([SWIFT_SOLANA_SOURCE_STATE_SEED, orderHash], programId)[0];
+}
+
+export function getSwiftStateAddrDest(programId: PublicKey, orderHash: Buffer): PublicKey {
+	return PublicKey.findProgramAddressSync([SWIFT_SOLANA_DEST_STATE_SEED, orderHash], programId)[0];
+}
+
+export type SwiftDestState = {
+	status: string;
+	winner?: string; // only valid for fulfilled/setlled status
+};
+
+export type SwiftSourceState = {
+	status: string;
+};
+
+export type AuctionState = {
 	winner: string;
 	validFrom: number;
 	validUntil: number;
 	sequence: bigint;
 };
 
-export type ParsedState = {
-	status: number;
-	winner: string;
-} | null;
+export const SOLANA_DEST_STATUSES = {
+	CREATED: 'CREATED',
+	FULFILLED: 'FULFILLED',
+	SETTLED: 'SETTLED',
+	POSTED: 'POSTED',
+	CANCELLED: 'CANCELLED',
+	CLOSED_CANCEL: 'CLOSED_CANCEL',
+	CLOSED_SETTLE: 'CLOSED_SETTLE',
+};
+
+export const POST_CREATE_STATUSES = [
+	SOLANA_DEST_STATUSES.FULFILLED,
+	SOLANA_DEST_STATUSES.SETTLED,
+	SOLANA_DEST_STATUSES.POSTED,
+	SOLANA_DEST_STATUSES.CLOSED_SETTLE,
+	SOLANA_DEST_STATUSES.CANCELLED,
+	SOLANA_DEST_STATUSES.CLOSED_CANCEL,
+];
+
+export const POST_FULFILL_STATUSES = [
+	SOLANA_DEST_STATUSES.SETTLED,
+	SOLANA_DEST_STATUSES.POSTED,
+	SOLANA_DEST_STATUSES.CLOSED_SETTLE,
+];
+
+export const SOLANA_SRC_STATUSES = {
+	LOCKED: 'LOCKED',
+	UNLOCKED: 'UNLOCKED',
+	REFUNDED: 'REFUNDED',
+};
 
 export type EvmStoredOrder = {
 	status: number;

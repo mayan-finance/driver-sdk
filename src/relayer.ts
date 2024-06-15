@@ -1,4 +1,4 @@
-import { Connection } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers';
@@ -18,13 +18,16 @@ import { verifyOrderHash } from './utils/order-hash';
 import { getCurrentSolanaTimeMS } from './utils/solana-trx';
 import {
 	AUCTION_MODES,
+	AuctionState,
 	EVM_STATES,
 	EvmStoredOrder,
-	ParsedAuctionState,
-	ParsedState,
-	SOLANA_STATES,
-	SwiftAuctionParser,
-	SwiftStateParser,
+	POST_FULFILL_STATUSES,
+	SOLANA_DEST_STATUSES,
+	SwiftDestState,
+	SwiftSourceState,
+	getAuctionState,
+	getSwiftStateDest,
+	getSwiftStateSrc,
 } from './utils/state-parser';
 import { delay } from './utils/util';
 import { getSignedVaa } from './utils/wormhole';
@@ -38,8 +41,6 @@ export class Relayer {
 		private readonly gConf: GlobalConfig,
 		private readonly tokenList: TokenList,
 		private readonly contractsConfig: ContractsConfig,
-		private readonly stateParser: SwiftStateParser,
-		private readonly auctionParser: SwiftAuctionParser,
 		private readonly walletHelper: WalletsHelper,
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaConnection: Connection,
@@ -48,19 +49,21 @@ export class Relayer {
 	) {}
 
 	private async tryProgressFulfill(swap: Swap) {
-		let solState: ParsedState = null;
-		let destEvmOrder: EvmStoredOrder;
-		let sourceEvmOrder: EvmStoredOrder;
+		let sourceState: SwiftSourceState | null = null;
+		let destState: SwiftDestState | null = null;
+		let destEvmOrder: EvmStoredOrder | null = null;
+		let sourceEvmOrder: EvmStoredOrder | null = null;
 
-		if (swap.destChain === CHAIN_ID_SOLANA || swap.auctionMode === AUCTION_MODES.ENGLISH) {
-			solState = await this.stateParser.parseSwiftStateAccount(swap.stateAddr);
+		if (swap.destChain === CHAIN_ID_SOLANA) {
+			destState = await getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr));
+		} else {
+			destEvmOrder = await this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash);
 		}
-		[sourceEvmOrder, destEvmOrder] = await Promise.all([
-			this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash),
-			swap.destChain !== CHAIN_ID_SOLANA
-				? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash)
-				: null,
-		]);
+		if (swap.sourceChain === CHAIN_ID_SOLANA) {
+			sourceState = await getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr));
+		} else {
+			sourceEvmOrder = await this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash);
+		}
 
 		switch (swap.status) {
 			case SWAP_STATUS.ORDER_SUBMITTED:
@@ -73,21 +76,21 @@ export class Relayer {
 
 				if (swap.destChain === CHAIN_ID_SOLANA) {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-						await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+						// await this.submitGaslessOrderIfRequired(swap, sourceState, sourceEvmOrder);
 						await this.waitForFinalizeOnSource(swap);
-						await this.simpleFulfillAndSettle(swap, solState);
+						await this.simpleFulfillAndSettle(swap, destState);
 					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
-						await this.bidAndFulfillSolana(swap, solState, sourceEvmOrder);
+						await this.bidAndFulfillSolana(swap, destState!, sourceState, sourceEvmOrder);
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
 				} else {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-						await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+						// await this.submitGaslessOrderIfRequired(swap, sourceState, sourceEvmOrder);
 						await this.waitForFinalizeOnSource(swap);
-						await this.simpleFulfillEvm(swap, destEvmOrder);
+						await this.simpleFulfillEvm(swap, destEvmOrder!);
 					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
-						await this.bidAndFulfillEvm(swap, solState, sourceEvmOrder, destEvmOrder);
+						await this.bidAndFulfillEvm(swap, sourceState, sourceEvmOrder, destEvmOrder!);
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
@@ -95,17 +98,17 @@ export class Relayer {
 				break;
 			case SWAP_STATUS.ORDER_FULFILLED:
 				if (swap.destChain === CHAIN_ID_SOLANA) {
-					if (solState && solState!.status === SOLANA_STATES.STATUS_SETTLED) {
+					if (destState && POST_FULFILL_STATUSES.includes(destState.status)) {
 						logger.info(`Order is already settled on solana for ${swap.sourceTxHash}`);
 						swap.status = SWAP_STATUS.ORDER_SETTLED;
-						swap.driverAddress = solState!.winner;
-					} else if (solState!.winner === this.walletConfig.solana.publicKey.toString()) {
+					} else if (destState?.winner === this.walletConfig.solana.publicKey.toString()) {
 						await this.settle(swap);
 					} else {
-						await delay(60_000); // someone else is responsible for settling it
+						await delay(5000); // not fulfilled by me
+						break;
 					}
 				} else {
-					throw new Error('Fulfilling on EVM is not valid. check for possible code issues');
+					throw new Error('ORDER_FULFILLED on EVM is not valid and Must not happen');
 				}
 				break;
 			default:
@@ -203,8 +206,12 @@ export class Relayer {
 		}
 	}
 
-	async submitGaslessOrderIfRequired(swap: Swap, sourceEvmOrder: EvmStoredOrder) {
-		if (!swap.gaslessPermit || !swap.gaslessSignature) {
+	async submitGaslessOrderIfRequired(
+		swap: Swap,
+		sourceSolanaState: SwiftSourceState | null,
+		sourceEvmOrder: EvmStoredOrder | null,
+	) {
+		if (!swap.gasless) {
 			return; // not gasless
 		}
 
@@ -224,8 +231,8 @@ export class Relayer {
 
 	async bidAndFulfillEvm(
 		swap: Swap,
-		state: ParsedState,
-		sourceEvmOrder: EvmStoredOrder,
+		srcState: SwiftSourceState | null,
+		sourceEvmOrder: EvmStoredOrder | null,
 		destEvmOrder: EvmStoredOrder,
 	) {
 		if (await this.checkAlreadyFulfilledOrCanceledOnEvm(swap, destEvmOrder)) {
@@ -233,7 +240,7 @@ export class Relayer {
 		}
 
 		const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-		let auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
+		let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
 			const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
 			if (!openToBid) {
@@ -245,23 +252,18 @@ export class Relayer {
 			}
 		}
 
-		if (
-			!auctionState ||
-			auctionState.validUntil * 1000 < solanaTime ||
-			state?.winner !== this.walletConfig.solana.publicKey.toBase58()
-		) {
+		if (!auctionState || auctionState.validUntil * 1000 < solanaTime) {
 			logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-			let shouldRegisterOrder = !state;
-			await this.driverService.bid(swap, shouldRegisterOrder);
+			await this.driverService.bid(swap, false);
 			logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 		}
 
 		await delay(this.gConf.auctionTimeSeconds * 1000);
 
-		auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
+		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		let maxRetries = 10;
 		while (maxRetries > 0 && (!auctionState || auctionState.sequence < 1n)) {
-			auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
+			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			await delay(1000);
 			maxRetries--;
 		}
@@ -273,7 +275,7 @@ export class Relayer {
 
 		const sequence = await this.driverService.postBid(swap, false, true);
 
-		await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
+		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 		await this.waitForFinalizeOnSource(swap);
 
 		logger.info(`Got sequence ${sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
@@ -300,13 +302,18 @@ export class Relayer {
 		logger.info(`Finished simpleFulfillEvm for ${swap.sourceTxHash}`);
 	}
 
-	async bidAndFulfillSolana(swap: Swap, state: ParsedState, sourceEvmOrder: EvmStoredOrder) {
-		if (await this.checkAlreadyFulfilledOrCanceledSolana(swap, state)) {
+	async bidAndFulfillSolana(
+		swap: Swap,
+		destState: SwiftDestState,
+		srcState: SwiftSourceState | null,
+		sourceEvmOrder: EvmStoredOrder | null,
+	) {
+		if (await this.checkAlreadyFulfilledOrCanceledSolana(swap, destState)) {
 			return;
 		}
 
 		const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-		let auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
+		let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 			const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
 			if (!openToBid) {
@@ -318,23 +325,19 @@ export class Relayer {
 			}
 		}
 
-		if (
-			!auctionState ||
-			auctionState.validUntil * 1000 < solanaTime ||
-			state?.winner !== this.walletConfig.solana.publicKey.toBase58()
-		) {
+		if (!auctionState || auctionState.validUntil * 1000 < solanaTime) {
 			logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
-			let shouldRegisterOrder = !state;
+			let shouldRegisterOrder = !destState;
 			await this.driverService.bid(swap, shouldRegisterOrder);
 			logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
 		}
 
 		await delay(this.gConf.auctionTimeSeconds * 1000);
 
-		auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
+		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		let maxRetries = 10;
 		while (maxRetries > 0 && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
-			auctionState = await this.auctionParser.parseState(swap.auctionStateAddr);
+			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			await delay(1000);
 			maxRetries--;
 		}
@@ -346,9 +349,7 @@ export class Relayer {
 
 		await this.driverService.postBid(swap, true, false);
 
-		await this.submitGaslessOrderIfRequired(swap, sourceEvmOrder);
-		await this.waitForFinalizeOnSource(swap);
-
+		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 		await this.waitForFinalizeOnSource(swap);
 
 		logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
@@ -372,7 +373,7 @@ export class Relayer {
 		swap.status = SWAP_STATUS.ORDER_FULFILLED;
 	}
 
-	async simpleFulfillAndSettle(swap: Swap, state: ParsedState) {
+	async simpleFulfillAndSettle(swap: Swap, state: SwiftDestState | null) {
 		if (await this.checkAlreadyFulfilledOrCanceledSolana(swap, state)) {
 			return;
 		}
@@ -383,33 +384,26 @@ export class Relayer {
 
 	private async settle(swap: Swap) {
 		logger.info(`Settling ${swap.sourceTxHash}`);
-		let state = await this.stateParser.parseSwiftStateAccount(swap.stateAddr);
-		if (!state) {
-			throw new Error(`Failed to get state while settling`);
-		}
-		if (state.status === SOLANA_STATES.STATUS_SETTLED || state.status === SOLANA_STATES.STATUS_UNLOCKED) {
-			logger.info(`discarding settle tx cause order already settled for ${swap.sourceTxHash}`);
-			swap.status = SWAP_STATUS.ORDER_SETTLED;
-		} else if (state.status === SOLANA_STATES.STATUS_FULFILLED) {
-			logger.info(`Settle tx started for ${swap.sourceTxHash}`);
-			await this.driverService.settle(swap);
-			logger.info(`Settle tx done for ${swap.sourceTxHash}`);
-			swap.status = SWAP_STATUS.ORDER_SETTLED;
-		}
+
+		logger.info(`Settle tx started for ${swap.sourceTxHash}`);
+		await this.driverService.settle(swap);
+		logger.info(`Settle tx done for ${swap.sourceTxHash}`);
+		swap.status = SWAP_STATUS.ORDER_SETTLED;
 	}
 
 	async waitForFinalizeOnSource(swap: Swap) {
 		logger.info(`trying to fulfill. waiting for finality for tx: ${swap.sourceTxHash}`);
 		const startTime = Date.now();
 		const fromToken = swap.fromToken;
-		const prices = await axios.get(this.endpoints.priceApiUrl + '/v3/price/list', {
-			params: {
-				ids: [fromToken.coingeckoId].join(','),
-			},
-		});
-		const swapValueUsd = swap.fromAmount.toNumber() * prices.data[fromToken.coingeckoId];
+		let swapValueUsd = swap.fromAmount.toNumber();
+		if (fromToken.symbol === 'ETH' || fromToken.symbol === 'WETH') {
+			swapValueUsd *= 4000; // TODO: get real eth price
+		}
 
-		let realSourceTxHash = !swap.gaslessSignature ? swap.sourceTxHash : swap.createTxHash;
+		if (swap.gasless && !swap.createTxHash) {
+			await this.fetchCreateTxFromExplorer(swap);
+		}
+		let realSourceTxHash = !swap.gasless ? swap.sourceTxHash : swap.createTxHash;
 
 		await this.chainFinality.waitForFinality(swap.sourceChain, realSourceTxHash, swapValueUsd);
 		logger.info(
@@ -418,14 +412,33 @@ export class Relayer {
 		);
 	}
 
-	private async checkAlreadyFulfilledOrCanceledSolana(swap: Swap, state: ParsedState): Promise<boolean> {
+	private async fetchCreateTxFromExplorer(swap: Swap) {
+		let maxRetries = 5;
+		while (maxRetries-- > 0) {
+			const { data: rawSwap } = await axios.get(
+				this.endpoints.explorerApiUrl + `/v3/swap/trx/${swap.sourceTxHash}`,
+			);
+			if (rawSwap?.createTxHash) {
+				swap.createTxHash = rawSwap.createTxHash;
+				return;
+			}
+			await delay(4000);
+		}
+		throw new Error(`Failed to get createTxHash for gasless from mayan ${swap.sourceTxHash}`);
+	}
+
+	private async checkAlreadyFulfilledOrCanceledSolana(swap: Swap, state: SwiftDestState | null): Promise<boolean> {
 		if (state) {
-			if ([SOLANA_STATES.STATUS_FULFILLED, SOLANA_STATES.STATUS_SETTLED].includes(state.status)) {
-				logger.info(`Order already fulfilled for ${swap.sourceTxHash}`);
+			if (state.status === SOLANA_DEST_STATUSES.FULFILLED) {
+				// MIGHT NEED SETTLE So matters
 				swap.status = SWAP_STATUS.ORDER_FULFILLED;
-				swap.driverAddress = state.winner;
+				swap.driverAddress = state.winner!;
 				return true;
-			} else if ([SOLANA_STATES.STATUS_CANCELLED].includes(state.status)) {
+			} else if (POST_FULFILL_STATUSES.includes(state.status)) {
+				logger.info(`Order already settled for ${swap.sourceTxHash}`);
+				swap.status = SWAP_STATUS.ORDER_SETTLED;
+				return true;
+			} else if ([SOLANA_DEST_STATUSES.CANCELLED, SOLANA_DEST_STATUSES.CLOSED_CANCEL].includes(state.status)) {
 				logger.info(`Order already canceled for ${swap.sourceTxHash}`);
 				swap.status = SWAP_STATUS.ORDER_CANCELED;
 				return true;
@@ -450,7 +463,7 @@ export class Relayer {
 		return false;
 	}
 
-	private isAuctionOpenToBid(auction: ParsedAuctionState, solanaTime: number): boolean {
+	private isAuctionOpenToBid(auction: AuctionState, solanaTime: number): boolean {
 		if (auction.validFrom <= solanaTime && auction.validUntil >= solanaTime) {
 			return false;
 		}

@@ -43,6 +43,8 @@ export type Swap = {
 
 	driverAddress: string;
 
+	gasless: boolean;
+	gaslessTx: string;
 	gaslessSignature: string;
 	gaslessPermit: string;
 

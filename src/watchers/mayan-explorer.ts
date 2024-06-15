@@ -36,6 +36,8 @@ export class MayanExplorerWatcher {
 			retries: 0,
 			trader: rawSwap.trader,
 			sourceTxHash: rawSwap.sourceTxHash,
+			gasless: !!rawSwap.gasless,
+			gaslessTx: rawSwap.gaslessTx,
 			orderHash: rawSwap.orderHash,
 			auctionAddress: rawSwap.auctionAddress,
 			auctionMode: Number(rawSwap.auctionMode),
@@ -84,6 +86,9 @@ export class MayanExplorerWatcher {
 		const socket = io.io(this.endpoints.explorerWsAddress, {
 			transports: ['websocket'],
 		});
+		const swiftRelayerSocket = io.io(this.endpoints.relayerWsAddress, {
+			transports: ['websocket'],
+		});
 
 		socket.on('connect', () => {
 			logger.info('Connected to Mayan Explorer Socket');
@@ -115,9 +120,28 @@ export class MayanExplorerWatcher {
 				}
 			});
 		});
+		swiftRelayerSocket.on('connect', () => {
+			logger.info('Connected to Mayan Relayer Socket');
+
+			swiftRelayerSocket.on('SWAP_SUBMITTED', async (data) => {
+				try {
+					const { orderHash, createTxHash } = JSON.parse(data);
+					let foundSwap = this.relayer.relayingSwaps.find((x) => x.orderHash === orderHash);
+					if (foundSwap) {
+						logger.info(`Writing createTxHash for ${orderHash} via relayer socket`);
+						foundSwap.createTxHash = createTxHash;
+					}
+				} catch (err) {
+					logger.warn(`Error handling relayer submission event with ${err}`);
+				}
+			});
+		});
 
 		socket.on('disconnect', () => {
 			logger.info('Disconnected from Explorer Socket');
+		});
+		swiftRelayerSocket.on('disconnect', () => {
+			logger.info('Disconnected from Relayer Socket');
 		});
 
 		this.interval = setInterval(this.pollPendingSwaps.bind(this), this.gConf.pollExplorerInterval * 1000);
