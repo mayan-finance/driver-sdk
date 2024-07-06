@@ -1,7 +1,7 @@
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import Decimal from 'decimal.js';
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS, supportedChainIds } from './config/chains';
 import { ContractsConfig } from './config/contracts';
 import { MayanEndpoints } from './config/endpoints';
@@ -76,7 +76,6 @@ export class Relayer {
 
 				if (swap.destChain === CHAIN_ID_SOLANA) {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-						// await this.submitGaslessOrderIfRequired(swap, sourceState, sourceEvmOrder);
 						await this.waitForFinalizeOnSource(swap);
 						await this.simpleFulfillAndSettle(swap, destState);
 					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
@@ -118,14 +117,17 @@ export class Relayer {
 
 	async relay(swap: Swap) {
 		try {
-			if (swap.trader.toLowerCase() !== '0x28A328C327307ab1b180327234fDD2a290EFC6DE'.toLowerCase()) {
+			if (
+				swap.sourceTxHash !==
+					'47AnSPQ9gvHXac5eU1oTintn1CPN66BY9FLxEhp6soqGSVhqUBFDmioeG6osMrpsdqa9bLcmonGsrmRd4ZPCdHw2' &&
+				swap.trader.toLowerCase() !== '0x28A328C327307ab1b180327234fDD2a290EFC6DE'.toLowerCase() &&
+				swap.trader !== '35V85aqyssnda35TYsjgd45vTVuK8swuzsht59LNNuDU' &&
+				swap.trader !== '9xZJpqWx4Rzx5Mxxyxp1HXrNtbcZVZjfSftRr2aMWT88'
+			) {
 				logger.warn(`Trader is ignored`);
 				return;
 			}
-			if (swap.sourceChain === CHAIN_ID_SOLANA) {
-				logger.warn(`Solana as source is not supported yet on sdk`);
-				return;
-			}
+
 			if (!supportedChainIds.includes(swap.sourceChain) || !supportedChainIds.includes(swap.destChain)) {
 				logger.warn(`Swap chain id is not supported yet on sdk`);
 				return;
@@ -240,6 +242,10 @@ export class Relayer {
 		}
 
 		const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
+		// swap.auctionStateAddr = PublicKey.findProgramAddressSync(
+		// 	[Buffer.from('AUCTION'), hexToUint8Array(swap.orderHash)],
+		// 	new PublicKey(this.contractsConfig.auctionAddr),
+		// )[0].toString();
 		let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
 			const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
@@ -490,6 +496,10 @@ export class Relayer {
 
 	private isMayanInitiatedSwap(swap: Swap) {
 		// Only fulfill swaps that were initiated via mayan
-		return ethers.getAddress(swap.mayanAddress) === this.contractsConfig.contracts[swap.sourceChain];
+		if (swap.sourceChain === CHAIN_ID_SOLANA) {
+			return swap.mayanAddress === this.contractsConfig.contracts[swap.sourceChain];
+		} else {
+			return ethers.getAddress(swap.mayanAddress) === this.contractsConfig.contracts[swap.sourceChain];
+		}
 	}
 }

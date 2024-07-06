@@ -19,8 +19,8 @@ export type ContractsConfig = {
 	feeCollectorSolana: string;
 };
 
-export const SolanaProgram = '5vBpQGxxnzjhv3FNFVpVmGWsUhhNFu4xTbyGs3W2Sbbx';
-export const AuctionAddressSolana = '4oUq8HocfbPUpvu1j5ZVbLcoak7DFz2CLK3f91qUuQzH';
+export const SolanaProgram = 'BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY';
+export const AuctionAddressSolana = '9w1D9okTM8xNE7Ntb7LpaAaoLc6LfU9nHFs2h2KTpX1H';
 export const FeeCollectorSolana = 'pSwTTFE92RsRtvMCpb3mjruv5ww2KgBNVPscwdWwbxk';
 
 export const MayanForwarderAddress = '0x0654874eb7F59C6f5b39931FC45dC45337c967c3';

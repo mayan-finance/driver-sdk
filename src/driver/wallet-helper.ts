@@ -1,7 +1,7 @@
 import { abi as FulfillHelperAbi } from '../abis/fulfill-helper.abi';
 import { abi as SwiftAbi } from '../abis/swift.abi';
 
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import { CHAIN_ID_ETH, CHAIN_ID_SOLANA } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';

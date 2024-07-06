@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { FeeData, ethers } from 'ethers';
+import { FeeData, ethers } from 'ethers6';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,

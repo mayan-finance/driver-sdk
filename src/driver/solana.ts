@@ -15,6 +15,7 @@ import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { Swap } from '../swap.dto';
+import { tryNativeToUint8Array } from '../utils/buffer';
 import logger from '../utils/logger';
 import { LookupTableOptimizer } from '../utils/lut';
 import { PriorityFeeHelper } from '../utils/solana-trx';
@@ -192,6 +193,7 @@ export class SolanaFulfiller {
 
 		result.push(
 			await this.solanaIxHelper.getFullfillIx(
+				this.getUnlockAddress(swap.sourceChain),
 				swap.destAddress,
 				this.walletConfig.solana.publicKey,
 				new PublicKey(targetToken.mint),
@@ -213,6 +215,7 @@ export class SolanaFulfiller {
 		swap: Swap,
 	): Promise<VersionedTransaction> {
 		const fullFillIx = await this.solanaIxHelper.getFullfillIx(
+			this.getUnlockAddress(swap.sourceChain),
 			swap.destAddress,
 			this.walletConfig.solana.publicKey,
 			new PublicKey(toToken.mint),
@@ -335,11 +338,11 @@ export class SolanaFulfiller {
 		return transaction;
 	}
 
-	getUnlockAddress(sourceChainId: number): string {
+	getUnlockAddress(sourceChainId: number): Uint8Array {
 		if (sourceChainId === CHAIN_ID_SOLANA) {
-			return this.walletConfig.solana.publicKey.toString();
+			return tryNativeToUint8Array(this.walletConfig.solana.publicKey.toString(), CHAIN_ID_SOLANA);
 		} else {
-			return this.walletConfig.evm.address;
+			return tryNativeToUint8Array(this.walletConfig.evm.address, sourceChainId);
 		}
 	}
 }

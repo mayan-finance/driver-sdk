@@ -1,5 +1,5 @@
 import { Keypair } from '@solana/web3.js';
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import { base58_to_binary } from '../utils/base58';
 
 export type WalletConfig = {

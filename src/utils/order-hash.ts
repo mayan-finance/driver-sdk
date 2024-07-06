@@ -1,4 +1,4 @@
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import { WORMHOLE_DECIMALS } from '../config/chains';
 import { hexToUint8Array, tryNativeToUint8Array } from './buffer';
 

@@ -1,7 +1,8 @@
+import { ChainId, getSignedVAAWithRetry, parseVaa } from '@certusone/wormhole-sdk';
 import { publicrpc } from '@certusone/wormhole-sdk-proto-web';
 import { PublicKey } from '@solana/web3.js';
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import { CHAIN_ID_SOLANA } from '../config/chains';
 import { NodeHttpTransportWithDefaultTimeout } from './grpc';
 import logger from './logger';
@@ -24,7 +25,7 @@ function serializePayload(parsedVaa: any) {
 	return x;
 }
 
-export async function findVaaAddress(vaa: Buffer): Promise<PublicKey> {
+export function findVaaAddress(vaa: Buffer): PublicKey {
 	const parsedVaa = parseVaa(vaa);
 	const serializedVaa = serializePayload(parsedVaa);
 	const vaaHash = Buffer.from(ethers.keccak256(serializedVaa).replace('0x', ''), 'hex');
@@ -83,7 +84,7 @@ export async function getSignedVaa(guardianRpcs: string[], chainId: number, cont
 		try {
 			const { vaaBytes: signedVAA } = await getSignedVAAWithRetry(
 				guardianRpcs,
-				chainId,
+				chainId as ChainId,
 				mayanBridgeEmitterAddress,
 				sequence,
 				{
@@ -99,39 +100,6 @@ export async function getSignedVaa(guardianRpcs: string[], chainId: number, cont
 			await delay(2000);
 		}
 	}
-}
-
-export async function getSignedVAAWithRetry(
-	hosts: string[],
-	emitterChainId: number,
-	emitterAddress: string,
-	sequence: string,
-	extraGrpcOpts = {},
-	retryTimeout = 1000,
-	retryAttempts?: number,
-) {
-	let currentWormholeRpcHost = -1;
-	const getNextRpcHost = () => ++currentWormholeRpcHost % hosts.length;
-	let result;
-	let attempts = 0;
-	while (!result) {
-		attempts++;
-		await new Promise((resolve) => setTimeout(resolve, retryTimeout));
-		try {
-			result = await getSignedVAARaw(
-				hosts[getNextRpcHost()],
-				emitterChainId,
-				emitterAddress,
-				sequence,
-				extraGrpcOpts,
-			);
-		} catch (e) {
-			if (retryAttempts !== undefined && attempts > retryAttempts) {
-				throw e;
-			}
-		}
-	}
-	return result;
 }
 
 async function getSignedVaaFromWormholeScan(
@@ -152,12 +120,6 @@ async function getSignedVaaFromWormholeScan(
 	}
 }
 
-export function chunks<T>(array: T[], size: number): T[][] {
-	return Array.apply<number, T[], T[][]>(0, new Array(Math.ceil(array.length / size))).map((_, index) =>
-		array.slice(index * size, (index + 1) * size),
-	);
-}
-
 export async function getSignedVAARaw(
 	host: string,
 	emitterChainId: number,
@@ -174,35 +136,4 @@ export async function getSignedVAARaw(
 			sequence,
 		},
 	});
-}
-
-function parseVaa(signedVaa: Buffer) {
-	const sigStart = 6;
-	const numSigners = signedVaa[5];
-	const sigLength = 66;
-
-	const guardianSignatures = [];
-	for (let i = 0; i < numSigners; ++i) {
-		const start = sigStart + i * sigLength;
-		guardianSignatures.push({
-			index: signedVaa[start],
-			signature: signedVaa.subarray(start + 1, start + 66),
-		});
-	}
-
-	const body = signedVaa.subarray(sigStart + sigLength * numSigners);
-
-	return {
-		version: signedVaa[0],
-		guardianSetIndex: signedVaa.readUInt32BE(1),
-		guardianSignatures,
-		timestamp: body.readUInt32BE(0),
-		nonce: body.readUInt32BE(4),
-		emitterChain: body.readUInt16BE(8),
-		emitterAddress: body.subarray(10, 42),
-		sequence: body.readBigUInt64BE(42),
-		consistencyLevel: body[50],
-		payload: body.subarray(51),
-		hash: ethers.keccak256(body),
-	};
 }

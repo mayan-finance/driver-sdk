@@ -1,5 +1,5 @@
 import { Connection } from '@solana/web3.js';
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,

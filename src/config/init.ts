@@ -1,10 +1,12 @@
 import axios from 'axios';
+import logger from '../utils/logger';
 import { supportedChainIds } from './chains';
 import { ContractsConfig } from './contracts';
-import { GlobalConfig } from './global';
+import { mayanEndpoints } from './endpoints';
+import { GlobalConfig, SwiftFeeParams } from './global';
 import { RpcConfig } from './rpc';
 
-const initEndpoint = 'https://price-api.mayan.finance/v3/driver/init';
+const initEndpoint = `${mayanEndpoints.priceApiUrl}/v3/driver/init`;
 
 export async function fetchDynamicSdkParams(): Promise<{
 	swiftContracts: {
@@ -17,6 +19,7 @@ export async function fetchDynamicSdkParams(): Promise<{
 	batchUnlockThreshold: number;
 	singleBatchChainIds: string;
 	scheduleUnlockInterval: number;
+	feeParams: SwiftFeeParams;
 }> {
 	const result = await axios.get(initEndpoint);
 	const serverChains = Object.keys(result.data.swiftContracts).map((k) => +k);
@@ -29,19 +32,24 @@ export async function fetchDynamicSdkParams(): Promise<{
 }
 
 export async function refershAndPatchConfigs(gConf: GlobalConfig, contracts: ContractsConfig, rpcConfig: RpcConfig) {
-	const data = await fetchDynamicSdkParams();
+	try {
+		const data = await fetchDynamicSdkParams();
 
-	for (let key of Object.keys(data.swiftContracts)) {
-		if (contracts.contracts[+key]) {
-			contracts.contracts[+key] = data.swiftContracts[key];
+		for (let key of Object.keys(data.swiftContracts)) {
+			if (contracts.contracts[+key]) {
+				contracts.contracts[+key] = data.swiftContracts[key];
+			}
 		}
+
+		gConf.auctionTimeSeconds = data.auctionTimeSeconds;
+		gConf.batchUnlockThreshold = data.batchUnlockThreshold;
+		gConf.scheduleUnlockInterval = data.scheduleUnlockInterval;
+		gConf.singleBatchChainIds = data.singleBatchChainIds.split(',').map((x) => +x);
+		gConf.registerInterval = data.registerInterval;
+		gConf.feeParams = data.feeParams;
+
+		rpcConfig.wormholeGuardianRpcs = data.wormholeGuardianRpcs.split(',');
+	} catch (err) {
+		logger.warn(`Unable to update configs`);
 	}
-
-	gConf.auctionTimeSeconds = data.auctionTimeSeconds;
-	gConf.batchUnlockThreshold = data.batchUnlockThreshold;
-	gConf.scheduleUnlockInterval = data.scheduleUnlockInterval;
-	gConf.singleBatchChainIds = data.singleBatchChainIds.split(',').map((x) => +x);
-	gConf.registerInterval = data.registerInterval;
-
-	rpcConfig.wormholeGuardianRpcs = data.wormholeGuardianRpcs.split(',');
 }

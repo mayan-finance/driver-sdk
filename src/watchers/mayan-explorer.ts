@@ -86,9 +86,6 @@ export class MayanExplorerWatcher {
 		const socket = io.io(this.endpoints.explorerWsAddress, {
 			transports: ['websocket'],
 		});
-		const swiftRelayerSocket = io.io(this.endpoints.relayerWsAddress, {
-			transports: ['websocket'],
-		});
 
 		socket.on('connect', () => {
 			logger.info('Connected to Mayan Explorer Socket');
@@ -106,6 +103,10 @@ export class MayanExplorerWatcher {
 						return;
 					}
 
+					if (rawSwap.status !== 'ORDER_CREATED' && rawSwap.status !== 'ORDER_FULFILLED') {
+						return;
+					}
+
 					const swap = this.createSwapFromJson(rawSwap);
 
 					logger.info(
@@ -120,28 +121,9 @@ export class MayanExplorerWatcher {
 				}
 			});
 		});
-		swiftRelayerSocket.on('connect', () => {
-			logger.info('Connected to Mayan Relayer Socket');
-
-			swiftRelayerSocket.on('SWAP_SUBMITTED', async (data) => {
-				try {
-					const { orderHash, createTxHash } = JSON.parse(data);
-					let foundSwap = this.relayer.relayingSwaps.find((x) => x.orderHash === orderHash);
-					if (foundSwap) {
-						logger.info(`Writing createTxHash for ${orderHash} via relayer socket`);
-						foundSwap.createTxHash = createTxHash;
-					}
-				} catch (err) {
-					logger.warn(`Error handling relayer submission event with ${err}`);
-				}
-			});
-		});
 
 		socket.on('disconnect', () => {
 			logger.info('Disconnected from Explorer Socket');
-		});
-		swiftRelayerSocket.on('disconnect', () => {
-			logger.info('Disconnected from Relayer Socket');
 		});
 
 		this.interval = setInterval(this.pollPendingSwaps.bind(this), this.gConf.pollExplorerInterval * 1000);
@@ -152,7 +134,7 @@ export class MayanExplorerWatcher {
 			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swaps', {
 				params: {
 					format: 'raw',
-					status: 'inprogress',
+					status: 'ORDER_CREATED,ORDER_FULFILLED',
 					service: 'SWIFT_SWAP',
 					initiateContractAddresses: this.initiateAddresses.join(','),
 					limit: 100,
@@ -163,6 +145,10 @@ export class MayanExplorerWatcher {
 
 			for (let s of swaps) {
 				if (!s.orderHash || !['SWIFT_SWAP'].includes(s.service)) {
+					continue;
+				}
+
+				if (s.status !== 'ORDER_CREATED' && s.status !== 'ORDER_FULFILLED') {
 					continue;
 				}
 

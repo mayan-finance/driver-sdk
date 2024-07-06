@@ -11,7 +11,7 @@ import {
 } from './config/contracts';
 import { mayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
-import { fetchDynamicSdkParams } from './config/init';
+import { fetchDynamicSdkParams, refershAndPatchConfigs } from './config/init';
 import { rpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { getWalletConfig } from './config/wallet';
@@ -30,6 +30,7 @@ import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
 import { LookupTableOptimizer } from './utils/lut';
 import { PriorityFeeHelper, SolanaMultiTxSender } from './utils/solana-trx';
+import { VaaPoster } from './utils/vaa-poster';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
 
 export async function main() {
@@ -51,6 +52,7 @@ export async function main() {
 		registerAgainInterval: initialDynamicConfig.registerInterval,
 		disableUnlocker: process.env.DISABLE_UNLOCKER === 'true',
 		closeLutsInterval: 1800,
+		feeParams: initialDynamicConfig.feeParams,
 	};
 
 	const contracts: ContractsConfig = {
@@ -59,6 +61,9 @@ export async function main() {
 		contracts: { ...initialDynamicConfig.swiftContracts, [CHAIN_ID_SOLANA]: SolanaProgram },
 		feeCollectorSolana: FeeCollectorSolana,
 	};
+	setInterval(() => {
+		refershAndPatchConfigs(globalConfig, contracts, rpcConfig);
+	}, 60_000);
 
 	const evmProviders = makeEvmProviders(supportedChainIds, rpcConfig);
 	const solanaConnection = new Connection(rpcConfig.solana.solanaMainRpc, 'confirmed');
@@ -82,6 +87,7 @@ export async function main() {
 	await registerSvc.register();
 	registerSvc.scheduleRegister();
 
+	const vaaPoster = new VaaPoster(rpcConfig, walletConf, solanaConnection, solanaTxSender, priorityFeeHelper);
 	const unlocker = new Unlocker(
 		globalConfig,
 		mayanEndpoints,
@@ -94,10 +100,11 @@ export async function main() {
 		priorityFeeHelper,
 		solanaTxSender,
 		walletHelper,
+		vaaPoster,
 	);
 	unlocker.scheduleUnlockJobs();
 
-	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList);
+	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList, globalConfig);
 	const lutOptimizer = new LookupTableOptimizer(
 		globalConfig,
 		walletConf,

@@ -19,7 +19,7 @@ import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { SimpleFulfillerConfig } from '../simple';
 import { Swap } from '../swap.dto';
-import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
+import { tryNativeToUint8Array } from '../utils/buffer';
 import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
 import { PriorityFeeHelper, SolanaMultiTxSender } from '../utils/solana-trx';
@@ -54,22 +54,8 @@ export class DriverService {
 		this.swiftAuctionProgram = new PublicKey(contractsConfig.auctionAddr);
 	}
 
-	getAuctionStateAddr(stateAddr: PublicKey): PublicKey {
-		return PublicKey.findProgramAddressSync(
-			[Buffer.from('AUCTION'), stateAddr.toBytes()],
-			this.swiftAuctionProgram,
-		)[0];
-	}
-
 	getStateAddr(swap: Swap): PublicKey {
-		if (swap.stateAddr) {
-			return new PublicKey(swap.stateAddr);
-		} else {
-			return PublicKey.findProgramAddressSync(
-				[Buffer.from('STATE'), hexToUint8Array(swap.orderHash)],
-				this.swiftProgram,
-			)[0];
-		}
+		return new PublicKey(swap.stateAddr);
 	}
 
 	getMayanAndReferrerFeeAssesInstructions(
@@ -87,8 +73,8 @@ export class DriverService {
 			mayan: PublicKey;
 		} = {
 			ixs: [],
-			mayanAss: stateAddr,
-			referrerAss: stateAddr,
+			mayanAss: null as any,
+			referrerAss: null as any,
 			mayan: new PublicKey(this.contractsConfig.feeCollectorSolana),
 		};
 
@@ -251,8 +237,7 @@ export class DriverService {
 			toToken: toToken,
 			gasDrop: swap.gasDrop.toNumber(),
 		});
-		const effectiveAmountIn =
-			swap.fromAmount.toNumber() - expenses.fulfillCost - expenses.unlockSource - expenses.submissionCost;
+		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
 		if (effectiveAmountIn < 0) {
 			logger.error(`effectiveAmountIn is less than 0 ${effectiveAmountIn} for swap ${swap.sourceTxHash}`);
@@ -348,7 +333,7 @@ export class DriverService {
 				newMessageAccount.publicKey,
 				swap,
 				swap.fromToken.decimals,
-				tryNativeToUint8Array(this.walletsHelper.getDriverWallet(srcChain).address, dstChain),
+				tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
 			);
 			instructions.push(postAuctionIx);
 		}
@@ -392,7 +377,7 @@ export class DriverService {
 
 	private async getRegisterWinnerIx(swap: Swap): Promise<TransactionInstruction> {
 		const stateAddr = this.getStateAddr(swap);
-		const auctionAddr = this.getAuctionStateAddr(stateAddr);
+		const auctionAddr = new PublicKey(swap.auctionStateAddr);
 		const registerWinnerIx = await this.solanaIxService.getRegisterWinnerIx(
 			this.walletConfig.solana.publicKey,
 			stateAddr,
@@ -435,8 +420,7 @@ export class DriverService {
 			toToken: toToken,
 			gasDrop: swap.gasDrop.toNumber(),
 		});
-		const effectiveAmountIn =
-			swap.fromAmount.toNumber() - expenses.fulfillCost - expenses.unlockSource - expenses.submissionCost;
+		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
 		if (effectiveAmountIn < swap.minAmountOut.toNumber()) {
 			await delay(2000);
@@ -469,8 +453,7 @@ export class DriverService {
 			toToken: toToken,
 			gasDrop: swap.gasDrop.toNumber(),
 		});
-		const effectiveAmountIn =
-			swap.fromAmount.toNumber() - expenses.fulfillCost - expenses.unlockSource - expenses.submissionCost;
+		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
 		if (effectiveAmountIn < swap.minAmountOut.toNumber()) {
 			await delay(2000);
@@ -524,8 +507,7 @@ export class DriverService {
 			toToken: toToken,
 			gasDrop: swap.gasDrop.toNumber(),
 		});
-		const effectiveAmntIn =
-			swap.fromAmount.toNumber() - expenses.fulfillCost - expenses.unlockSource - expenses.submissionCost;
+		const effectiveAmntIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
 		if (effectiveAmntIn < 0) {
 			logger.error(`effectiveAmountIn is less than 0
@@ -641,7 +623,7 @@ export class DriverService {
 		);
 
 		const settleIx = await this.solanaIxService.getSettleIx(
-			this.swiftProgram,
+			this.walletConfig.solana.publicKey,
 			stateAddr,
 			stateToAss,
 			to,
@@ -693,7 +675,7 @@ export class DriverService {
 		);
 
 		const settleIx = await this.solanaIxService.getSettleIx(
-			this.swiftProgram,
+			this.walletConfig.solana.publicKey,
 			stateAddr,
 			stateToAss.address,
 			to,

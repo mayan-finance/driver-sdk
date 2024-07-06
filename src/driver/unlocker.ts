@@ -1,9 +1,11 @@
+import { ChainId, getSignedVAAWithRetry } from '@certusone/wormhole-sdk';
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Connection, Keypair, MessageV0, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import axios from 'axios';
-import { ethers } from 'ethers';
+import { ethers } from 'ethers6';
 import { abi as WormholeAbi } from '../abis/wormhole.abi';
 import { CHAIN_ID_SOLANA } from '../config/chains';
-import { ContractsConfig } from '../config/contracts';
+import { ContractsConfig, SolanaProgram } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
@@ -14,37 +16,52 @@ import { getSuggestedOverrides } from '../utils/evm-trx';
 import { NodeHttpTransportWithDefaultTimeout } from '../utils/grpc';
 import logger from '../utils/logger';
 import { PriorityFeeHelper, SolanaMultiTxSender } from '../utils/solana-trx';
-import { EVM_STATES } from '../utils/state-parser';
-import { delay } from '../utils/util';
 import {
+	EVM_STATES,
+	SOLANA_SRC_STATUSES,
+	getSwiftStateAddrDest,
+	getSwiftStateAddrSrc,
+	parseSwiftStateSrc,
+} from '../utils/state-parser';
+import { delay } from '../utils/util';
+import { VaaPoster } from '../utils/vaa-poster';
+import {
+	findVaaAddress,
 	getEmitterAddressEth,
 	getEmitterAddressSolana,
-	getSignedVAAWithRetry,
 	getWormholeSequenceFromPostedMessage,
 	get_wormhole_core_accounts,
 } from '../utils/wormhole';
-import { NewSolanaIxHelper, SolanaIxHelper } from './solana-ix';
+import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 const LogMessagePublishedSig = 'LogMessagePublished(address,uint64,uint32,bytes,uint8)';
 
 export type UnlockableSwapBatchItem = {
 	fromChain: number;
 	toChain: number;
-	orderHashes: string[];
+	orders: {
+		fromTokenAddress: string;
+		orderHash: string;
+		unlockSequence?: string;
+	}[];
 };
 export type UnlockableSwapSingleItem = {
 	fromChain: number;
 	toChain: number;
 	order: {
+		fromTokenAddress: string;
 		orderHash: string;
 		unlockSequence: string;
 	};
 };
 
 export class Unlocker {
+	private readonly solprogram = new PublicKey(SolanaProgram);
 	private readonly driverAddresses: string[] = [];
 	private locks: { [key: string]: boolean } = {};
 	private readonly wormholeInterface = new ethers.Interface(WormholeAbi);
+
+	private readonly mayanSharedLookupTableAddress = new PublicKey('7cBja9T7X4qG1drbDy6QaJMs6zgEFxXT6roqbm4oxHFT');
 
 	public interval: NodeJS.Timeout | null = null;
 	public unlockInterval: NodeJS.Timeout | null = null;
@@ -63,7 +80,7 @@ export class Unlocker {
 		private readonly priorityFeeService: PriorityFeeHelper,
 		private readonly solanaSender: SolanaMultiTxSender,
 		private readonly walletsHelper: WalletsHelper,
-		private readonly vaaPoster: Va
+		private readonly vaaPoster: VaaPoster,
 	) {
 		this.sequenceStore = new SequenceStore();
 
@@ -74,6 +91,7 @@ export class Unlocker {
 	private async getOwnedUnlockableSwaps(driverAddresses: string[]): Promise<{
 		singleData: UnlockableSwapSingleItem[];
 		batchData: UnlockableSwapBatchItem[];
+		postedBatchData: UnlockableSwapBatchItem[];
 	}> {
 		const rawData = await axios.get(this.endpoints.explorerApiUrl + '/v3/unlockable-swaps', {
 			params: {
@@ -101,12 +119,21 @@ export class Unlocker {
 	private async unlockPostedBatches() {
 		try {
 			for (let [postTxHash, postedData] of this.sequenceStore.postedSequences.entries()) {
-				await this.getPendingBatchUnlockAndUnlock(
-					postedData.fromChainId,
-					postedData.toChainId,
-					postedData.sequence.toString(),
-					postTxHash,
-				);
+				if (postedData.fromChainId === CHAIN_ID_SOLANA) {
+					await this.getPendingBatchUnlockAndUnlockSolana(
+						postedData.toChainId,
+						postedData.sequence.toString(),
+						postTxHash,
+						postedData.orders,
+					);
+				} else {
+					await this.getPendingBatchUnlockAndUnlockEvm(
+						postedData.fromChainId,
+						postedData.toChainId,
+						postedData.sequence.toString(),
+						postTxHash,
+					);
+				}
 				await delay(20); // avoid running everything together
 			}
 		} catch (err) {
@@ -127,22 +154,34 @@ export class Unlocker {
 						singleUnlockData.fromChain,
 						singleUnlockData.toChain,
 						singleUnlockData.order.orderHash,
+						singleUnlockData.order.fromTokenAddress,
 						singleUnlockData.order.unlockSequence,
 					),
 				);
 				await delay(20); // avoid running everything together
 			}
 
+			for (let postedUnlockData of freshExplorerData.postedBatchData) {
+				this.scheduleAlreadyPostedUnlocks(postedUnlockData);
+			}
+
 			for (let batchUnlockData of freshExplorerData.batchData) {
-				const orderHashes = batchUnlockData.orderHashes;
-				let alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrder(
-					batchUnlockData.fromChain,
-					orderHashes,
-				);
-				let filteredOrderHashes = orderHashes.filter((orderHash) => !alreadyUnlocked.has(orderHash));
+				const orderHashs = batchUnlockData.orders.map((order) => order.orderHash);
+				let alreadyUnlocked: Set<string>;
+				if (+batchUnlockData.fromChain === CHAIN_ID_SOLANA) {
+					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSolana(orderHashs);
+				} else {
+					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderEvm(
+						batchUnlockData.fromChain,
+						orderHashs,
+					);
+				}
+
+				let filteredOrders = batchUnlockData.orders.filter((order) => !alreadyUnlocked.has(order.orderHash));
+
 				let chunkSize = this.gConf.batchUnlockThreshold;
-				for (let i = 0; i < filteredOrderHashes.length; i += chunkSize) {
-					const chunk = filteredOrderHashes.slice(i, i + chunkSize);
+				for (let i = 0; i < filteredOrders.length; i += chunkSize) {
+					const chunk = filteredOrders.slice(i, i + chunkSize);
 					promises.push(
 						this.selectAndBatchPostWhSequence(batchUnlockData.fromChain, batchUnlockData.toChain, chunk),
 					);
@@ -157,7 +196,14 @@ export class Unlocker {
 		}
 	}
 
-	private async selectAndBatchPostWhSequence(sourceChainId: number, destChainId: number, orderHashes: string[]) {
+	private async selectAndBatchPostWhSequence(
+		sourceChainId: number,
+		destChainId: number,
+		orders: {
+			orderHash: string;
+			fromTokenAddress: string;
+		}[],
+	) {
 		const lockKey = `lock:selectAndPost:${sourceChainId}:${destChainId}`;
 		try {
 			const locked = this.locks[lockKey];
@@ -167,24 +213,24 @@ export class Unlocker {
 				this.locks[lockKey] = true;
 			}
 
-			if (!orderHashes || orderHashes.length < 1) {
+			if (!orders || orders.length < 1) {
 				delete this.locks[lockKey];
 				return;
 			}
 
-			for (let orderHash of orderHashes) {
-				if (this.sequenceStore.isOrderAlreadyPosted(orderHash)) {
+			for (let order of orders) {
+				if (this.sequenceStore.isOrderAlreadyPosted(order.orderHash)) {
 					logger.warn(`Has already pending order hashes ignoring ${sourceChainId}-${destChainId}`);
 					delete this.locks[lockKey];
 					return;
 				}
 			}
 
-			if (orderHashes.length > 20) {
+			if (orders.length > 20) {
 				throw new Error(`Too many orderHashes might not fit into block...`);
 			}
 
-			if (orderHashes.length < this.gConf.batchUnlockThreshold) {
+			if (orders.length < this.gConf.batchUnlockThreshold) {
 				logger.verbose(
 					`Not enough swaps to select and post for ${sourceChainId} to ${destChainId}. min ${this.gConf.batchUnlockThreshold}`,
 				);
@@ -192,8 +238,9 @@ export class Unlocker {
 				return;
 			}
 
-			orderHashes = orderHashes.slice(0, this.gConf.batchUnlockThreshold); // we can not put more than this in one udp solana trx without luts or hitting inner instruction limit
+			orders = orders.slice(0, this.gConf.batchUnlockThreshold); // we can not put more than this in one udp solana trx without luts or hitting inner instruction limit
 
+			const orderHashes = orders.map((order) => order.orderHash);
 			logger.info(`Posting and acquiring sequence for ${sourceChainId} to ${destChainId} for batch`);
 			let sequence: bigint, txHash: string;
 			if (destChainId === CHAIN_ID_SOLANA) {
@@ -208,13 +255,7 @@ export class Unlocker {
 			const postSequence = sequence;
 			const postTxHash = txHash;
 
-			this.sequenceStore.addBatchPostedSequence(
-				sourceChainId,
-				destChainId,
-				orderHashes,
-				postSequence,
-				postTxHash,
-			);
+			this.sequenceStore.addBatchPostedSequence(sourceChainId, destChainId, orders, postSequence, postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
 			logger.error(`selectAndPostWhSequence failed for ${sourceChainId} to ${destChainId} ${err}`);
@@ -222,7 +263,146 @@ export class Unlocker {
 		}
 	}
 
-	private async getPendingBatchUnlockAndUnlock(
+	private async getPendingBatchUnlockAndUnlockSolana(
+		destChainId: number,
+		sequence: string,
+		postTxHash: string,
+		orders: { fromTokenAddress: string; orderHash: string }[],
+	) {
+		const sourceChainId = CHAIN_ID_SOLANA;
+		const lockKey = `lock:getPendingBatchUnlockAndUnlockSolana:${postTxHash}`;
+		try {
+			const locked = this.locks[lockKey];
+			if (locked) {
+				return;
+			} else {
+				this.locks[lockKey] = true;
+			}
+
+			logger.info(`Getting batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
+			let signedVaa = await this.getSignedVaa(sequence, destChainId, 60);
+			logger.info(`Got batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
+
+			const txHash = await this.unlockBatchOnSolana(Buffer.from(signedVaa.replace('0x', ''), 'hex'), orders);
+			logger.info(`Unlocked batch evm for ${sourceChainId} to ${destChainId} with ${txHash}`);
+
+			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
+			delete this.locks[lockKey];
+		} catch (err) {
+			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			delete this.locks[lockKey];
+		}
+	}
+
+	private async unlockSingleOnSolana(
+		signedVaa: Buffer,
+		orderHash: string,
+		fromTokenAddress: string,
+	): Promise<string> {
+		const stateAddr = getSwiftStateAddrSrc(
+			new PublicKey(SolanaProgram),
+			Buffer.from(orderHash.replace('0x', ''), 'hex'),
+		);
+		const fromMint = new PublicKey(fromTokenAddress);
+		const stateFromAss = getAssociatedTokenAddressSync(fromMint, stateAddr, true);
+		const driverFromAss = getAssociatedTokenAddressSync(fromMint, this.walletConfig.solana.publicKey, false);
+
+		await this.vaaPoster.postSignedVAA(signedVaa, orderHash);
+		const vaaAddr = findVaaAddress(signedVaa);
+
+		const ix = await this.solanaIx.getUnlockSingleIx(
+			this.walletConfig.solana.publicKey,
+			driverFromAss,
+			stateAddr,
+			stateFromAss,
+			fromMint,
+			vaaAddr,
+		);
+		const priorityFeeIx = await this.priorityFeeService.getPriorityFeeInstruction([
+			ix.programId.toString(),
+			...ix.keys.map((accMeta) => accMeta.pubkey.toString()),
+		]);
+
+		let instructions = [priorityFeeIx, ix];
+		const { blockhash } = await this.solanaConnection.getLatestBlockhash();
+		const msg = MessageV0.compile({
+			payerKey: this.walletConfig.solana.publicKey,
+			instructions,
+			recentBlockhash: blockhash,
+		});
+		const trx = new VersionedTransaction(msg);
+		trx.sign([this.walletConfig.solana]);
+		const serializedTrx = trx.serialize();
+
+		const txHash = await this.solanaSender.sendAndConfirmTransaction(
+			serializedTrx,
+			this.rpcConfig.solana.sendCount,
+			'confirmed',
+			30,
+		);
+
+		return txHash;
+	}
+
+	private async unlockBatchOnSolana(signedVaa: Buffer, orders: { fromTokenAddress: string; orderHash: string }[]) {
+		let i = 0;
+		let instructions = [];
+
+		await this.vaaPoster.postSignedVAA(signedVaa, 'batch_unlcock');
+
+		for (let order of orders) {
+			const fromMint = new PublicKey(order.fromTokenAddress);
+			const driverAss = getAssociatedTokenAddressSync(fromMint, this.walletConfig.solana.publicKey, false);
+			const state = getSwiftStateAddrSrc(
+				new PublicKey(SolanaProgram),
+				Buffer.from(order.orderHash.replace('0x', ''), 'hex'),
+			);
+			const stateAss = getAssociatedTokenAddressSync(fromMint, state, true);
+			const vaaAddr = findVaaAddress(signedVaa);
+			const ix = await this.solanaIx.getUnlockBatchIx(
+				this.walletConfig.solana.publicKey,
+				driverAss,
+				state,
+				stateAss,
+				i,
+				fromMint,
+				vaaAddr,
+			);
+			i++;
+			instructions.push(ix);
+		}
+
+		let keys = [];
+		for (let ix of instructions) {
+			keys.push(ix.programId.toString());
+			keys.push(...ix.keys.map((accMeta) => accMeta.pubkey.toString()));
+		}
+		const priorityFeeIx = await this.priorityFeeService.getPriorityFeeInstruction(keys);
+
+		instructions = [priorityFeeIx, ...instructions];
+
+		const sharedLut = await this.solanaConnection.getAddressLookupTable(this.mayanSharedLookupTableAddress);
+		const { blockhash } = await this.solanaConnection.getLatestBlockhash();
+		const msg = MessageV0.compile({
+			payerKey: this.walletConfig.solana.publicKey,
+			instructions,
+			recentBlockhash: blockhash,
+			addressLookupTableAccounts: [sharedLut.value!], // tx should fit with this lut
+		});
+		const trx = new VersionedTransaction(msg);
+		trx.sign([this.walletConfig.solana]);
+		const serializedTrx = trx.serialize();
+
+		const txHash = await this.solanaSender.sendAndConfirmTransaction(
+			serializedTrx,
+			this.rpcConfig.solana.sendCount,
+			'confirmed',
+		);
+
+		return txHash;
+	}
+
+	private async getPendingBatchUnlockAndUnlockEvm(
 		sourceChainId: number,
 		destChainId: number,
 		sequence: string,
@@ -252,10 +432,31 @@ export class Unlocker {
 		}
 	}
 
+	private async isUnlocked(sourceChainId: number, orderHash: string): Promise<boolean> {
+		if (sourceChainId === CHAIN_ID_SOLANA) {
+			const solProgram = this.solprogram;
+			const stateAddr = getSwiftStateAddrSrc(solProgram, Buffer.from(orderHash.replace('0x', ''), 'hex'));
+			const accountInfos = await this.solanaConnection.getAccountInfo(stateAddr);
+			if (accountInfos && accountInfos.data.length > 0) {
+				const state = parseSwiftStateSrc(accountInfos.data);
+				if (state.status === SOLANA_SRC_STATUSES.UNLOCKED) {
+					return true;
+				}
+			}
+		} else {
+			const sourceOrder = await this.walletsHelper.getReadContract(sourceChainId).orders(orderHash);
+			if (sourceOrder.status == EVM_STATES.UNLOCKED) {
+			}
+		}
+
+		return false;
+	}
+
 	private async performSingleUnlocks(
 		sourceChainId: number,
 		destChainId: number,
 		orderHash: string,
+		fromTokenAddress: string,
 		unlockSequence: string,
 	) {
 		const lockKey = `lock:getPendingSingleUnlocksForEth:${sourceChainId}:${destChainId}:${orderHash}`;
@@ -267,8 +468,7 @@ export class Unlocker {
 				this.locks[lockKey] = true;
 			}
 
-			const sourceOrder = await this.walletsHelper.getReadContract(sourceChainId).orders(orderHash);
-			if (sourceOrder.status == EVM_STATES.UNLOCKED) {
+			if (await this.isUnlocked(sourceChainId, orderHash)) {
 				logger.info(`Order ${orderHash} was already unlocked`);
 				delete this.locks[lockKey];
 				return;
@@ -276,7 +476,16 @@ export class Unlocker {
 
 			let signedVaa = await this.getSignedVaa(unlockSequence, destChainId, 120);
 
-			const txHash = await this.unlockOnEvm(signedVaa, sourceChainId, destChainId, false);
+			let txHash: string;
+			if (sourceChainId === CHAIN_ID_SOLANA) {
+				txHash = await this.unlockSingleOnSolana(
+					Buffer.from(signedVaa.replace('0x', ''), 'hex'),
+					orderHash,
+					fromTokenAddress,
+				);
+			} else {
+				txHash = await this.unlockOnEvm(signedVaa, sourceChainId, destChainId, false);
+			}
 
 			logger.info(`Unlocked single evm for ${sourceChainId} to ${destChainId} with tx ${txHash}`);
 			delete this.locks[lockKey];
@@ -320,21 +529,19 @@ export class Unlocker {
 		const wormholeAccs = get_wormhole_core_accounts(swiftEmitter);
 		const newMessageAccount = Keypair.generate();
 
-		const states = orderHashes.map(
-			(orderHash) =>
-				PublicKey.findProgramAddressSync([Buffer.from('STATE'), hexToUint8Array(orderHash)], swiftProgram)[0],
+		const states = orderHashes.map((orderHash) =>
+			getSwiftStateAddrDest(swiftProgram, Buffer.from(orderHash.replace('0x', ''), 'hex')),
 		);
 
-		const batchPostIx = this.solanaIx.getBatchPostIx(
-			swiftProgram,
+		const batchPostIx = await this.solanaIx.getBatchPostIx(
+			this.walletConfig.solana.publicKey,
+			wormholeAccs.bridge_config,
+			wormholeAccs.coreBridge,
 			swiftEmitter,
 			wormholeAccs.sequence_key,
 			newMessageAccount.publicKey,
-			wormholeAccs.bridge_config,
 			wormholeAccs.fee_collector,
-			this.walletConfig.solana.publicKey,
 			states,
-			wormholeAccs.coreBridge,
 		);
 		const priorityFeeIx = await this.priorityFeeService.getPriorityFeeInstruction(
 			batchPostIx.keys.map((accMeta) => accMeta.pubkey.toString()),
@@ -387,7 +594,7 @@ export class Unlocker {
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
 		let overrides = await getSuggestedOverrides(destChain, networkFeeData);
-
+		overrides['gasLimit'] = 500_000;
 		let tx: ethers.TransactionResponse;
 		if (isBatch) {
 			tx = await swiftContract.unlockBatch(hexToUint8Array(signedVaa), overrides);
@@ -416,7 +623,74 @@ export class Unlocker {
 		return eventData.sequence;
 	}
 
-	private async getAlreadyUnlockedOrPendingOrder(sourceChain: number, orderHashes: string[]): Promise<Set<string>> {
+	private async getAlreadyUnlockedOrPendingOrderSolana(orderHashes: string[]): Promise<Set<string>> {
+		let result: Set<string> = new Set();
+		const maxFetchPerCall = 200;
+
+		for (let orderHash of orderHashes) {
+			if (this.sequenceStore.isOrderAlreadyPosted(orderHash)) {
+				result.add(orderHash);
+			}
+		}
+		const solProgram = this.solprogram;
+		// Fetching orderHashes in chunks of maxFetchPerCall
+		for (let i = 0; i < orderHashes.length; i += maxFetchPerCall) {
+			const chunk = orderHashes.slice(i, i + maxFetchPerCall);
+			const stateAddresses = chunk.map((orderHash) =>
+				getSwiftStateAddrSrc(solProgram, Buffer.from(orderHash.replace('0x', ''), 'hex')),
+			);
+			const accountInfos = await this.solanaConnection.getMultipleAccountsInfo(stateAddresses);
+			for (let j = 0; j < chunk.length; j++) {
+				if (accountInfos && accountInfos[j]!.data.length > 0) {
+					const state = parseSwiftStateSrc(accountInfos[j]!.data);
+					if (
+						state.status === SOLANA_SRC_STATUSES.UNLOCKED ||
+						state.status === SOLANA_SRC_STATUSES.REFUNDED
+					) {
+						result.add(chunk[j]);
+					}
+				}
+			}
+		}
+		return result;
+	}
+
+	private scheduleAlreadyPostedUnlocks(batchUnlockData: UnlockableSwapBatchItem): Set<string> {
+		let result: Set<string> = new Set();
+
+		let posts: { [key: string]: { fromTokenAddress: string; orderHash: string }[] } = {};
+		for (let item of batchUnlockData.orders) {
+			if (item.unlockSequence && item.unlockSequence !== '0') {
+				result.add(item.orderHash);
+				if (!posts[item.unlockSequence]) {
+					posts[item.unlockSequence] = [];
+				}
+				posts[item.unlockSequence].push({
+					fromTokenAddress: item.fromTokenAddress,
+					orderHash: item.orderHash,
+				});
+			}
+		}
+
+		for (let [sequence, val] of Object.entries(posts)) {
+			if (val.length >= this.gConf.batchUnlockThreshold) {
+				this.sequenceStore.addBatchPostedSequence(
+					batchUnlockData.fromChain,
+					batchUnlockData.toChain,
+					val,
+					BigInt(sequence),
+					`${batchUnlockData.fromChain}-${batchUnlockData.toChain}-${sequence}`,
+				);
+			}
+		}
+
+		return result;
+	}
+
+	private async getAlreadyUnlockedOrPendingOrderEvm(
+		sourceChain: number,
+		orderHashes: string[],
+	): Promise<Set<string>> {
 		let result: Set<string> = new Set();
 		const maxFetchPerCall = 1000;
 		for (let orderHash of orderHashes) {
@@ -458,7 +732,7 @@ export class Unlocker {
 			try {
 				const { vaaBytes: signedVAA2 } = await getSignedVAAWithRetry(
 					this.rpcConfig.wormholeGuardianRpcs,
-					destChainId,
+					destChainId as ChainId,
 					mayanBridgeEmitterAddress,
 					sequence,
 					{
@@ -484,7 +758,10 @@ class SequenceStore {
 			fromChainId: number;
 			toChainId: number;
 			sequence: bigint;
-			orderHashes: string[];
+			orders: {
+				fromTokenAddress: string;
+				orderHash: string;
+			}[];
 			insertedAt: Date;
 		}
 	> = new Map();
@@ -497,19 +774,22 @@ class SequenceStore {
 	addBatchPostedSequence(
 		fromChainId: number,
 		toChainId: number,
-		orderHashes: string[],
+		orders: {
+			fromTokenAddress: string;
+			orderHash: string;
+		}[],
 		postSequence: bigint,
 		postTxHash: string,
 	) {
-		for (let orderHash of orderHashes) {
-			this.allPendingPostedHashes.add(orderHash);
+		for (let order of orders) {
+			this.allPendingPostedHashes.add(order.orderHash);
 		}
 
 		this.postedSequences.set(postTxHash, {
 			fromChainId,
 			toChainId,
 			sequence: postSequence,
-			orderHashes,
+			orders,
 			insertedAt: new Date(),
 		});
 	}
@@ -521,8 +801,8 @@ class SequenceStore {
 			throw new Error(`No stored data for postTxHash ${postTxHash}!`);
 		}
 
-		for (let orderHash of storedData.orderHashes) {
-			this.allPendingPostedHashes.delete(orderHash);
+		for (let order of storedData.orders) {
+			this.allPendingPostedHashes.delete(order.orderHash);
 		}
 
 		this.postedSequences.delete(postTxHash);

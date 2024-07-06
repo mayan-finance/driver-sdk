@@ -57,7 +57,11 @@ export async function getSwiftStateSrc(connection: Connection, stateAddr: Public
 		return null;
 	}
 
-	const data = accCoder.decode('swiftSourceSolanaState', stateAccount.data);
+	return parseSwiftStateSrc(stateAccount.data);
+}
+
+export function parseSwiftStateSrc(accountData: Buffer): SwiftSourceState {
+	const data = accCoder.decode('swiftSourceSolanaState', accountData);
 
 	if (data.status.locked) {
 		return {

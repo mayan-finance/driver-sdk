@@ -7,9 +7,9 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
-	WORMHOLE_DECIMALS,
 } from '../config/chains';
 import { MayanEndpoints } from '../config/endpoints';
+import { GlobalConfig } from '../config/global';
 import { Token, TokenList } from '../config/tokens';
 import { EvmProviders } from './evm-providers';
 import { AUCTION_MODES } from './state-parser';
@@ -19,12 +19,10 @@ export class FeeService {
 		private readonly evmProviders: EvmProviders,
 		private readonly endpoints: MayanEndpoints,
 		private readonly tokenList: TokenList,
+		private readonly gConf: GlobalConfig,
 	) {}
 
 	async calculateSwiftExpensesAndUSDInFromToken(qr: ExpenseParams): Promise<SwiftCosts> {
-		if (qr.fromChainId === CHAIN_ID_SOLANA) {
-			throw new Error('Solana source swaps are not supported yet'); // TODO
-		}
 		if (!qr.auctionMode) {
 			qr.auctionMode = AUCTION_MODES.DONT_CARE;
 		}
@@ -46,142 +44,148 @@ export class FeeService {
 		const nativeFromPrice = prices.data[this.tokenList.nativeTokens[qr.fromChainId].coingeckoId];
 		const nativeToPrice = prices.data[this.tokenList.nativeTokens[qr.toChainId].coingeckoId];
 
-		let solanaSimpleCost = 0.00384888 + 0.0005; // state cost + tx costs
-		let solanaAuctionCost = 0.00384888 + 0.0009744 + 0.0016704 + 0.0005; // state + bid state + auction state + tx costs
-		if (qr.toChainId !== CHAIN_ID_SOLANA) {
-			const postAuctionCost = 0.002; // when fulfill auction on evm
-			solanaAuctionCost += postAuctionCost;
-		}
+		let shrinkedStateCost = this.gConf.feeParams.shrinkedStateCost; // state cost after shrink rent
+		let sourceStateCost = this.gConf.feeParams.sourceStateCost; // source state rent
+		let solanaSimpleCost = this.gConf.feeParams.solanaSimpleCost; // state cost + tx fees
+		let postAuctionCost = this.gConf.feeParams.postAuctionCost; // 2x because we might post twice + tx costss
+		let ataCreationCost = this.gConf.feeParams.ataCreationCost; // ata creation cost per ata
+		let postCancelCost = this.gConf.feeParams.postCancelCost;
+		let batchPostBaseCost = this.gConf.feeParams.batchPostBaseCost;
+		let batchPostAdddedCost = this.gConf.feeParams.batchPostAdddedCost;
+		let postUnlockVaaBase = this.gConf.feeParams.postUnlockVaaBase;
+		let postUnlockVaaPerItem = this.gConf.feeParams.postUnlockVaaPerItem;
+		let solTxCost = this.gConf.feeParams.solTxCost;
+		let additionalSolfulfillCost = this.gConf.feeParams.additionalSolfulfillCost;
 		if (qr.auctionMode === AUCTION_MODES.DONT_CARE) {
-			solanaAuctionCost = 0;
+			postAuctionCost = 0;
 		}
+
+		let baseFulfillGasWithBatch = this.gConf.feeParams.baseFulfillGasWithBatch;
+		let baseFulfillGasWithOutBatch = this.gConf.feeParams.baseFulfillGasWithOutBatch;
+		let swapFulfillAddedGas = this.gConf.feeParams.swapFulfillAddedGas;
+		let baseBatchPostGas = this.gConf.feeParams.baseBatchPostGas;
+
+		const overallMultiplier = 1.05;
 
 		const [srcFeeData, dstFeeData] = await Promise.all([
 			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
 			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
 		]);
+		const srcGasPrice = srcFeeData?.gasPrice!;
+		const dstGasPrice = dstFeeData?.gasPrice!;
 
 		let fulfillCost = 0;
 		if (qr.toChainId !== CHAIN_ID_SOLANA) {
-			fulfillCost = await this.calculateSolanaFee(solanaAuctionCost, solPrice, fromTokenPrice);
-			let baseFulfillGas = 290_000;
+			fulfillCost = await this.calculateSolanaFee(
+				postAuctionCost,
+				solPrice,
+				fromTokenPrice,
+				0,
+				overallMultiplier,
+			);
+			let baseFulfillGas = baseFulfillGasWithBatch;
 			if (qr.toChainId === CHAIN_ID_ETH) {
 				// when destination is eth we do not use batch unlock. so fulfill is cheaper (no storage)
-				baseFulfillGas = 185_000;
+				baseFulfillGas = baseFulfillGasWithOutBatch;
 			}
 			if (qr.auctionMode !== AUCTION_MODES.DONT_CARE) {
-				baseFulfillGas += 600_000; // extra gas for swap on evm
+				baseFulfillGas += swapFulfillAddedGas; // extra gas for swap on evm
 			}
 
 			let fulfillGas = baseFulfillGas * this.getChainPriceFactor(qr.toChainId);
 
 			fulfillCost += await this.calculateGenericEvmFee(
 				fulfillGas,
-				dstFeeData!.gasPrice!,
+				dstGasPrice,
 				nativeToPrice,
 				fromTokenPrice,
 				qr.gasDrop,
+				overallMultiplier,
 			);
 		} else {
-			let fulfillSolCost = 0.0001; // base tx fees;
-			if (qr.auctionMode === AUCTION_MODES.DONT_CARE) {
-				fulfillSolCost += solanaSimpleCost;
-			} else {
-				fulfillSolCost += solanaAuctionCost;
-			}
-			fulfillCost = await this.calculateSolanaFee(fulfillSolCost, solPrice, fromTokenPrice, qr.gasDrop);
+			let fulfillSolCost = solTxCost + additionalSolfulfillCost; // base tx fees;
+			fulfillSolCost += shrinkedStateCost;
+			fulfillCost += ataCreationCost; // asssumes we will always create user ata
+			fulfillCost = await this.calculateSolanaFee(
+				fulfillSolCost,
+				solPrice,
+				fromTokenPrice,
+				qr.gasDrop,
+				overallMultiplier,
+			);
 		}
 
-		let cancelRelayerFeeDst: number;
-		if (qr.toChainId === CHAIN_ID_SOLANA) {
-			const cancelSolFee = solanaSimpleCost + 0.00234256 + 0.0003; // create state + post wormhole message + approx tx fees
-			cancelRelayerFeeDst = await this.calculateSolanaFee(cancelSolFee, solPrice, fromTokenPrice);
-		} else {
-			const cancelGas = 110_000 * this.getChainPriceFactor(qr.toChainId);
-			cancelRelayerFeeDst = await this.calculateGenericEvmFee(
-				cancelGas,
-				dstFeeData!.gasPrice!,
+		let batchCount = 6; // we can send 8 unlock batches, but we consider 6 so that we can unlock with loss in case of liquidity emergencies
+		let realBatchCount = 8;
+
+		let unlockFee: number;
+		if (qr.fromChainId === CHAIN_ID_SOLANA) {
+			let postUnlockVaaSol =
+				postUnlockVaaBase + postUnlockVaaPerItem * realBatchCount + solTxCost - ataCreationCost; // source state Ata is closed and paid to unlocker/refunder on solana
+			postUnlockVaaSol = Math.max(0, postUnlockVaaSol);
+			let unlockForAll = await this.calculateSolanaFee(
+				postUnlockVaaSol,
+				solPrice,
+				fromTokenPrice,
+				0,
+				overallMultiplier,
+			);
+
+			let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
+			const batchPostCost = await this.calculateGenericEvmFee(
+				batchPostGas,
+				dstGasPrice,
 				nativeToPrice,
 				fromTokenPrice,
 				0,
+				overallMultiplier,
 			);
-		}
 
-		let batchCount = 6; // we can send 20 unlock batches, but we consider 10 so that we can unlock with loss in case of liquidity emergencies
-
-		let unlockFee: number;
-		let refundRelayerFeeSrc: number;
-		if (qr.fromChainId === CHAIN_ID_SOLANA) {
-			unlockFee = 0; //TODO
-			refundRelayerFeeSrc = await this.calculateSolanaFee(0.0001, solPrice, fromTokenPrice);
+			unlockFee = (unlockForAll + batchPostCost) / batchCount;
 		} else {
 			let batchPostCost = 0;
 			if (qr.toChainId === CHAIN_ID_ETH) {
 				batchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
 			} else if (qr.toChainId === CHAIN_ID_SOLANA) {
-				const batchPostSolUsage = 0.00164256 + 0.0007 * batchCount + 0.0005;
-				batchPostCost = await this.calculateSolanaFee(batchPostSolUsage, solPrice, fromTokenPrice);
+				const batchPostSolUsage = batchPostBaseCost + batchPostAdddedCost * realBatchCount + solTxCost;
+				batchPostCost = await this.calculateSolanaFee(
+					batchPostSolUsage,
+					solPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+				batchPostCost /= batchCount;
 			} else {
-				let batchPostGas = 120_000 * this.getChainPriceFactor(qr.toChainId);
+				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
 				batchPostCost = await this.calculateGenericEvmFee(
 					batchPostGas,
-					dstFeeData!.gasPrice!,
+					dstGasPrice,
 					nativeToPrice,
 					fromTokenPrice,
 					0,
+					overallMultiplier,
 				);
+				batchPostCost /= batchCount;
 			}
 
-			const { unlock, refund } = await this.calculateUnlockAndRefundOnEvmFee(
-				srcFeeData!.gasPrice!,
+			const { unlock } = await this.calculateUnlockAndRefundOnEvmFee(
+				srcGasPrice,
 				qr.fromToken.contract,
 				qr.fromChainId,
 				nativeFromPrice,
 				this.tokenList.nativeTokens[qr.fromChainId].contract,
 				fromTokenPrice,
 				batchCount,
+				overallMultiplier,
 			);
 			unlockFee = unlock + batchPostCost;
-			refundRelayerFeeSrc = refund;
-		}
-
-		let submissionCost: number = 0;
-		if (qr.isGasless) {
-			// gasless swaps are registed via mayan relayer and taken into account separately
-			// let submissionGas;
-			// if (qr.fromToken.contract === ethers.ZeroAddress) {
-			// 	submissionGas = 120_000 * this.getChainPriceFactor(qr.fromChainId); // ETH
-			// } else {
-			// 	submissionGas = 250_000 * this.getChainPriceFactor(qr.fromChainId); // ERC20
-			// }
-			// submissionCost = await this.calculateGenericEvmFee(
-			// 	submissionGas,
-			// 	srcFeeData!.gasPrice!,
-			// 	nativeFromPrice,
-			// 	fromTokenPrice,
-			// 	0,
-			// );
 		}
 
 		return {
-			submissionCost: submissionCost,
-			fulfillCost: fulfillCost,
-			refundFeeDst: cancelRelayerFeeDst,
-			refundFeeDst64: BigInt(
-				Math.ceil(cancelRelayerFeeDst * 10 ** Math.min(WORMHOLE_DECIMALS, qr.fromToken.decimals)),
-			),
-			refundFeeSrc: refundRelayerFeeSrc,
-			refundFeeSrc64: BigInt(
-				Math.ceil(refundRelayerFeeSrc * 10 ** Math.min(WORMHOLE_DECIMALS, qr.fromToken.decimals)),
-			),
-			unlockSource: unlockFee,
-			fromPrice: fromTokenPrice,
-			toPrice: toTokenPrice,
-			nativePrices: {
-				[qr.fromChainId]: nativeFromPrice,
-				[qr.toChainId]: nativeToPrice,
-				[CHAIN_ID_SOLANA]: solPrice,
-			},
+			fulfillCost: fulfillCost, //fulfillCost,
+			unlockSource: unlockFee, //unlockFee,
+			fulfillAndUnlock: fulfillCost + unlockFee,
 		};
 	}
 
@@ -222,15 +226,15 @@ export class FeeService {
 	}
 
 	async calculateUnlockAndRefundOnEvmFee(
-		gasPrice: BigInt,
+		gasPrice: bigint,
 		tokenContract: string,
 		chainId: number,
 		nativeTokenPrice: number,
 		nativeTokenContract: string,
 		fromTokenPrice: number,
 		batchCount: number,
+		multiplier: number,
 	): Promise<{
-		refund: number;
 		unlock: number;
 	}> {
 		let batchFactor = batchCount === 1 ? 1 : 1 / batchCount;
@@ -274,30 +278,24 @@ export class FeeService {
 			.mul(nativeTokenPrice)
 			.mul(batchFactor)
 			.div(10 ** 18)
-			.mul(1.05)
-			.div(fromTokenPrice)
-			.mul(10 ** 8)
-			.ceil()
-			.div(10 ** 8)
-			.toNumber();
-		const refund = mathjs
-			.bignumber(gasPrice.toString())
-			.mul(baseGas + singleBatchGas)
-			.mul(nativeTokenPrice)
-			.div(10 ** 18)
-			.mul(1.05)
+			.mul(multiplier)
 			.div(fromTokenPrice)
 			.mul(10 ** 8)
 			.ceil()
 			.div(10 ** 8)
 			.toNumber();
 		return {
-			refund,
 			unlock: batchUnlock,
 		};
 	}
 
-	async calculateSolanaFee(feeInSol: number, soPrice: number, fromTokenPrice: number, gasDrop = 0): Promise<number> {
+	async calculateSolanaFee(
+		feeInSol: number,
+		soPrice: number,
+		fromTokenPrice: number,
+		gasDrop: number,
+		multiplier: number,
+	): Promise<number> {
 		if (soPrice === null) {
 			return Promise.reject('Native token price of Solana is needed for fee calculation but is not available');
 		}
@@ -307,7 +305,7 @@ export class FeeService {
 			.mul(feeInSol + gasDrop)
 			.mul(10 ** 8)
 			.div(fromTokenPrice)
-			.mul(1.05)
+			.mul(multiplier)
 			.ceil()
 			.div(10 ** 8)
 			.toNumber();
@@ -317,14 +315,7 @@ export class FeeService {
 export type SwiftCosts = {
 	fulfillCost: number;
 	unlockSource: number;
-	submissionCost: number;
-	refundFeeDst64: bigint;
-	refundFeeDst: number;
-	refundFeeSrc64: bigint;
-	refundFeeSrc: number; // both refund fees are paid in input token
-	fromPrice: number;
-	toPrice: number;
-	nativePrices: { [chainId: number]: number };
+	fulfillAndUnlock: number;
 };
 
 export type ExpenseParams = {

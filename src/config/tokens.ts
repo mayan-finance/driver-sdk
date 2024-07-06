@@ -51,31 +51,35 @@ export class TokenList {
 	}
 
 	async updateList() {
-		let tokenCount = 0;
-		const allTokens = await axios.get(this.endpoints.priceApiUrl + '/v3/tokens');
-		for (const chainName of Object.keys(allTokens.data)) {
-			const chainId = mapNameToWormholeChainId(chainName);
-			if (!!chainId) {
-				this.tokensPerChain[chainId] = allTokens.data[chainName];
-				tokenCount += this.tokensPerChain[chainId].length;
-			}
-		}
-		this.nativeTokens = Object.entries(this.tokensPerChain).reduce(
-			(acc, [chainId, tokens]) => {
-				const token = tokens.find(
-					(token) => token.contract === '0x0000000000000000000000000000000000000000',
-				) as Token;
-				if (!token) {
-					logger.info(`Native token not found for chain ${chainId} and ignored`);
-				} else {
-					acc[chainId] = token;
+		try {
+			let tokenCount = 0;
+			const allTokens = await axios.get(this.endpoints.priceApiUrl + '/v3/tokens');
+			for (const chainName of Object.keys(allTokens.data)) {
+				const chainId = mapNameToWormholeChainId(chainName);
+				if (!!chainId) {
+					this.tokensPerChain[chainId] = allTokens.data[chainName];
+					tokenCount += this.tokensPerChain[chainId].length;
 				}
-				return acc;
-			},
-			{} as { [index: string]: Token },
-		);
+			}
+			this.nativeTokens = Object.entries(this.tokensPerChain).reduce(
+				(acc, [chainId, tokens]) => {
+					const token = tokens.find(
+						(token) => token.contract === '0x0000000000000000000000000000000000000000',
+					) as Token;
+					if (!token) {
+						logger.info(`Native token not found for chain ${chainId} and ignored`);
+					} else {
+						acc[chainId] = token;
+					}
+					return acc;
+				},
+				{} as { [index: string]: Token },
+			);
 
-		logger.info(`Token list refreshed with ${tokenCount} tokens`);
+			logger.info(`Token list refreshed with ${tokenCount} tokens`);
+		} catch (err) {
+			logger.error(`Failed to update token list: ${err}`);
+		}
 	}
 
 	getNativeUsdc(chainId: number): Token | undefined {

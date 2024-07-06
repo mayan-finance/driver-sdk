@@ -1,5 +1,5 @@
 import { PublicKey } from '@solana/web3.js';
-import { ethers, zeroPadValue } from 'ethers';
+import { ethers, zeroPadValue } from 'ethers6';
 import { CHAIN_ID_SOLANA, supportedChainIds } from '../config/chains';
 
 const MAX_U64 = BigInt(2) ** BigInt(64) - BigInt(1);

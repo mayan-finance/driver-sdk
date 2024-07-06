@@ -1,36 +1,33 @@
-// import { chunks } from '@certusone/wormhole-sdk';
-// import {
-// 	createPostVaaInstructionSolana,
-// 	createVerifySignaturesInstructionsSolana,
-// } from '@certusone/wormhole-sdk/lib/cjs/solana';
-import { Connection, Keypair, PublicKey, Transaction } from '@solana/web3.js';
+import { Connection, Keypair, MessageV0, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 
-import { base58_to_binary } from 'base58-js';
+import { chunks } from '@certusone/wormhole-sdk';
+import {
+	createPostVaaInstructionSolana,
+	createVerifySignaturesInstructionsSolana,
+} from '@certusone/wormhole-sdk/lib/cjs/solana';
+import { RpcConfig } from '../config/rpc';
+import { WalletConfig } from '../config/wallet';
 import logger from './logger';
 import { PriorityFeeHelper, SolanaMultiTxSender } from './solana-trx';
-import { WORMHOLE_CORE_BRIDGE, chunks } from './wormhole';
+import { WORMHOLE_CORE_BRIDGE, findVaaAddress } from './wormhole';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export class VaaPoster {
-	private wallet: Keypair;
-
 	constructor(
-		private readonly wormholeConfig: {},
+		private readonly rpcConfi: RpcConfig,
+		private readonly walletConf: WalletConfig,
 		private readonly connection: Connection,
 		private readonly solanaTxHelper: SolanaMultiTxSender,
 		private readonly priorityFeeHelper: PriorityFeeHelper,
-	) {
-		this.wallet = Keypair.fromSecretKey(base58_to_binary(walletConfig.solana.MayanRelayerPrivateKey));
-	}
+	) {}
 
 	async signTransaction(transaction: Transaction): Promise<Transaction> {
-		transaction.partialSign(this.wallet);
+		transaction.partialSign(this.walletConf.solana);
 		return transaction;
 	}
 
-	async postSignedVAA(vaaUnit8Array: Uint8Array, sourceTxHash: string) {
-		const vaa = Buffer.from(vaaUnit8Array);
+	async postSignedVAA(vaa: Buffer, sourceTxHash: string) {
 		const isAlreadyDone = await this.isAlreadyVaaPosted(vaa);
 		if (isAlreadyDone) {
 			logger.info(`VAA is Already posted for ${sourceTxHash}`);
@@ -38,7 +35,7 @@ export class VaaPoster {
 		}
 
 		const bridge_id = WORMHOLE_CORE_BRIDGE;
-		const payer: string = this.wallet.publicKey.toString();
+		const payer: string = this.walletConf.solana.publicKey.toString();
 		const maxRetries = 17;
 		const unsignedTransactions: Transaction[] = [];
 		const signature_set = Keypair.generate();
@@ -79,10 +76,26 @@ export class VaaPoster {
 
 		//the postVaa instruction can only execute after the verifySignature transactions have
 		//successfully completed.
-		const finalTrxPriorityFee = await this.priorityFeeService.getPriorityFeeInstruction(
+		const finalTrxPriorityFee = await this.priorityFeeHelper.getPriorityFeeInstruction(
 			finalInstruction.keys.map((keyAcc) => keyAcc.pubkey.toString()),
 		);
-		const finalTransaction = new Transaction().add(finalTrxPriorityFee).add(finalInstruction);
+
+		const { blockhash } = await this.connection.getLatestBlockhash();
+		const msg = MessageV0.compile({
+			payerKey: this.walletConf.solana.publicKey,
+			instructions: [finalTrxPriorityFee, finalInstruction],
+			recentBlockhash: blockhash,
+			addressLookupTableAccounts: [
+				(
+					await this.connection.getAddressLookupTable(
+						new PublicKey('AAJD5ef3combuWT586MxuWPwff3VtWu3FXVUPBJesoiy'),
+					)
+				).value!,
+			],
+		});
+
+		const finalTrx = new VersionedTransaction(msg);
+		finalTrx.sign([this.walletConf.solana]);
 
 		//The signature_set keypair also needs to sign the verifySignature transactions, thus a wrapper is needed.
 		const partialSignWrapper = (transaction: Transaction) => {
@@ -106,14 +119,9 @@ export class VaaPoster {
 			`${!!(setInfo && setInfo.data) ? 'EXIST' : 'NON_EXIST'}`,
 		);
 		//While the signature_set is used to create the final instruction, it doesn't need to sign it.
-		await this.sendAndConfirmTransactionsJiri(
-			this.signTransaction,
-			payer,
-			[finalTransaction],
-			signature_set,
-			maxRetries,
-		);
-		return Promise.resolve();
+		console.log('Sending postVaa finalized');
+		await this.solanaTxHelper.sendAndConfirmTransaction(finalTrx.serialize(), this.rpcConfi.solana.sendCount);
+		console.log('Sent postVaa finalized');
 	}
 
 	async sendAndConfirmTransactionsJiri(
@@ -135,8 +143,63 @@ export class VaaPoster {
 		);
 	}
 
-	async isAlreadyVaaPosted(vaa: Uint8Array): Promise<boolean> {
-		const message_id = await findVaaAddress(vaa);
+	async sendAndConfirmTransactionJiri(
+		signTransaction: (transaction: Transaction) => Promise<Transaction>,
+		payer: PublicKey,
+		unTrx: Transaction,
+		signature_set: Keypair,
+		maxRetries: number,
+	) {
+		let currentRetries = 0;
+		let transaction = null;
+		let signed: Transaction | null = null;
+		let finalRes: string | null = null;
+		while (!(currentRetries > maxRetries)) {
+			transaction = unTrx;
+			try {
+				const { blockhash } = await this.connection.getLatestBlockhash();
+				transaction.recentBlockhash = blockhash;
+				transaction.feePayer = payer;
+				signed = await signTransaction(transaction);
+				if (signature_set) {
+					for (let ins of signed.instructions) {
+						let s = false;
+						for (let key of ins.keys) {
+							if (key.pubkey.equals(signature_set.publicKey) && key.isSigner) {
+								signed.partialSign(signature_set);
+								s = true;
+								break;
+							}
+						}
+						if (s) {
+							break;
+						}
+					}
+				}
+				logger.info(`Sending postVaa`);
+				const txid = await this.solanaTxHelper.sendAndConfirmTransaction(
+					signed.serialize(),
+					this.rpcConfi.solana.sendCount,
+				);
+				logger.info(`Sent postVaa with tx ${txid}`);
+				finalRes = txid;
+				break;
+			} catch (e) {
+				console.error(e);
+				currentRetries++;
+				if (currentRetries > maxRetries) {
+					throw e;
+				}
+			}
+		}
+		if (!finalRes) {
+			throw new Error('Failed to send transaction');
+		}
+		return finalRes;
+	}
+
+	async isAlreadyVaaPosted(vaa: Buffer): Promise<boolean> {
+		const message_id = findVaaAddress(vaa);
 		const info = await this.connection.getAccountInfo(message_id, 'confirmed');
 		return !!info;
 	}

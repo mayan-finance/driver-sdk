@@ -1,3 +1,26 @@
+export interface SwiftFeeParams {
+	shrinkedStateCost: number;
+	sourceStateCost: number;
+	solanaSimpleCost: number;
+	postAuctionCost: number;
+	ataCreationCost: number;
+	postCancelCost: number;
+	batchPostBaseCost: number;
+	batchPostAdddedCost: number;
+	postUnlockVaaBase: number;
+	postUnlockVaaPerItem: number;
+	solTxCost: number;
+	additionalSolfulfillCost: number;
+
+	baseFulfillGasWithBatch: number;
+	baseFulfillGasWithOutBatch: number;
+	swapFulfillAddedGas: number;
+	baseCancelGas: number;
+	baseBatchPostGas: number;
+	ethSubmitGas: number;
+	erc20SubmitGas: number;
+}
+
 export type GlobalConfig = {
 	auctionTimeSeconds: number;
 	batchUnlockThreshold: number; // Optimal Number of swaps to select for unlocking
@@ -8,4 +31,5 @@ export type GlobalConfig = {
 	registerAgainInterval: number; // Interval to register driver wallets again
 	closeLutsInterval: number;
 	disableUnlocker: boolean;
+	feeParams: SwiftFeeParams;
 };
