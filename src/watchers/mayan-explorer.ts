@@ -5,6 +5,8 @@ import { ContractsConfig, MayanForwarderAddress } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { TokenList } from '../config/tokens';
+import { WalletConfig } from '../config/wallet';
+import { StateCloser } from '../driver/state-closer';
 import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
@@ -12,13 +14,19 @@ import logger from '../utils/logger';
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
 	private interval: NodeJS.Timeout | null = null;
+	private auctionLock = false;
+	private stateLock = false;
+	private auctionInterval: NodeJS.Timeout | null = null;
+	private stateInterval: NodeJS.Timeout | null = null;
 
 	constructor(
 		private readonly gConf: GlobalConfig,
 		private readonly endpoints: MayanEndpoints,
+		private readonly walletConf: WalletConfig,
 		contracts: ContractsConfig,
 		private readonly tokenList: TokenList,
 		private readonly relayer: Relayer,
+		private readonly stateCloser: StateCloser,
 	) {
 		this.initiateAddresses = [];
 		this.initiateAddresses.push(MayanForwarderAddress);
@@ -127,6 +135,8 @@ export class MayanExplorerWatcher {
 		});
 
 		this.interval = setInterval(this.pollPendingSwaps.bind(this), this.gConf.pollExplorerInterval * 1000);
+		this.auctionInterval = setInterval(this.pollOpenAuctions.bind(this), 60 * 1000);
+		this.stateInterval = setInterval(this.pollOpenStates.bind(this), 60 * 1000);
 	}
 
 	async pollPendingSwaps(): Promise<void> {
@@ -163,6 +173,44 @@ export class MayanExplorerWatcher {
 			}
 		} catch (err) {
 			logger.error(`error in polling explorer ${err}`);
+		}
+	}
+
+	async pollOpenAuctions(): Promise<void> {
+		try {
+			if (this.auctionLock) {
+				return;
+			}
+			this.auctionLock = true;
+
+			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swift-state/auctions', {
+				params: { driver: this.walletConf.solana.publicKey.toString() },
+			});
+
+			await this.stateCloser.closeAuctionStates(result.data.map((item: any) => item.auctionState));
+		} catch (err) {
+			logger.error(`error in polling auciotns ${err}`);
+		} finally {
+			this.auctionLock = false;
+		}
+	}
+
+	async pollOpenStates(): Promise<void> {
+		try {
+			if (this.stateLock) {
+				return;
+			}
+			this.stateLock = true;
+
+			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swift-state/swaps', {
+				params: { driver: this.walletConf.solana.publicKey.toString() },
+			});
+
+			await this.stateCloser.closeDestSolanaStates(result.data.map((item: any) => item.swapState));
+		} catch (err) {
+			logger.error(`error in polling states ${err}`);
+		} finally {
+			this.stateLock = false;
 		}
 	}
 }

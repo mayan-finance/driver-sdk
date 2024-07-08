@@ -281,6 +281,27 @@ export class NewSolanaIxHelper {
 			.instruction();
 	}
 
+	async getCloseAuctionIx(auctionState: PublicKey, initializer: PublicKey): Promise<TransactionInstruction> {
+		return this.auctionProgram.methods
+			.closeAuction()
+			.accounts({
+				auction: auctionState,
+				initializer: initializer,
+			})
+			.instruction();
+	}
+
+	async getCloseStateDestIx(stateAddr: PublicKey, relayer: PublicKey): Promise<TransactionInstruction> {
+		return this.swiftProgram.methods
+			.close()
+			.accounts({
+				state: stateAddr,
+				relayer: relayer,
+				systemProgram: SystemProgram.programId,
+			})
+			.instruction();
+	}
+
 	isBadAggIns(
 		instruction: TransactionInstruction,
 		address: PublicKey,

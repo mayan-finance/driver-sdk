@@ -20,6 +20,7 @@ import { EvmFulfiller } from './driver/evm';
 import { RegisterService } from './driver/register';
 import { SolanaFulfiller } from './driver/solana';
 import { NewSolanaIxHelper } from './driver/solana-ix';
+import { StateCloser } from './driver/state-closer';
 import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
 import { Relayer } from './relayer';
@@ -163,7 +164,22 @@ export async function main() {
 		chainFinalitySvc,
 	);
 
-	const watcher = new MayanExplorerWatcher(globalConfig, mayanEndpoints, contracts, tokenList, relayer);
+	const stateCloser = new StateCloser(
+		walletConf,
+		solanaConnection,
+		solanaIxHelper,
+		solanaTxSender,
+		priorityFeeHelper,
+	);
+	const watcher = new MayanExplorerWatcher(
+		globalConfig,
+		mayanEndpoints,
+		walletConf,
+		contracts,
+		tokenList,
+		relayer,
+		stateCloser,
+	);
 	watcher.init();
 }
 

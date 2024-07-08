@@ -42,7 +42,7 @@ export class SolanaMultiTxSender {
 
 		let ongoingSends: any[] = [];
 		let done = false;
-		const trxHash = await this.connection.sendRawTransaction(rawTrx, { skipPreflight: false });
+		const trxHash = await this.connection.sendRawTransaction(rawTrx, { skipPreflight: true });
 
 		let startTime = new Date().getTime();
 		const backgroundSend = async () => {
