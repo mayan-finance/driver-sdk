@@ -45,7 +45,7 @@ export async function main() {
 
 	const globalConfig: GlobalConfig = {
 		auctionTimeSeconds: 0 || initialDynamicConfig.auctionTimeSeconds, // TODO: remove hardcode values
-		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,
+		batchUnlockThreshold: 1 || initialDynamicConfig.batchUnlockThreshold,
 		registerInterval: initialDynamicConfig.registerInterval,
 		scheduleUnlockInterval: initialDynamicConfig.scheduleUnlockInterval,
 		singleBatchChainIds: initialDynamicConfig.singleBatchChainIds.split(',').map((x) => +x),

@@ -653,10 +653,6 @@ export type Swift = {
 						type: 'u64';
 					},
 					{
-						name: 'validUntil';
-						type: 'u64';
-					},
-					{
 						name: 'lastSeqMsg';
 						type: 'u64';
 					},
@@ -1837,10 +1833,6 @@ export const IDL: Swift = {
 					},
 					{
 						name: 'validFrom',
-						type: 'u64',
-					},
-					{
-						name: 'validUntil',
 						type: 'u64',
 					},
 					{

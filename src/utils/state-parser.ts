@@ -95,8 +95,7 @@ export async function getAuctionState(
 	return {
 		winner: data.winner.toString(),
 		validFrom: data.validFrom.toNumber(),
-		validUntil: data.validUntil.toNumber(),
-		sequence: BigInt(data.lastSeqMsg),
+		sequence: data.seqMsg ? BigInt(data.seqMsg.toString()) : BigInt(0),
 	};
 }
 
@@ -120,7 +119,6 @@ export type SwiftSourceState = {
 export type AuctionState = {
 	winner: string;
 	validFrom: number;
-	validUntil: number;
 	sequence: bigint;
 };
 

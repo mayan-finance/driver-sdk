@@ -653,7 +653,7 @@ export class DriverService {
 			true,
 		);
 
-		const [mayanFeeAss, referrerFeeAss] = await this.getMayanAndReferrerFeeAsses(
+		const mayanAndReferrerAssInfo = this.getMayanAndReferrerFeeAssesInstructions(
 			swap.mayanBps,
 			swap.referrerBps,
 			swap.referrerAddress,
@@ -663,6 +663,9 @@ export class DriverService {
 		);
 
 		let instructions: TransactionInstruction[] = [];
+		for (let ix of mayanAndReferrerAssInfo.ixs) {
+			instructions.push(ix);
+		}
 
 		const toAss = getAssociatedTokenAddressSync(toMint, to, true);
 		instructions.push(
@@ -680,11 +683,11 @@ export class DriverService {
 			stateToAss.address,
 			to,
 			toAss,
-			new PublicKey(this.contractsConfig.feeCollectorSolana),
-			mayanFeeAss,
+			mayanAndReferrerAssInfo.mayan,
+			mayanAndReferrerAssInfo.mayanAss,
 			toMint,
 			new PublicKey(swap.referrerAddress),
-			referrerFeeAss,
+			mayanAndReferrerAssInfo.referrerAss,
 		);
 		instructions.push(settleIx);
 

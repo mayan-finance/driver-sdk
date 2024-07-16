@@ -1,4 +1,4 @@
-import { ChainId, getSignedVAAWithRetry } from '@certusone/wormhole-sdk';
+import { ChainId, getSignedVAAWithRetry, parseVaa } from '@certusone/wormhole-sdk';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Connection, Keypair, MessageV0, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import axios from 'axios';
@@ -10,7 +10,7 @@ import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
 import { WalletConfig } from '../config/wallet';
-import { hexToUint8Array, uint8ArrayToHex } from '../utils/buffer';
+import { hexToUint8Array, tryUint8ArrayToNative, uint8ArrayToHex } from '../utils/buffer';
 import { EvmProviders } from '../utils/evm-providers';
 import { getSuggestedOverrides } from '../utils/evm-trx';
 import { NodeHttpTransportWithDefaultTimeout } from '../utils/grpc';
@@ -54,6 +54,8 @@ export type UnlockableSwapSingleItem = {
 		unlockSequence: string;
 	};
 };
+
+const MAX_BATCH_SIZE = 8;
 
 export class Unlocker {
 	private readonly solprogram = new PublicKey(SolanaProgram);
@@ -179,7 +181,7 @@ export class Unlocker {
 
 				let filteredOrders = batchUnlockData.orders.filter((order) => !alreadyUnlocked.has(order.orderHash));
 
-				let chunkSize = this.gConf.batchUnlockThreshold;
+				let chunkSize = MAX_BATCH_SIZE;
 				for (let i = 0; i < filteredOrders.length; i += chunkSize) {
 					const chunk = filteredOrders.slice(i, i + chunkSize);
 					promises.push(
@@ -238,19 +240,26 @@ export class Unlocker {
 				return;
 			}
 
-			orders = orders.slice(0, this.gConf.batchUnlockThreshold); // we can not put more than this in one udp solana trx without luts or hitting inner instruction limit
+			orders = orders.slice(0, MAX_BATCH_SIZE); // we can not put more than 8 this in one udp solana trx without luts or hitting inner instruction limit
 
 			const orderHashes = orders.map((order) => order.orderHash);
 			logger.info(`Posting and acquiring sequence for ${sourceChainId} to ${destChainId} for batch`);
 			let sequence: bigint, txHash: string;
-			if (destChainId === CHAIN_ID_SOLANA) {
-				const result = await this.batchPostSolana(orderHashes);
-				sequence = result.sequence;
-				txHash = result.txHash;
+			// if (destChainId === CHAIN_ID_SOLANA) {
+			// 	const result = await this.batchPostSolana(orderHashes);
+			// 	sequence = result.sequence;
+			// 	txHash = result.txHash;
+			// } else {
+			// 	const result = await this.batchPostEvm(destChainId, orderHashes);
+			// 	sequence = result.sequence;
+			// 	txHash = result.txHash;
+			// }
+			if (destChainId === 23) {
+				sequence = 8n;
+				txHash = '0x123';
 			} else {
-				const result = await this.batchPostEvm(destChainId, orderHashes);
-				sequence = result.sequence;
-				txHash = result.txHash;
+				sequence = 45n;
+				txHash = '0x456';
 			}
 			const postSequence = sequence;
 			const postTxHash = txHash;
@@ -284,7 +293,7 @@ export class Unlocker {
 			logger.info(`Got batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
 
 			const txHash = await this.unlockBatchOnSolana(Buffer.from(signedVaa.replace('0x', ''), 'hex'), orders);
-			logger.info(`Unlocked batch evm for ${sourceChainId} to ${destChainId} with ${txHash}`);
+			logger.info(`Unlocked batch solana for ${sourceChainId} to ${destChainId} with ${txHash}`);
 
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
@@ -305,13 +314,17 @@ export class Unlocker {
 		);
 		const fromMint = new PublicKey(fromTokenAddress);
 		const stateFromAss = getAssociatedTokenAddressSync(fromMint, stateAddr, true);
-		const driverFromAss = getAssociatedTokenAddressSync(fromMint, this.walletConfig.solana.publicKey, false);
 
 		await this.vaaPoster.postSignedVAA(signedVaa, orderHash);
 		const vaaAddr = findVaaAddress(signedVaa);
 
+		const parsedVaa = parseVaa(signedVaa);
+		const unlockData = this.parseSingleUnlockVaaPayload(parsedVaa.payload);
+		const driver = new PublicKey(tryUint8ArrayToNative(unlockData.order.addrUnlocker, CHAIN_ID_SOLANA));
+		const driverFromAss = getAssociatedTokenAddressSync(fromMint, driver, false);
+
 		const ix = await this.solanaIx.getUnlockSingleIx(
-			this.walletConfig.solana.publicKey,
+			driver,
 			driverFromAss,
 			stateAddr,
 			stateFromAss,
@@ -345,31 +358,40 @@ export class Unlocker {
 	}
 
 	private async unlockBatchOnSolana(signedVaa: Buffer, orders: { fromTokenAddress: string; orderHash: string }[]) {
-		let i = 0;
+		let i = -1;
 		let instructions = [];
 
 		await this.vaaPoster.postSignedVAA(signedVaa, 'batch_unlcock');
 
-		for (let order of orders) {
-			const fromMint = new PublicKey(order.fromTokenAddress);
-			const driverAss = getAssociatedTokenAddressSync(fromMint, this.walletConfig.solana.publicKey, false);
+		const parsedPayload = this.parseBatchUnlockVaaPayload(parseVaa(signedVaa).payload);
+		for (let ord of parsedPayload.orders) {
+			i++;
+			const fromMint = new PublicKey(ord.tokenIn);
+			const driver = new PublicKey(tryUint8ArrayToNative(ord.addrUnlocker, CHAIN_ID_SOLANA));
+
+			// because driver needs to be signer, if this batch posts contains another unlockAddress than the current wallet, it is ignored
+			// to unlock it we must set
+			if (!driver.equals(this.walletConfig.solana.publicKey)) {
+				logger.warn(
+					`Ignoring unlock for ${ord.orderHash} as driver is the current set solana driver and needs to be signer`,
+				);
+				continue;
+			}
+			const driverAss = getAssociatedTokenAddressSync(fromMint, driver, false);
+
 			const state = getSwiftStateAddrSrc(
 				new PublicKey(SolanaProgram),
-				Buffer.from(order.orderHash.replace('0x', ''), 'hex'),
+				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
 			);
 			const stateAss = getAssociatedTokenAddressSync(fromMint, state, true);
 			const vaaAddr = findVaaAddress(signedVaa);
-			const ix = await this.solanaIx.getUnlockBatchIx(
-				this.walletConfig.solana.publicKey,
-				driverAss,
-				state,
-				stateAss,
-				i,
-				fromMint,
-				vaaAddr,
-			);
-			i++;
+			const ix = await this.solanaIx.getUnlockBatchIx(driver, driverAss, state, stateAss, i, fromMint, vaaAddr);
 			instructions.push(ix);
+		}
+
+		if (instructions.length === 0) {
+			logger.warn(`No instructions to unlock batch`);
+			return;
 		}
 
 		let keys = [];
@@ -504,19 +526,19 @@ export class Unlocker {
 	}> {
 		const networkFeeData = await this.evmProviders[destChain].getFeeData();
 		const overrides = await getSuggestedOverrides(destChain, networkFeeData);
-		const tx = await (
+		const tx: ethers.TransactionReceipt = await (
 			await this.walletsHelper.getWriteContract(destChain).postBatch(orderHashes, overrides)
 		).wait();
 
 		if (tx.status !== 1) {
-			throw new Error(`Batch post failed for destChain: ${destChain}, ${tx.transactionHash}`);
+			throw new Error(`Batch post failed for destChain: ${destChain}, ${tx.hash}`);
 		}
 
 		const sequence = this.getWormholeSequenceFromTx(tx);
 
 		return {
 			sequence: sequence,
-			txHash: tx.transactionHash,
+			txHash: tx.hash,
 		};
 	}
 
@@ -748,6 +770,78 @@ export class Unlocker {
 				await delay(2000);
 			}
 		}
+	}
+
+	private parseSingleUnlockVaaPayload(payload: Buffer): {
+		action: number;
+		order: {
+			orderHash: string;
+			chainSource: number;
+			tokenIn: string;
+			addrUnlocker: Uint8Array;
+		};
+	} {
+		// action: u8
+		// hash: blob(32)
+		// chain_source: u16
+		// token_in: blob(32)
+		// addr_unlocker: blob(32)
+
+		return {
+			action: payload.readUint8(0),
+			order: {
+				orderHash: '0x' + payload.subarray(1, 33).toString('hex'),
+				chainSource: payload.readUInt16BE(33),
+				tokenIn: payload.subarray(35, 67).toString('hex'),
+				addrUnlocker: Uint8Array.from(payload.subarray(67, 99)),
+			},
+		};
+	}
+
+	private parseBatchUnlockVaaPayload(payload: Buffer): {
+		orders: {
+			orderHash: string;
+			chainSource: number;
+			tokenIn: Buffer;
+			addrUnlocker: Uint8Array;
+		}[];
+		action: number;
+	} {
+		// action: u8
+		// len: u16
+		// Array<[
+		// hash: blob(32)
+		// chain_source: u16
+		// token_in: blob(32)
+		// addr_unlocker: blob(32)
+		// ]>
+		const action = payload.readUint8(0);
+		const batchCount = payload.readUInt16BE(1);
+
+		let offset = 3;
+		let result = [];
+		for (let i = 0; i < batchCount; i++) {
+			const orderHash = '0x' + payload.subarray(offset, offset + 32).toString('hex');
+			offset += 32;
+			const chainSource = payload.readUInt16BE(offset);
+			offset += 2;
+			const tokenIn = payload.subarray(offset, offset + 32);
+			offset += 32;
+			const addrUnlocker = payload.subarray(offset, offset + 32);
+			offset += 32;
+
+			result.push({
+				orderHash,
+				chainSource,
+				tokenIn,
+				addrUnlocker: Uint8Array.from(addrUnlocker),
+			});
+		}
+
+		return {
+			action,
+			orders: result,
+		};
 	}
 }
 

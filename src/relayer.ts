@@ -46,7 +46,7 @@ export class Relayer {
 		private readonly solanaConnection: Connection,
 		private readonly driverService: DriverService,
 		private readonly chainFinality: ChainFinality,
-	) {}
+	) { }
 
 	private async tryProgressFulfill(swap: Swap) {
 		let sourceState: SwiftSourceState | null = null;
@@ -119,7 +119,7 @@ export class Relayer {
 		try {
 			if (
 				swap.sourceTxHash !==
-					'47AnSPQ9gvHXac5eU1oTintn1CPN66BY9FLxEhp6soqGSVhqUBFDmioeG6osMrpsdqa9bLcmonGsrmRd4ZPCdHw2' &&
+				'47AnSPQ9gvHXac5eU1oTintn1CPN66BY9FLxEhp6soqGSVhqUBFDmioeG6osMrpsdqa9bLcmonGsrmRd4ZPCdHw2' &&
 				swap.trader.toLowerCase() !== '0x28A328C327307ab1b180327234fDD2a290EFC6DE'.toLowerCase() &&
 				swap.trader !== '35V85aqyssnda35TYsjgd45vTVuK8swuzsht59LNNuDU' &&
 				swap.trader !== '9xZJpqWx4Rzx5Mxxyxp1HXrNtbcZVZjfSftRr2aMWT88'
@@ -258,7 +258,7 @@ export class Relayer {
 			}
 		}
 
-		if (!auctionState || auctionState.validUntil * 1000 < solanaTime) {
+		if (!auctionState) {
 			logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
 			await this.driverService.bid(swap, false);
 			logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
@@ -279,7 +279,12 @@ export class Relayer {
 			return;
 		}
 
-		const sequence = await this.driverService.postBid(swap, false, true);
+		let sequence: bigint | null = auctionState.sequence;
+		if (!sequence || sequence < 1n) {
+			sequence = await this.driverService.postBid(swap, false, true);
+		} else {
+			sequence = sequence - 1n;
+		}
 
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 		await this.waitForFinalizeOnSource(swap);
@@ -331,7 +336,7 @@ export class Relayer {
 			}
 		}
 
-		if (!auctionState || auctionState.validUntil * 1000 < solanaTime) {
+		if (!auctionState) {
 			logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
 			let shouldRegisterOrder = !destState;
 			await this.driverService.bid(swap, shouldRegisterOrder);
@@ -470,7 +475,7 @@ export class Relayer {
 	}
 
 	private isAuctionOpenToBid(auction: AuctionState, solanaTime: number): boolean {
-		if (auction.validFrom <= solanaTime && auction.validUntil >= solanaTime) {
+		if (auction.validFrom <= solanaTime) {
 			return false;
 		}
 		return true;
