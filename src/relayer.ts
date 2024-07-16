@@ -46,7 +46,7 @@ export class Relayer {
 		private readonly solanaConnection: Connection,
 		private readonly driverService: DriverService,
 		private readonly chainFinality: ChainFinality,
-	) { }
+	) {}
 
 	private async tryProgressFulfill(swap: Swap) {
 		let sourceState: SwiftSourceState | null = null;
@@ -117,17 +117,6 @@ export class Relayer {
 
 	async relay(swap: Swap) {
 		try {
-			if (
-				swap.sourceTxHash !==
-				'47AnSPQ9gvHXac5eU1oTintn1CPN66BY9FLxEhp6soqGSVhqUBFDmioeG6osMrpsdqa9bLcmonGsrmRd4ZPCdHw2' &&
-				swap.trader.toLowerCase() !== '0x28A328C327307ab1b180327234fDD2a290EFC6DE'.toLowerCase() &&
-				swap.trader !== '35V85aqyssnda35TYsjgd45vTVuK8swuzsht59LNNuDU' &&
-				swap.trader !== '9xZJpqWx4Rzx5Mxxyxp1HXrNtbcZVZjfSftRr2aMWT88'
-			) {
-				logger.warn(`Trader is ignored`);
-				return;
-			}
-
 			if (!supportedChainIds.includes(swap.sourceChain) || !supportedChainIds.includes(swap.destChain)) {
 				logger.warn(`Swap chain id is not supported yet on sdk`);
 				return;
