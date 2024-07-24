@@ -134,6 +134,7 @@ export async function main() {
 		evmProviders,
 		tokenList,
 	);
+	await evmFulFiller.init();
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
 		new AuctionFulfillerConfig(),
