@@ -78,6 +78,14 @@ export class EvmFulfiller {
 						logger.info(`Allowance set for ${driverToken.contract} on chain ${chainId}`);
 					}
 				};
+
+				promises.push(getAndSet());
+			}
+
+			for (let driverToken of driverERC20Tokens) {
+				if (!driverToken) {
+					continue;
+				}
 				let getAndSetHelper = async () => {
 					const current = await getErc20Allowance(
 						this.walletHelper.getDriverWallet(chainId),
@@ -99,7 +107,6 @@ export class EvmFulfiller {
 						logger.info(`Helper Allowance set for ${driverToken.contract} on chain ${chainId}`);
 					}
 				};
-				promises.push(getAndSet());
 				promises.push(getAndSetHelper());
 			}
 		}
