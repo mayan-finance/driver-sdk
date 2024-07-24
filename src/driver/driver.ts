@@ -429,7 +429,7 @@ export class DriverService {
 
 		const fulfillAmount = await this.simpleFulfillerCfg.fulfillAmount(swap, effectiveAmountIn, expenses);
 
-		await this.evmFulFiller.simpleFulfill(swap, fulfillAmount, toToken);
+		await this.evmFulFiller.fulfillSimple(swap, fulfillAmount, toToken);
 	}
 
 	async getSimpleFulfillIxsPackage(swap: Swap): Promise<TransactionInstruction[]> {

@@ -9,7 +9,13 @@ import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { SWAP_STATUS, Swap } from '../swap.dto';
 import { tryNativeToHexString, tryNativeToUint8Array } from '../utils/buffer';
-import { getErc20Allowance, getErc20Balance, getEthBalance, giveErc20Allowance } from '../utils/erc20';
+import {
+	getErc20Allowance,
+	getErc20Balance,
+	getEthBalance,
+	getPermitSignature,
+	giveErc20Allowance,
+} from '../utils/erc20';
 import { EvmProviders } from '../utils/evm-providers';
 import { getSuggestedOverrides, getTypicalBlocksToConfirm } from '../utils/evm-trx';
 import logger from '../utils/logger';
@@ -42,7 +48,19 @@ export class EvmFulfiller {
 	}
 
 	async init() {
-		await this.lazySetAllowances();
+		try {
+			if (this.gConf.usePermit) {
+				logger.info('Permit is used for fulfilling ERC20 and no allowance was set');
+			} else {
+				await this.lazySetAllowances();
+			}
+		} catch (e) {
+			logger.error(`Error setting allowances: ${e}`);
+		}
+	}
+
+	private getDummySwapCallData(targetChain: number) {
+		return this.swiftInterface.encodeFunctionData('paused', []);
 	}
 
 	private async lazySetAllowances() {
@@ -126,6 +144,107 @@ export class EvmFulfiller {
 		]);
 	}
 
+	private async generatePermitParams(
+		tokenContract: string,
+		rawAmountIn64: bigint,
+		targetChain: number,
+	): Promise<any> {
+		let permitParams: any = {
+			value: 12313131313n,
+			deadline: 12313131313n,
+			v: 12,
+			r: Buffer.alloc(32),
+			s: Buffer.alloc(32),
+		}; // If we use allowance these params don't matter
+		if (this.gConf.usePermit) {
+			const absoluteTargetChain = WhChainIdToEvm[targetChain];
+			permitParams = await getPermitSignature(
+				this.walletHelper.getDriverWallet(targetChain),
+				rawAmountIn64,
+				absoluteTargetChain,
+				tokenContract,
+				this.evmProviders[targetChain],
+				this.contractsConfig.evmFulfillHelpers[targetChain],
+				60,
+			);
+		}
+
+		return permitParams;
+	}
+
+	async fulfillSimple(swap: Swap, availableAmountIn: number, toToken: Token) {
+		const [chosenDriverToken, simpleFulfillData] = await this.generateFulfillSimpleData(
+			swap,
+			availableAmountIn,
+			toToken,
+		);
+		const amountIn64 = ethers.parseUnits(
+			availableAmountIn.toFixed(chosenDriverToken.decimals),
+			chosenDriverToken.decimals,
+		);
+
+		const targetChain = swap.destChain;
+		const networkFeeData: ethers.FeeData = await this.evmProviders[targetChain].getFeeData();
+
+		const overrides = await getSuggestedOverrides(targetChain, networkFeeData);
+		const nativeCurrency = this.tokenList.nativeTokens[targetChain];
+
+		let gasDrop = swap.gasDrop64;
+		if (nativeCurrency.decimals > 8) {
+			gasDrop = gasDrop * 10n ** (BigInt(nativeCurrency.decimals) - 8n);
+		}
+		overrides['value'] = gasDrop;
+
+		if (chosenDriverToken.contract === ethers.ZeroAddress) {
+			overrides['value'] = overrides['value'] + ethers.parseUnits(availableAmountIn.toFixed(18), 18);
+		}
+
+		let fulfillTx: ethers.TransactionResponse;
+		if (chosenDriverToken.contract === ethers.ZeroAddress) {
+			logger.info(`Sending swap fulfill with fulfillWithEth for tx=${swap.sourceTxHash}`);
+			overrides['value'] = overrides['value'] + amountIn64;
+
+			fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithEth(
+				amountIn64,
+				toToken.contract,
+				this.contractsConfig.contracts[targetChain], // we don't need swap just set a read only contract
+				this.getDummySwapCallData(targetChain),
+				this.contractsConfig.contracts[targetChain],
+				simpleFulfillData,
+				overrides,
+			);
+		} else {
+			logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
+
+			const permitParams = await this.generatePermitParams(chosenDriverToken.contract, amountIn64, targetChain);
+
+			fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
+				chosenDriverToken.contract,
+				amountIn64,
+				toToken.contract,
+				this.contractsConfig.contracts[targetChain], // we don't need swap just set a read only contract
+				this.getDummySwapCallData(targetChain),
+				this.contractsConfig.contracts[targetChain],
+				simpleFulfillData,
+				permitParams,
+				overrides,
+			);
+		}
+
+		logger.info(`Waiting for simple-fulfill on EVM for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
+		const tx = await this.evmProviders[targetChain].waitForTransaction(
+			fulfillTx.hash,
+			getTypicalBlocksToConfirm(targetChain),
+			60_000,
+		);
+
+		if (!tx || tx.status !== 1) {
+			throw new Error(`Fulfill auction on evm reverted for ${swap.sourceTxHash} via: ${tx?.hash}`);
+		} else {
+			swap.status = SWAP_STATUS.ORDER_SETTLED;
+		}
+	}
+
 	async fulfillAuction(
 		swap: Swap,
 		availableAmountIn: number,
@@ -182,23 +301,21 @@ export class EvmFulfiller {
 		} else {
 			logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
 
-			fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
-				driverToken.contract,
-				amountIn64,
-				toToken.contract,
-				swapParams.evmRouterAddress,
-				swapParams.evmRouterCalldata,
-				this.contractsConfig.contracts[targetChain],
-				swiftCallData,
-				{
-					value: 12313131313n,
-					deadline: 12313131313n,
-					v: 12,
-					r: Buffer.alloc(32),
-					s: Buffer.alloc(32),
-				}, // permit. doesnt matter because we already gave allowance
-				overrides,
-			);
+			const permitParams = await this.generatePermitParams(driverToken.contract, amountIn64, targetChain);
+
+			fulfillTx = await this.walletHelper
+				.getFulfillHelperWriteContract(swap.destChain)
+				.fulfillWithERC20(
+					driverToken.contract,
+					amountIn64,
+					toToken.contract,
+					swapParams.evmRouterAddress,
+					swapParams.evmRouterCalldata,
+					this.contractsConfig.contracts[targetChain],
+					swiftCallData,
+					permitParams,
+					overrides,
+				);
 		}
 
 		logger.info(`Waiting for auction-fulfill on EVM for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
@@ -352,7 +469,11 @@ export class EvmFulfiller {
 		}
 	}
 
-	async simpleFulfill(swap: Swap, availableAmountIn: number, toToken: Token) {
+	private async generateFulfillSimpleData(
+		swap: Swap,
+		availableAmountIn: number,
+		toToken: Token,
+	): Promise<[Token, string]> {
 		const targetChain = swap.destChain;
 		const driverTokens = [this.tokenList.getNativeUsdc(targetChain), this.tokenList.nativeTokens[targetChain]];
 
@@ -392,21 +513,6 @@ export class EvmFulfiller {
 			throw new Error(`Not enough balance for and can not fullfill ${toToken.contract}`);
 		}
 
-		const networkFeeData: ethers.FeeData = await this.evmProviders[targetChain].getFeeData();
-
-		const overrides = await getSuggestedOverrides(targetChain, networkFeeData);
-		const nativeCurrency = this.tokenList.nativeTokens[targetChain];
-
-		let gasDrop = swap.gasDrop64;
-		if (nativeCurrency.decimals > 8) {
-			gasDrop = gasDrop * 10n ** (BigInt(nativeCurrency.decimals) - 8n);
-		}
-		overrides['value'] = gasDrop;
-
-		if (chosenDriverToken.contract === ethers.ZeroAddress) {
-			overrides['value'] = overrides['value'] + ethers.parseUnits(availableAmountIn.toFixed(18), 18);
-		}
-
 		const fromToken = swap.fromToken;
 		const fromNormalizedDecimals = Math.min(WORMHOLE_DECIMALS, fromToken.decimals);
 
@@ -440,9 +546,9 @@ export class EvmFulfiller {
 
 		const batch = this.gConf.singleBatchChainIds.includes(+swap.destChain) ? false : true; // batch-post except for eth and expensive chains
 
-		const fulfillTx: ethers.TransactionResponse = await this.walletHelper
-			.getWriteContract(swap.destChain)
-			.fulfillSimple(
+		return [
+			chosenDriverToken,
+			this.swiftInterface.encodeFunctionData('fulfillSimple', [
 				ethers.parseUnits(availableAmountIn.toFixed(chosenDriverToken.decimals), chosenDriverToken.decimals),
 				orderHashHex,
 				srcChain,
@@ -465,20 +571,7 @@ export class EvmFulfiller {
 				},
 				unlockAddress32,
 				batch,
-				overrides,
-			);
-
-		logger.info(`Wait simple-fulfill on evm confirm for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
-		const tx = await this.evmProviders[targetChain].waitForTransaction(
-			fulfillTx.hash,
-			getTypicalBlocksToConfirm(targetChain),
-			60_000,
-		);
-
-		if (!tx || tx.status !== 1) {
-			throw new Error(`Fulfilling on evm tx reverted sourceTx: ${swap.sourceTxHash}, ${tx?.hash}`);
-		} else {
-			swap.status = SWAP_STATUS.ORDER_SETTLED;
-		}
+			]),
+		];
 	}
 }

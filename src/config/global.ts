@@ -22,6 +22,7 @@ export interface SwiftFeeParams {
 }
 
 export type GlobalConfig = {
+	usePermit: boolean;
 	auctionTimeSeconds: number;
 	batchUnlockThreshold: number; // Optimal Number of swaps to select for unlocking
 	singleBatchChainIds: number[]; // Expensive chain-ids that use direct vaa post instead of batch (e.g ethereum)
