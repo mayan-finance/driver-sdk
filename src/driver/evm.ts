@@ -81,7 +81,7 @@ export class EvmFulfiller {
 
 				promises.push(getAndSet());
 			}
-
+			await Promise.allSettled(promises);
 			for (let driverToken of driverERC20Tokens) {
 				if (!driverToken) {
 					continue;
