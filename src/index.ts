@@ -44,8 +44,9 @@ export async function main() {
 	rpcConfig.wormholeGuardianRpcs = initialDynamicConfig.wormholeGuardianRpcs.split(',');
 
 	const globalConfig: GlobalConfig = {
-		auctionTimeSeconds: 0 || initialDynamicConfig.auctionTimeSeconds, // TODO: remove hardcode values
-		batchUnlockThreshold: 1 || initialDynamicConfig.batchUnlockThreshold,
+		usePermit: process.env.USE_PERMIT === 'true',
+		auctionTimeSeconds: 20 || initialDynamicConfig.auctionTimeSeconds, // TODO: remove hardcode values
+		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,
 		registerInterval: initialDynamicConfig.registerInterval,
 		scheduleUnlockInterval: initialDynamicConfig.scheduleUnlockInterval,
 		singleBatchChainIds: initialDynamicConfig.singleBatchChainIds.split(',').map((x) => +x),

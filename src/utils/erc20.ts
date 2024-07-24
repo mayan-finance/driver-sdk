@@ -118,3 +118,170 @@ export async function getEthBalance(evmProvider: ethers.JsonRpcProvider, address
 	const balance = await evmProvider.getBalance(address);
 	return balance;
 }
+
+export async function getPermitSignature(
+	signer: ethers.Signer,
+	amount: bigint,
+	tokenAbsoluteChainId: number,
+	tokenAddr: string,
+	provider: ethers.JsonRpcProvider,
+	spender: string,
+	deadlineAddedSeconds: number,
+): Promise<{ v: number; r: string; s: string; deadline: bigint; value: bigint }> {
+	const signerAddress = await signer.getAddress();
+
+	const contract = new ethers.Contract(
+		tokenAddr,
+		[
+			{
+				inputs: [
+					{
+						internalType: 'address',
+						name: 'owner',
+						type: 'address',
+					},
+				],
+				name: 'nonces',
+				outputs: [
+					{
+						internalType: 'uint256',
+						name: '',
+						type: 'uint256',
+					},
+				],
+				stateMutability: 'view',
+				type: 'function',
+			},
+		],
+		provider,
+	);
+
+	let nonce: bigint | null = null;
+	try {
+		nonce = await contract.nonces(signer.getAddress());
+	} catch (err) {
+		throw {
+			mayanError: {
+				permitIssue: true,
+			},
+		};
+	}
+	const deadline = BigInt(Math.floor(new Date().getTime() / 1000) + deadlineAddedSeconds);
+	const domain = await getPermitDomain(tokenAbsoluteChainId, tokenAddr, provider);
+
+	const values = {
+		owner: signerAddress,
+		spender,
+		value: amount,
+		nonce: nonce,
+		deadline: deadline,
+	};
+	const sig = await signer.signTypedData(domain, PermitType, values);
+	const signature = ethers.Signature.from(sig);
+	return {
+		...values,
+		...domain,
+		s: signature.s,
+		r: signature.r,
+		v: signature.v,
+	};
+}
+
+type PermitDomain = {
+	name: string;
+	version: string;
+	chainId: number;
+	verifyingContract: string;
+};
+async function getPermitDomain(
+	tokenAbsoluteChainId: number,
+	tokenAddr: string,
+	provider: ethers.JsonRpcProvider,
+): Promise<PermitDomain> {
+	const contract = new ethers.Contract(
+		tokenAddr,
+		[
+			{
+				inputs: [],
+				name: 'DOMAIN_SEPARATOR',
+				outputs: [
+					{
+						internalType: 'bytes32',
+						name: '',
+						type: 'bytes32',
+					},
+				],
+				stateMutability: 'view',
+				type: 'function',
+			},
+			{
+				inputs: [],
+				name: 'name',
+				outputs: [
+					{
+						internalType: 'string',
+						name: '',
+						type: 'string',
+					},
+				],
+				stateMutability: 'view',
+				type: 'function',
+			},
+		],
+		provider,
+	);
+	let domainSeparator: string;
+	try {
+		domainSeparator = await contract.DOMAIN_SEPARATOR();
+	} catch (err) {
+		throw {
+			mayanError: {
+				permitIssue: true,
+			},
+		};
+	}
+	const name = await contract.name();
+	const domain: PermitDomain = {
+		name: name,
+		version: '1',
+		chainId: tokenAbsoluteChainId,
+		verifyingContract: tokenAddr,
+	};
+	for (let i = 1; i < 11; i++) {
+		domain.version = String(i);
+		const hash = ethers.TypedDataEncoder.hashDomain(domain);
+		if (hash.toLowerCase() === domainSeparator.toLowerCase()) {
+			return domain;
+		}
+	}
+	throw {
+		mayanError: {
+			permitIssue: true,
+		},
+	};
+}
+
+const PermitType = {
+	Permit: [
+		{
+			name: 'owner',
+			type: 'address',
+		},
+		{
+			name: 'spender',
+			type: 'address',
+		},
+		{
+			name: 'value',
+			type: 'uint256',
+		},
+		{
+			name: 'nonce',
+			type: 'uint256',
+		},
+		{
+			name: 'deadline',
+			type: 'uint256',
+		},
+	],
+};
