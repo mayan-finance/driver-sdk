@@ -106,10 +106,10 @@ export class MayanExplorerWatcher {
 						return;
 					}
 
-					if (!this.initiateAddresses.includes(rawSwap.initiateContractAddress)) {
-						logger.info(`Swap droppped because initiateAddress not supported ${rawSwap.sourceTxHash}`);
-						return;
-					}
+					// if (!this.initiateAddresses.includes(rawSwap.initiateContractAddress)) {
+					// 	logger.info(`Swap droppped because initiateAddress not supported ${rawSwap.sourceTxHash}`);
+					// 	return;
+					// }
 
 					if (rawSwap.status !== 'ORDER_CREATED' && rawSwap.status !== 'ORDER_FULFILLED') {
 						return;
@@ -146,7 +146,7 @@ export class MayanExplorerWatcher {
 					format: 'raw',
 					status: 'ORDER_CREATED,ORDER_FULFILLED',
 					service: 'SWIFT_SWAP',
-					initiateContractAddresses: this.initiateAddresses.join(','),
+					// initiateContractAddresses: this.initiateAddresses.join(','),
 					limit: 100,
 				},
 			});
