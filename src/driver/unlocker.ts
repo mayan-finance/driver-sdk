@@ -245,21 +245,14 @@ export class Unlocker {
 			const orderHashes = orders.map((order) => order.orderHash);
 			logger.info(`Posting and acquiring sequence for ${sourceChainId} to ${destChainId} for batch`);
 			let sequence: bigint, txHash: string;
-			// if (destChainId === CHAIN_ID_SOLANA) {
-			// 	const result = await this.batchPostSolana(orderHashes);
-			// 	sequence = result.sequence;
-			// 	txHash = result.txHash;
-			// } else {
-			// 	const result = await this.batchPostEvm(destChainId, orderHashes);
-			// 	sequence = result.sequence;
-			// 	txHash = result.txHash;
-			// }
-			if (destChainId === 23) {
-				sequence = 8n;
-				txHash = '0x123';
+			if (destChainId === CHAIN_ID_SOLANA) {
+				const result = await this.batchPostSolana(orderHashes);
+				sequence = result.sequence;
+				txHash = result.txHash;
 			} else {
-				sequence = 45n;
-				txHash = '0x456';
+				const result = await this.batchPostEvm(destChainId, orderHashes);
+				sequence = result.sequence;
+				txHash = result.txHash;
 			}
 			const postSequence = sequence;
 			const postTxHash = txHash;
