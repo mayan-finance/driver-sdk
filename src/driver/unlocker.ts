@@ -145,6 +145,7 @@ export class Unlocker {
 
 	private async fetchAndProgressUnlocks() {
 		try {
+			logger.info(`Running fetchAndProgressUnlocks`);
 			if (Object.keys(this.locks).length > 1000) {
 				throw new Error('Too many ongoing unlocks... Waiting for some of them to finish unlocking');
 			}
@@ -210,6 +211,7 @@ export class Unlocker {
 		try {
 			const locked = this.locks[lockKey];
 			if (locked) {
+				logger.info(`Already pending selectAndBatchPostWhSequence for ${sourceChainId}-${destChainId}`);
 				return;
 			} else {
 				this.locks[lockKey] = true;
@@ -505,7 +507,7 @@ export class Unlocker {
 			logger.info(`Unlocked single evm for ${sourceChainId} to ${destChainId} with tx ${txHash}`);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`lock failed for ${sourceChainId} ${err}`);
+			logger.error(`single unlock failed for ${sourceChainId} ${err}`);
 			delete this.locks[lockKey];
 		}
 	}
