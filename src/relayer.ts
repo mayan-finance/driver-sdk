@@ -122,6 +122,11 @@ export class Relayer {
 				return;
 			}
 
+			if (this.gConf.blackListedReferrerAddresses.has(swap.referrerAddress)) {
+				logger.warn(`Referrer address is blacklisted for ${swap.sourceTxHash}. discarding...`);
+				return;
+			}
+
 			verifyOrderHash(
 				swap.orderHash,
 				swap.trader,

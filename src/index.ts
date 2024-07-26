@@ -54,6 +54,10 @@ export async function main() {
 		disableUnlocker: process.env.DISABLE_UNLOCKER === 'true',
 		closeLutsInterval: 1800,
 		feeParams: initialDynamicConfig.feeParams,
+		blackListedReferrerAddresses: (process.env.BLACKLISTED_REFERRERS || '').split(',').reduce((acc, x) => {
+			acc.add(x);
+			return acc;
+		}, new Set<string>()),
 	};
 
 	const contracts: ContractsConfig = {
