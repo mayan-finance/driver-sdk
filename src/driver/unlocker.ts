@@ -145,7 +145,6 @@ export class Unlocker {
 
 	private async fetchAndProgressUnlocks() {
 		try {
-			logger.info(`Running fetchAndProgressUnlocks`);
 			if (Object.keys(this.locks).length > 1000) {
 				throw new Error('Too many ongoing unlocks... Waiting for some of them to finish unlocking');
 			}
@@ -611,7 +610,6 @@ export class Unlocker {
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
 		let overrides = await getSuggestedOverrides(destChain, networkFeeData);
-		overrides['gasLimit'] = 500_000;
 		let tx: ethers.TransactionResponse;
 		if (isBatch) {
 			tx = await swiftContract.unlockBatch(hexToUint8Array(signedVaa), overrides);
