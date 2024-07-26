@@ -24,6 +24,16 @@ export class ChainFinality {
 		[chainId: number]: number;
 	};
 
+	private readonly finalizedBlocks = {
+		[CHAIN_ID_ETH]: 30,
+		[CHAIN_ID_BSC]: 60,
+		[CHAIN_ID_POLYGON]: 240,
+		[CHAIN_ID_AVAX]: 2,
+		[CHAIN_ID_ARBITRUM]: 0.3,
+		[CHAIN_ID_OPTIMISM]: 2,
+		[CHAIN_ID_BASE]: 2,
+	};
+
 	private readonly minSwapValueUsd = 100;
 	private readonly maxSwapValueUsd = 100_000;
 
@@ -38,9 +48,9 @@ export class ChainFinality {
 			[CHAIN_ID_BSC]: 3,
 			[CHAIN_ID_POLYGON]: 2,
 			[CHAIN_ID_AVAX]: 2,
-			[CHAIN_ID_ARBITRUM]: 0.3,
-			[CHAIN_ID_OPTIMISM]: 2,
-			[CHAIN_ID_BASE]: 2,
+			[CHAIN_ID_ARBITRUM]: 100,
+			[CHAIN_ID_OPTIMISM]: 3,
+			[CHAIN_ID_BASE]: 3,
 		};
 
 		this.minimumBlocksToFinality = {
@@ -99,13 +109,12 @@ export class ChainFinality {
 		}
 	}
 
-	private async getEvmCurrentFinalizedBlockNumber(provider: ethers.JsonRpcProvider): Promise<number> {
-		// Taken from here: https://github.com/wormhole-foundation/wormhole/blob/eee4641f55954d2d0db47831688a2e97eb20f7ee/node/pkg/watchers/evm/watcher.go#L728
-		// Beware that this might not be supported by all chains, so check rpc capabilities for future chains
-
-		// ethers js does not support `getBlockByNumber` with `finalized` blockTag yet, so send RAW
-		const resOpt = await provider.send('eth_getBlockByNumber', ['finalized', false]);
-		return parseInt(resOpt.number);
+	private async getEvmCurrentFinalizedBlockNumber(
+		provider: ethers.JsonRpcProvider,
+		wChainId: number,
+	): Promise<number> {
+		const resOpt = await provider.send('eth_getBlockByNumber', ['latest', false]);
+		return parseInt(resOpt.number) - this.blockGenerationTimeSecond[wChainId];
 	}
 
 	private async getEvmLatestBlockNumber(provider: ethers.JsonRpcProvider): Promise<number> {
@@ -119,7 +128,10 @@ export class ChainFinality {
 			throw new Error('Transaction not found in timeToFinalizeSeconds');
 		}
 
-		const finalizedBlockNumber = await this.getEvmCurrentFinalizedBlockNumber(this.evmProviders[wChainId]);
+		const finalizedBlockNumber = await this.getEvmCurrentFinalizedBlockNumber(
+			this.evmProviders[wChainId],
+			wChainId,
+		);
 		const lastBlockNumber = await this.getEvmLatestBlockNumber(this.evmProviders[wChainId]);
 
 		const blockCountToFinalize = lastBlockNumber - finalizedBlockNumber;
