@@ -23,8 +23,7 @@ export class AuctionFulfillerConfig {
 	 * @returns the amount to bid
 	 **/
 	async bidAmount(swap: Swap, effectiveAmountIn: number, costDetails: SwiftCosts): Promise<number> {
-		const minOut = swap.minAmountOut.toNumber();
-		return Math.min(minOut * 1.00001, effectiveAmountIn);
+		return effectiveAmountIn * 0.97;
 		// if (effectiveAmountIn * 0.98 >= minOut) {
 		// 	return effectiveAmountIn * 0.98;
 		// } else if (effectiveAmountIn * 0.99 >= minOut) {

@@ -286,6 +286,7 @@ export class EvmFulfiller {
 		}
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
+			logger.warn(`normalizedBidAmount is less than minAmountOut`);
 			normalizedBidAmount = normalizedMinAmountOut;
 		}
 
