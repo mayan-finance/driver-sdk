@@ -169,7 +169,7 @@ export class MayanExplorerWatcher {
 
 				const swap = this.createSwapFromJson(s);
 
-				await this.relayer.relay(swap);
+				this.relayer.relay(swap);
 			}
 		} catch (err) {
 			logger.error(`error in polling explorer ${err}`);
