@@ -84,7 +84,7 @@ export class SolanaFulfiller {
 				if (!!this.rpcConfig.jupApiKey) {
 					params['token'] = this.rpcConfig.jupApiKey;
 				}
-				const { data } = await axios.get('https://quote-api.jup.ag/v6/quote', {
+				const { data } = await axios.get(`${this.rpcConfig.jupV6Endpoint}/quote`, {
 					params: params,
 				});
 				res = data;
@@ -255,7 +255,7 @@ export class SolanaFulfiller {
 			if (quoteRes.expectedAmountOut < realMinAmountOut) {
 				logger.warn(`min amount out issues on ${swap.sourceTxHash}`);
 			}
-			const { data } = await axios.post('https://quote-api.jup.ag/v6/swap', {
+			const { data } = await axios.post(`${this.rpcConfig.jupV6Endpoint}/swap`, {
 				quoteResponse: quoteRes.raw,
 				userPublicKey: this.walletConfig.solana.publicKey.toString(),
 				destinationTokenAccount: stateToAss,

@@ -4,6 +4,7 @@
 
 Copy `.env.sample` into `.env` and set the required values including:
 
+-   `JUP_V6_ENDPOINT` for using custom or self hosted jup endpoint
 -   `JUP_API_KEY` for swapping on Solana via Jupiter [jup.ag](https://station.jup.ag/docs/apis/swap-api)
 -   `ONE_INCH_API_KEY` for swapping on EVM chains via [1inch](https://portal.1inch.dev/)
 
