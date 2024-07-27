@@ -24,14 +24,15 @@ export class AuctionFulfillerConfig {
 	 **/
 	async bidAmount(swap: Swap, effectiveAmountIn: number, costDetails: SwiftCosts): Promise<number> {
 		const minOut = swap.minAmountOut.toNumber();
-		if (effectiveAmountIn * 0.98 >= minOut) {
-			return effectiveAmountIn * 0.98;
-		} else if (effectiveAmountIn * 0.99 >= minOut) {
-			return effectiveAmountIn * 0.99;
-		} else if (effectiveAmountIn * 0.999 >= minOut) {
-			return effectiveAmountIn * 0.999;
-		}
-		return effectiveAmountIn;
+		return Math.min(minOut * 1.00001, effectiveAmountIn);
+		// if (effectiveAmountIn * 0.98 >= minOut) {
+		// 	return effectiveAmountIn * 0.98;
+		// } else if (effectiveAmountIn * 0.99 >= minOut) {
+		// 	return effectiveAmountIn * 0.99;
+		// } else if (effectiveAmountIn * 0.999 >= minOut) {
+		// 	return effectiveAmountIn * 0.999;
+		// }
+		// return effectiveAmountIn;
 	}
 
 	async fulfillAmount(swap: Swap, effectiveAmountIn: number, costDetails: SwiftCosts): Promise<number> {
