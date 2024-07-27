@@ -201,7 +201,7 @@ export class Unlocker {
 	private async selectAndBatchPostWhSequence(
 		sourceChainId: number,
 		destChainId: number,
-		orders: {
+		initialOrders: {
 			orderHash: string;
 			fromTokenAddress: string;
 		}[],
@@ -216,12 +216,12 @@ export class Unlocker {
 				this.locks[lockKey] = true;
 			}
 
-			if (!orders || orders.length < 1) {
+			if (!initialOrders || initialOrders.length < 1) {
 				delete this.locks[lockKey];
 				return;
 			}
 
-			for (let order of orders) {
+			for (let order of initialOrders) {
 				if (this.sequenceStore.isOrderAlreadyPosted(order.orderHash)) {
 					logger.warn(`Has already pending order hashes ignoring ${sourceChainId}-${destChainId}`);
 					delete this.locks[lockKey];
@@ -229,11 +229,25 @@ export class Unlocker {
 				}
 			}
 
-			if (orders.length > 20) {
+			let alreadyUnlocked: Set<string>;
+			if (sourceChainId === CHAIN_ID_SOLANA) {
+				alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSolana(
+					initialOrders.map((o) => o.orderHash),
+				);
+			} else {
+				alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderEvm(
+					sourceChainId,
+					initialOrders.map((o) => o.orderHash),
+				);
+			}
+
+			let filteredOrders = initialOrders.filter((order) => !alreadyUnlocked.has(order.orderHash));
+
+			if (filteredOrders.length > 20) {
 				throw new Error(`Too many orderHashes might not fit into block...`);
 			}
 
-			if (orders.length < this.gConf.batchUnlockThreshold) {
+			if (filteredOrders.length < this.gConf.batchUnlockThreshold) {
 				logger.verbose(
 					`Not enough swaps to select and post for ${sourceChainId} to ${destChainId}. min ${this.gConf.batchUnlockThreshold}`,
 				);
@@ -241,9 +255,9 @@ export class Unlocker {
 				return;
 			}
 
-			orders = orders.slice(0, MAX_BATCH_SIZE); // we can not put more than 8 this in one udp solana trx without luts or hitting inner instruction limit
+			filteredOrders = filteredOrders.slice(0, MAX_BATCH_SIZE); // we can not put more than 8 this in one udp solana trx without luts or hitting inner instruction limit
 
-			const orderHashes = orders.map((order) => order.orderHash);
+			const orderHashes = filteredOrders.map((order) => order.orderHash);
 			logger.info(`Posting and acquiring sequence for ${sourceChainId} to ${destChainId} for batch`);
 			let sequence: bigint, txHash: string;
 			if (destChainId === CHAIN_ID_SOLANA) {
@@ -258,7 +272,13 @@ export class Unlocker {
 			const postSequence = sequence;
 			const postTxHash = txHash;
 
-			this.sequenceStore.addBatchPostedSequence(sourceChainId, destChainId, orders, postSequence, postTxHash);
+			this.sequenceStore.addBatchPostedSequence(
+				sourceChainId,
+				destChainId,
+				filteredOrders,
+				postSequence,
+				postTxHash,
+			);
 			delete this.locks[lockKey];
 		} catch (err) {
 			logger.error(`selectAndPostWhSequence failed for ${sourceChainId} to ${destChainId} ${err}`);
