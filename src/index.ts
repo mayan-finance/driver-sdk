@@ -73,7 +73,7 @@ export async function main() {
 	const evmProviders = makeEvmProviders(supportedChainIds, rpcConfig);
 	const solanaConnection = new Connection(rpcConfig.solana.solanaMainRpc, 'confirmed');
 
-	const solanaTxSender = new SolanaMultiTxSender(rpcConfig);
+	const solanaTxSender = new SolanaMultiTxSender(rpcConfig, walletConf);
 
 	const priorityFeeHelper = new PriorityFeeHelper(rpcConfig);
 

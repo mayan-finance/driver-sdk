@@ -1,5 +1,7 @@
 export type RpcConfig = {
 	solana: {
+		fulfillTxMode: 'NORMAL' | 'JITO' | 'BOTH';
+		jitoEndpoint: string;
 		sendCount: number;
 		solanaMainRpc: string;
 		solanaSendRpcs: string[];
@@ -25,6 +27,9 @@ export type RpcConfig = {
 
 export const rpcConfig: RpcConfig = {
 	solana: {
+		fulfillTxMode:
+			process.env.SOLANA_TX_MODE === 'JITO' ? 'JITO' : process.env.SOLANA_TX_MODE === 'BOTH' ? 'BOTH' : 'NORMAL',
+		jitoEndpoint: process.env.JITO_ENDPOINT || 'https://frankfurt.mainnet.block-engine.jito.wtf',
 		otherSendInterval: 5000,
 		sendInterval: 1000,
 		sendCount: 50,

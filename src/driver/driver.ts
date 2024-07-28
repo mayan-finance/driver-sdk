@@ -506,12 +506,12 @@ export class DriverService {
 			);
 
 			logger.info(`Sending fulfill transaction for ${swap.sourceTxHash}`);
-			const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+			const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
 				trxData.instructions,
 				trxData.signers,
 				trxData.lookupTables,
-				this.rpcConfig.solana.sendCount,
 				true,
+				this.rpcConfig.solana.sendCount,
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
 		} else {
@@ -540,12 +540,12 @@ export class DriverService {
 		let instructions = [registerOrderIx, ...fulfillIxs, ...settleIxs];
 
 		logger.info(`Sending noacution settle transaction for ${swap.sourceTxHash}`);
-		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+		const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
 			instructions,
 			[this.walletConfig.solana],
 			[],
-			this.rpcConfig.solana.sendCount,
 			true,
+			this.rpcConfig.solana.sendCount,
 		);
 		logger.info(`Sent noauction settle transaction for ${swap.sourceTxHash} with ${hash}`);
 		return hash;

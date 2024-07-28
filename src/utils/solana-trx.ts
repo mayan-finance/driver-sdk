@@ -5,13 +5,19 @@ import {
 	Connection,
 	PublicKey,
 	Signer,
+	SystemProgram,
 	SYSVAR_CLOCK_PUBKEY,
 	TransactionInstruction,
 	TransactionMessage,
 	TransactionSignature,
 	VersionedTransaction,
 } from '@solana/web3.js';
+import axios from 'axios';
+import WebSocket from 'ws';
 import { RpcConfig } from '../config/rpc';
+import { WalletConfig } from '../config/wallet';
+import { binary_to_base58 } from './base58';
+import logger from './logger';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -31,10 +37,169 @@ export class SolanaMultiTxSender {
 	private readonly otherConnections: Connection[];
 	private readonly priorityFeeHelper: PriorityFeeHelper;
 
-	constructor(private rpcConfig: RpcConfig) {
+	private readonly jitoTipAccounts: PublicKey[] = [
+		new PublicKey('96gYZGLnJYVFmbjzopPSU6QiEV5fGqZNyN9nmNhvrZU5'),
+		new PublicKey('HFqU5x63VTqvQss8hp11i4wVV8bD44PvwucfZ2bU7gRe'),
+		new PublicKey('Cw8CFyM9FkoMi7K7Crf6HNQqf4uEMzpKw6QNghXLvLkY'),
+		new PublicKey('ADaUMid9yfUytqMBgopwjb2DTLSokTSzL1zt6iGPaS49'),
+		new PublicKey('DfXygSm4jCyNCybVYYK6DwvWqjKee8pbDmJGcLWNDXjh'),
+		new PublicKey('ADuUkR4vqLUMWXxW9gh6D6L8pMSawimctcNZ5pGwDcEt'),
+		new PublicKey('DttWaMuVvTiduZRnguLF7jNxTgiMBZ1hyAumKUiL2KRL'),
+		new PublicKey('3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT'),
+	];
+
+	private minJitoTipAmount = Number(process.env.MIN_JITO_TIP || 0.0001);
+	private maxJitoTipAmount = Number(process.env.MAX_JITO_TIP || 0.0002);
+
+	constructor(
+		private rpcConfig: RpcConfig,
+		private readonly walletConfig: WalletConfig,
+	) {
 		this.connection = new Connection(rpcConfig.solana.solanaMainRpc, 'confirmed');
 		this.otherConnections = rpcConfig.solana.solanaSendRpcs.map((url) => new Connection(url, 'confirmed'));
 		this.priorityFeeHelper = new PriorityFeeHelper(rpcConfig);
+
+		try {
+			const url = 'ws://bundles-api-rest.jito.wtf/api/v1/bundles/tip_stream';
+			const connection = new WebSocket(url);
+			connection.on('message', (message) => {
+				const newFiftyPercentileTip = Number(
+					JSON.parse(message.toString())[0]['ema_landed_tips_50th_percentile'],
+				);
+				this.minJitoTipAmount = Math.min(
+					this.maxJitoTipAmount,
+					Math.max(newFiftyPercentileTip, this.minJitoTipAmount),
+				);
+			});
+		} catch (error) {
+			logger.error(`Error initializing jito websocket: ${error}`);
+		}
+	}
+
+	async createAndSendTransactionJitoAndNormal(
+		instructions: TransactionInstruction[],
+		signers: Signer[],
+		lookupTables: AddressLookupTableAccount[],
+		addPriorityFeeIns: boolean,
+		sendCounts: number,
+		feePayer?: Signer,
+	): Promise<string> {
+		let promises: Promise<string>[] = [];
+
+		if (['JITO', 'BOTH'].includes(this.rpcConfig.solana.fulfillTxMode)) {
+			let newInstructions = [];
+			for (let ins of instructions) {
+				newInstructions.push(ins);
+			}
+			const jitoResult = this.createAndSendWithJito(
+				newInstructions,
+				signers,
+				lookupTables,
+				addPriorityFeeIns,
+				feePayer,
+			);
+			promises.push(jitoResult);
+		}
+
+		if (['NORMAL', 'BOTH'].includes(this.rpcConfig.solana.fulfillTxMode)) {
+			let newInstructions = [];
+			for (let ins of instructions) {
+				newInstructions.push(ins);
+			}
+			const normalResult = this.createAndSendOptimizedTransaction(
+				newInstructions,
+				signers,
+				lookupTables,
+				sendCounts,
+				addPriorityFeeIns,
+				feePayer,
+			);
+			promises.push(normalResult);
+		}
+
+		const results = await Promise.allSettled(promises);
+		for (let res of results) {
+			if (res.status === 'fulfilled') {
+				return res.value;
+			}
+		}
+
+		for (let res of results) {
+			if (res.status === 'rejected') {
+				logger.error(`Error sending transaction: ${res.reason}`);
+			}
+		}
+
+		throw new Error('Both jito and normal send tx failed');
+	}
+
+	async createAndSendWithJito(
+		instructions: TransactionInstruction[],
+		signers: Signer[],
+		lookupTables: AddressLookupTableAccount[],
+		addPriorityFeeIns: boolean = true,
+		feePayer?: Signer,
+	): Promise<string> {
+		instructions.unshift(
+			SystemProgram.transfer({
+				fromPubkey: this.walletConfig.solana.publicKey,
+				toPubkey: this.chooseJitoTipAccount(),
+				lamports: Math.floor(this.minJitoTipAmount * 10 ** 9),
+			}),
+		);
+		const { trx, lastValidBlockheight } = await this.createOptimizedVersionedTransaction(
+			instructions,
+			signers,
+			lookupTables,
+			addPriorityFeeIns,
+			feePayer,
+		);
+		const rawTrx = trx.serialize();
+
+		const res = await axios.post(
+			`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
+			{
+				jsonrpc: '2.0',
+				id: 1,
+				method: 'sendBundle',
+				params: [[binary_to_base58(rawTrx)]],
+			},
+			{
+				headers: { 'Content-Type': 'application/json' },
+			},
+		);
+		const bundleId = res.data.result;
+
+		const timeout = 60000; // 30 second timeout
+		const interval = 3000; // 3 second interval
+		const startTime = Date.now();
+
+		while (Date.now() - startTime < timeout || (await this.connection.getBlockHeight()) <= lastValidBlockheight) {
+			const bundleStatuses = await getBundleStatuses(
+				[bundleId],
+				`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
+			);
+
+			if (bundleStatuses && bundleStatuses.value && bundleStatuses.value.length > 0) {
+				const status = bundleStatuses.value[0].confirmation_status;
+
+				if (status === 'confirmed' || status === 'finalized') {
+					const txHash = bundleStatuses.value[0].transactions[0];
+					const tx = await this.connection.getSignatureStatus(txHash);
+					if (!tx || !tx.value) {
+						continue;
+					}
+					if (tx.value?.err) {
+						throw new Error(`Bundle failed with error: ${tx.value.err}`);
+					}
+
+					return txHash;
+				}
+			}
+
+			await new Promise((resolve) => setTimeout(resolve, interval));
+		}
+		throw new Error('Bundle failed to confirm within the timeout period');
 	}
 
 	async createAndSendOptimizedTransaction(
@@ -45,6 +210,26 @@ export class SolanaMultiTxSender {
 		addPriorityFeeIns: boolean = true,
 		feePayer?: Signer,
 	): Promise<string> {
+		const { trx } = await this.createOptimizedVersionedTransaction(
+			instructions,
+			signers,
+			lookupTables,
+			addPriorityFeeIns,
+			feePayer,
+		);
+		const rawTrx = trx.serialize();
+		const trxHash = await this.sendAndConfirmTransaction(rawTrx, sendCounts);
+
+		return trxHash;
+	}
+
+	private async createOptimizedVersionedTransaction(
+		instructions: TransactionInstruction[],
+		signers: Signer[],
+		lookupTables: AddressLookupTableAccount[],
+		addPriorityFeeIns: boolean = true,
+		feePayer?: Signer,
+	): Promise<{ trx: VersionedTransaction; lastValidBlockheight: number }> {
 		if (!signers.length) {
 			throw new Error('The transaction must have at least one signer');
 		}
@@ -61,10 +246,12 @@ export class SolanaMultiTxSender {
 		}
 
 		const payerKey = feePayer ? feePayer.publicKey : signers[0].publicKey;
-		let { blockhash: recentBlockhash } = await this.connection.getLatestBlockhash();
+		let { blockhash: recentBlockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
 
-		const computeBudgetIx = await this.priorityFeeHelper.getPriorityFeeInstruction([]);
-		instructions.unshift(computeBudgetIx);
+		if (addPriorityFeeIns) {
+			const computeBudgetIx = await this.priorityFeeHelper.getPriorityFeeInstruction([]);
+			instructions.unshift(computeBudgetIx);
+		}
 
 		const units = await this.getComputeUnits(instructions, payerKey, lookupTables);
 
@@ -75,11 +262,13 @@ export class SolanaMultiTxSender {
 		// For very small transactions, such as simple transfers, default to 1k CUs
 		let customersCU = units < 1000 ? 1000 : Math.ceil(units * 1.06);
 
-		const computeUnitsIx = ComputeBudgetProgram.setComputeUnitLimit({
-			units: customersCU,
-		});
+		if (addPriorityFeeIns) {
+			const computeUnitsIx = ComputeBudgetProgram.setComputeUnitLimit({
+				units: customersCU,
+			});
 
-		instructions.unshift(computeUnitsIx);
+			instructions.unshift(computeUnitsIx);
+		}
 
 		const v0Message = new TransactionMessage({
 			instructions: instructions,
@@ -89,11 +278,10 @@ export class SolanaMultiTxSender {
 		const versionedTransaction = new VersionedTransaction(v0Message);
 		const allSigners = feePayer ? [...signers, feePayer] : signers;
 		versionedTransaction.sign(allSigners);
-
-		const rawTrx = versionedTransaction.serialize();
-		const trxHash = await this.sendAndConfirmTransaction(rawTrx, sendCounts);
-
-		return trxHash;
+		return {
+			trx: versionedTransaction,
+			lastValidBlockheight: lastValidBlockHeight,
+		};
 	}
 
 	async sendAndConfirmTransaction(
@@ -194,6 +382,11 @@ export class SolanaMultiTxSender {
 		}
 
 		return rpcResponse.value.unitsConsumed || null;
+	}
+
+	private chooseJitoTipAccount(): PublicKey {
+		const idx = Math.floor(Math.random() * (this.jitoTipAccounts.length - 1));
+		return this.jitoTipAccounts[idx];
 	}
 }
 
@@ -302,4 +495,25 @@ export async function getCurrentSolanaTimeMS(connection: Connection, retry: numb
 		}
 		throw err;
 	}
+}
+
+async function getBundleStatuses(bundleIds: string[], jitoApiUrl: string): Promise<any> {
+	const response = await axios.post(
+		jitoApiUrl,
+		{
+			jsonrpc: '2.0',
+			id: 1,
+			method: 'getBundleStatuses',
+			params: [bundleIds],
+		},
+		{
+			headers: { 'Content-Type': 'application/json' },
+		},
+	);
+
+	if (response.data.error) {
+		throw new Error(`Error getting bundle statuses: ${JSON.stringify(response.data.error, null, 2)}`);
+	}
+
+	return response.data.result;
 }
