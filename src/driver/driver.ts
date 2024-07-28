@@ -22,7 +22,7 @@ import { Swap } from '../swap.dto';
 import { tryNativeToUint8Array } from '../utils/buffer';
 import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
-import { PriorityFeeHelper, SolanaMultiTxSender } from '../utils/solana-trx';
+import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { getWormholeSequenceFromPostedMessage, get_wormhole_core_accounts } from '../utils/wormhole';
@@ -42,7 +42,6 @@ export class DriverService {
 		private readonly rpcConfig: RpcConfig,
 		private readonly contractsConfig: ContractsConfig,
 		private readonly solanaIxService: NewSolanaIxHelper,
-		private readonly priorityFeeHelper: PriorityFeeHelper,
 		private readonly feeService: FeeService,
 		private readonly solanaFulfiller: SolanaFulfiller,
 		private readonly walletsHelper: WalletsHelper,
@@ -174,22 +173,6 @@ export class DriverService {
 		return instruction;
 	}
 
-	async registerOrder(swap: Swap): Promise<void> {
-		const instruction = await this.getRegisterOrderFromSwap(swap);
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
-			instruction.keys.map((accMeta) => accMeta.pubkey.toString()),
-		);
-
-		let instructions = [priorityFeeIx, instruction];
-
-		await this.doTransaction(
-			this.walletConfig.solana.publicKey,
-			instructions,
-			[this.walletConfig.solana],
-			`register_order_${swap.sourceTxHash}`,
-		);
-	}
-
 	getDriverEvmTokenForBidAndSwap(srcChain: number, destChain: number, fromToken: Token): Token {
 		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
 		const fromEth = this.tokenList.getEth(srcChain);
@@ -286,19 +269,18 @@ export class DriverService {
 		if (registerOrder) {
 			instructions.unshift(await this.getRegisterOrderFromSwap(swap));
 		}
-
-		let keyAccs = [];
-		for (let ix of instructions) {
-			for (const key of ix.keys) {
-				keyAccs.push(key.pubkey.toString());
-			}
-		}
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(keyAccs);
-		instructions.unshift(priorityFeeIx);
-
 		let signers = [this.walletConfig.solana];
 
-		await this.doTransaction(this.walletConfig.solana.publicKey, instructions, signers, `bid_${swap.sourceTxHash}`);
+		logger.info(`Sending bid transaction for ${swap.sourceTxHash}`);
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+			instructions,
+			signers,
+			[],
+			this.rpcConfig.solana.sendCount,
+			true,
+		);
+		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
+
 		swap.bidAmount = bidAmount;
 	}
 
@@ -355,12 +337,15 @@ export class DriverService {
 			signers.push(newMessageAccount!);
 		}
 
-		await this.doTransaction(
-			this.walletConfig.solana.publicKey,
+		logger.info(`Sending post bid transaction for ${swap.sourceTxHash}`);
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			instructions,
 			signers,
-			`postbid_${swap.sourceTxHash}`,
+			[],
+			this.rpcConfig.solana.sendCount,
+			true,
 		);
+		logger.info(`Sent post bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
 		if (postAuction) {
 			let whMessageInfo = await this.solanaConnection.getAccountInfo(newMessageAccount!.publicKey);
@@ -384,21 +369,6 @@ export class DriverService {
 			auctionAddr,
 		);
 		return registerWinnerIx;
-	}
-
-	async registerAsWinner(swap: Swap): Promise<void> {
-		const registerWinnerIx = await this.getRegisterWinnerIx(swap);
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
-			registerWinnerIx.keys.map((accMeta) => accMeta.pubkey.toString()),
-		);
-		let instructions = [priorityFeeIx, registerWinnerIx];
-
-		await this.doTransaction(
-			this.walletConfig.solana.publicKey,
-			instructions,
-			[this.walletConfig.solana],
-			`register_winner_${swap.sourceTxHash}`,
-		);
 	}
 
 	async simpleFulFillEvm(swap: Swap) {
@@ -525,7 +495,7 @@ export class DriverService {
 
 			const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true); // already created via the instruction package in bid
 
-			const trx = await this.solanaFulfiller.getFulfillTransferTrx(
+			const trxData = await this.solanaFulfiller.getFulfillTransferTrxData(
 				driverToken,
 				stateAddr,
 				stateToAss,
@@ -535,7 +505,15 @@ export class DriverService {
 				swap,
 			);
 
-			await this.doTransaction(undefined, undefined, undefined, `fulfill_${swap.sourceTxHash}`, trx.serialize());
+			logger.info(`Sending fulfill transaction for ${swap.sourceTxHash}`);
+			const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+				trxData.instructions,
+				trxData.signers,
+				trxData.lookupTables,
+				this.rpcConfig.solana.sendCount,
+				true,
+			);
+			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
 		} else {
 			let driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
@@ -559,26 +537,18 @@ export class DriverService {
 		const fulfillIxs = await this.getSimpleFulfillIxsPackage(swap);
 		const settleIxs = await this.getSettleIxsPackage(swap);
 
-		let allAccountKeys = [];
-		for (let ixPackage of [[registerOrderIx], fulfillIxs, settleIxs]) {
-			for (let ix of ixPackage) {
-				for (const key of ix.keys) {
-					allAccountKeys.push(key.pubkey.toString());
-				}
-			}
-		}
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
-			allAccountKeys.map((accMeta) => accMeta),
-		);
+		let instructions = [registerOrderIx, ...fulfillIxs, ...settleIxs];
 
-		let instructions = [priorityFeeIx, registerOrderIx, ...fulfillIxs, ...settleIxs];
-
-		return await this.doTransaction(
-			this.walletConfig.solana.publicKey,
+		logger.info(`Sending noacution settle transaction for ${swap.sourceTxHash}`);
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			instructions,
 			[this.walletConfig.solana],
-			`auction_less_fulfill_and_settle_${swap.sourceTxHash}`,
+			[],
+			this.rpcConfig.solana.sendCount,
+			true,
 		);
+		logger.info(`Sent noauction settle transaction for ${swap.sourceTxHash} with ${hash}`);
+		return hash;
 	}
 
 	async getSettleIxsPackage(swap: Swap): Promise<TransactionInstruction[]> {
@@ -691,18 +661,15 @@ export class DriverService {
 		);
 		instructions.push(settleIx);
 
-		const keyAccs = instructions.map((ix) => ix.keys).flat();
-		const priorityFeeIx = await this.priorityFeeHelper.getPriorityFeeInstruction(
-			keyAccs.map((accMeta) => accMeta.pubkey.toString()),
-		);
-		instructions.unshift(priorityFeeIx);
-
-		await this.doTransaction(
-			this.walletConfig.solana.publicKey,
+		logger.info(`Sending settle transaction for ${swap.sourceTxHash}`);
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			instructions,
 			[this.walletConfig.solana],
-			`settle_${swap.sourceTxHash}`,
+			[],
+			this.rpcConfig.solana.sendCount,
+			true,
 		);
+		logger.info(`Sent settle transaction for ${swap.sourceTxHash} with ${hash}`);
 	}
 
 	async submitGaslessOrder(swap: Swap) {

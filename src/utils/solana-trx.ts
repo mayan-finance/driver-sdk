@@ -1,11 +1,15 @@
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
+	AddressLookupTableAccount,
 	ComputeBudgetProgram,
 	Connection,
 	PublicKey,
+	Signer,
 	SYSVAR_CLOCK_PUBKEY,
 	TransactionInstruction,
+	TransactionMessage,
 	TransactionSignature,
+	VersionedTransaction,
 } from '@solana/web3.js';
 import { RpcConfig } from '../config/rpc';
 
@@ -25,9 +29,71 @@ async function safeSendAuxiliaryTrx(
 export class SolanaMultiTxSender {
 	private readonly connection: Connection;
 	private readonly otherConnections: Connection[];
+	private readonly priorityFeeHelper: PriorityFeeHelper;
+
 	constructor(private rpcConfig: RpcConfig) {
 		this.connection = new Connection(rpcConfig.solana.solanaMainRpc, 'confirmed');
 		this.otherConnections = rpcConfig.solana.solanaSendRpcs.map((url) => new Connection(url, 'confirmed'));
+		this.priorityFeeHelper = new PriorityFeeHelper(rpcConfig);
+	}
+
+	async createAndSendOptimizedTransaction(
+		instructions: TransactionInstruction[],
+		signers: Signer[],
+		lookupTables: AddressLookupTableAccount[],
+		sendCounts: number,
+		addPriorityFeeIns: boolean = true,
+		feePayer?: Signer,
+	): Promise<string> {
+		if (!signers.length) {
+			throw new Error('The transaction must have at least one signer');
+		}
+
+		if (addPriorityFeeIns) {
+			// Check if any of the instructions provided set the compute unit price and/or limit, and throw an error if true
+			const existingComputeBudgetInstructions = instructions.filter((instruction) =>
+				instruction.programId.equals(ComputeBudgetProgram.programId),
+			);
+
+			if (existingComputeBudgetInstructions.length > 0) {
+				throw new Error('Cannot provide instructions that set the compute unit price and/or limit');
+			}
+		}
+
+		const payerKey = feePayer ? feePayer.publicKey : signers[0].publicKey;
+		let { blockhash: recentBlockhash } = await this.connection.getLatestBlockhash();
+
+		const computeBudgetIx = await this.priorityFeeHelper.getPriorityFeeInstruction([]);
+		instructions.unshift(computeBudgetIx);
+
+		const units = await this.getComputeUnits(instructions, payerKey, lookupTables);
+
+		if (!units) {
+			throw new Error(`Error fetching compute units for the instructions provided`);
+		}
+
+		// For very small transactions, such as simple transfers, default to 1k CUs
+		let customersCU = units < 1000 ? 1000 : Math.ceil(units * 1.06);
+
+		const computeUnitsIx = ComputeBudgetProgram.setComputeUnitLimit({
+			units: customersCU,
+		});
+
+		instructions.unshift(computeUnitsIx);
+
+		const v0Message = new TransactionMessage({
+			instructions: instructions,
+			payerKey: payerKey,
+			recentBlockhash: recentBlockhash,
+		}).compileToV0Message(lookupTables);
+		const versionedTransaction = new VersionedTransaction(v0Message);
+		const allSigners = feePayer ? [...signers, feePayer] : signers;
+		versionedTransaction.sign(allSigners);
+
+		const rawTrx = versionedTransaction.serialize();
+		const trxHash = await this.sendAndConfirmTransaction(rawTrx, sendCounts);
+
+		return trxHash;
 	}
 
 	async sendAndConfirmTransaction(
@@ -100,6 +166,34 @@ export class SolanaMultiTxSender {
 
 		done = true;
 		throw new Error('CONFIRM_TIMED_OUT');
+	}
+
+	private async getComputeUnits(
+		instructions: TransactionInstruction[],
+		payer: PublicKey,
+		lookupTables: AddressLookupTableAccount[],
+	): Promise<number | null> {
+		const testInstructions = [ComputeBudgetProgram.setComputeUnitLimit({ units: 1_400_000 }), ...instructions];
+
+		const testTransaction = new VersionedTransaction(
+			new TransactionMessage({
+				instructions: testInstructions,
+				payerKey: payer,
+				recentBlockhash: (await this.connection.getLatestBlockhash()).blockhash,
+			}).compileToV0Message(lookupTables),
+		);
+
+		const rpcResponse = await this.connection.simulateTransaction(testTransaction, {
+			replaceRecentBlockhash: true,
+			sigVerify: false,
+		});
+
+		if (rpcResponse.value.err) {
+			console.error(`Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)}`);
+			return null;
+		}
+
+		return rpcResponse.value.unitsConsumed || null;
 	}
 }
 

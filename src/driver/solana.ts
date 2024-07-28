@@ -1,7 +1,6 @@
 import { Account, createTransferInstruction, getAccount, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import {
 	AddressLookupTableAccount,
-	ComputeBudgetProgram,
 	Connection,
 	Keypair,
 	PublicKey,
@@ -18,7 +17,6 @@ import { Swap } from '../swap.dto';
 import { tryNativeToUint8Array } from '../utils/buffer';
 import logger from '../utils/logger';
 import { LookupTableOptimizer } from '../utils/lut';
-import { PriorityFeeHelper } from '../utils/solana-trx';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 
@@ -43,7 +41,6 @@ export class SolanaFulfiller {
 		private readonly rpcConfig: RpcConfig,
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaIxHelper: NewSolanaIxHelper,
-		private readonly priorityFeeHelper: PriorityFeeHelper,
 		private readonly lutOptimizer: LookupTableOptimizer,
 		walletHelper: WalletsHelper,
 		tokenList: TokenList,
@@ -206,7 +203,7 @@ export class SolanaFulfiller {
 		return result;
 	}
 
-	async getFulfillTransferTrx(
+	async getFulfillTransferTrxData(
 		driverToken: Token,
 		stateAddress: PublicKey,
 		stateToAss: PublicKey,
@@ -214,7 +211,11 @@ export class SolanaFulfiller {
 		realMinAmountOut: bigint,
 		toToken: Token,
 		swap: Swap,
-	): Promise<VersionedTransaction> {
+	): Promise<{
+		instructions: TransactionInstruction[];
+		lookupTables: AddressLookupTableAccount[];
+		signers: Array<Keypair>;
+	}> {
 		const fullFillIx = await this.solanaIxHelper.getFullfillIx(
 			this.getUnlockAddress(swap.sourceChain),
 			swap.destAddress,
@@ -301,23 +302,10 @@ export class SolanaFulfiller {
 			fulfillLookupTables = jupLookupTables;
 		}
 
-		const computeIns = ComputeBudgetProgram.setComputeUnitLimit({
-			units: 100000 * 7,
-		});
-
 		let signers: Array<Keypair> = [];
 		signers.push(this.walletConfig.solana);
 
 		let instructions = [...fulfillAmountIxs, fullFillIx];
-		let allAccountKeys: string[] = [];
-		for (const instruction of instructions) {
-			for (const key of instruction.keys) {
-				allAccountKeys.push(key.pubkey.toString());
-			}
-		}
-		instructions = await this.priorityFeeHelper.addPriorityFeeInstruction(instructions, allAccountKeys);
-
-		instructions = [computeIns, ...instructions];
 
 		const optimizedLuts = await this.lutOptimizer.getOptimizedLookupTables(
 			instructions,
@@ -327,16 +315,22 @@ export class SolanaFulfiller {
 			`fulfill ${swap.sourceTxHash}`,
 		);
 
-		const { blockhash } = await this.solanaConnection.getLatestBlockhash();
-		const messageV0 = new TransactionMessage({
-			payerKey: this.walletConfig.solana.publicKey,
-			recentBlockhash: blockhash,
+		return {
 			instructions: instructions,
-		}).compileToV0Message(optimizedLuts);
-		const transaction = new VersionedTransaction(messageV0);
-		transaction.sign([this.walletConfig.solana]);
+			lookupTables: optimizedLuts,
+			signers: signers,
+		};
 
-		return transaction;
+		// const { blockhash } = await this.solanaConnection.getLatestBlockhash();
+		// const messageV0 = new TransactionMessage({
+		// 	payerKey: this.walletConfig.solana.publicKey,
+		// 	recentBlockhash: blockhash,
+		// 	instructions: instructions,
+		// }).compileToV0Message(optimizedLuts);
+		// const transaction = new VersionedTransaction(messageV0);
+		// transaction.sign([this.walletConfig.solana]);
+
+		// return transaction;
 	}
 
 	getUnlockAddress(sourceChainId: number): Uint8Array {
