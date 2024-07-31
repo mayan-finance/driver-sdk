@@ -143,12 +143,6 @@ export class EvmFulfiller {
 		realMinAmountOut: bigint,
 	) {
 		const amountIn64 = ethers.parseUnits(availableAmountIn.toFixed(driverToken.decimals), driverToken.decimals);
-		const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);
-
-		if (swapParams.expectedAmountOut < realMinAmountOut) {
-			throw new Error(`Can not evm fulfill ${swap.sourceTxHash} on evm. min amount out issue`);
-		}
-
 		const networkFeeData: ethers.FeeData = await this.evmProviders[targetChain].getFeeData();
 
 		const overrides = await getSuggestedOverrides(targetChain, networkFeeData);
@@ -163,49 +157,64 @@ export class EvmFulfiller {
 
 		const batch = this.gConf.singleBatchChainIds.includes(+swap.destChain) ? false : true; // batch-post except for eth and expensive chains
 
+		let fulfillTx: ethers.TransactionResponse;
 		const swiftCallData = this.generateAuctionFulfillCalldata(
 			0n, // this param doesn't matter and is overridden by swap amount in fulfill helper
 			Buffer.from(postAuctionSignedVaa),
 			unlockAddress32,
 			batch,
 		);
-
-		let fulfillTx: ethers.TransactionResponse;
-		if (driverToken.contract === ethers.ZeroAddress) {
-			logger.info(`Sending swap fulfill with fulfillWithEth for tx=${swap.sourceTxHash}`);
-			overrides['value'] = overrides['value'] + amountIn64;
-
+		if (driverToken.contract === toToken.contract) {
+			// no swap involved
+			logger.info(`Sending no-swap auction fulfill with fulfillOrder for tx=${swap.sourceTxHash}`);
+			if (driverToken.contract === ethers.ZeroAddress) {
+				overrides['value'] = overrides['value'] + amountIn64;
+			}
 			fulfillTx = await this.walletHelper
-				.getFulfillHelperWriteContract(swap.destChain)
-				.fulfillWithEth(
+				.getWriteContract(swap.destChain)
+				.fulfillOrder(amountIn64, Buffer.from(postAuctionSignedVaa), unlockAddress32, batch, overrides);
+		} else {
+			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);
+			if (swapParams.expectedAmountOut < realMinAmountOut) {
+				throw new Error(`Can not evm fulfill ${swap.sourceTxHash} on evm. min amount out issue`);
+			}
+
+			if (driverToken.contract === ethers.ZeroAddress) {
+				logger.info(`Sending swap fulfill with fulfillWithEth for tx=${swap.sourceTxHash}`);
+				overrides['value'] = overrides['value'] + amountIn64;
+
+				fulfillTx = await this.walletHelper
+					.getFulfillHelperWriteContract(swap.destChain)
+					.fulfillWithEth(
+						amountIn64,
+						toToken.contract,
+						swapParams.evmRouterAddress,
+						swapParams.evmRouterCalldata,
+						this.contractsConfig.contracts[targetChain],
+						swiftCallData,
+						overrides,
+					);
+			} else {
+				logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
+
+				fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
+					driverToken.contract,
 					amountIn64,
 					toToken.contract,
 					swapParams.evmRouterAddress,
 					swapParams.evmRouterCalldata,
 					this.contractsConfig.contracts[targetChain],
 					swiftCallData,
+					{
+						value: 12313131313n,
+						deadline: 12313131313n,
+						v: 12,
+						r: Buffer.alloc(32),
+						s: Buffer.alloc(32),
+					}, // permit. doesnt matter because we already gave allowance
 					overrides,
 				);
-		} else {
-			logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
-
-			fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
-				driverToken.contract,
-				amountIn64,
-				toToken.contract,
-				swapParams.evmRouterAddress,
-				swapParams.evmRouterCalldata,
-				this.contractsConfig.contracts[targetChain],
-				swiftCallData,
-				{
-					value: 12313131313n,
-					deadline: 12313131313n,
-					v: 12,
-					r: Buffer.alloc(32),
-					s: Buffer.alloc(32),
-				}, // permit. doesnt matter because we already gave allowance
-				overrides,
-			);
+			}
 		}
 
 		logger.info(`Waiting for auction-fulfill on EVM for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
@@ -261,24 +270,29 @@ export class EvmFulfiller {
 		normalizedMinAmountOut: bigint,
 		toToken: Token,
 	): Promise<bigint> {
-		const quoteRes = await get1InchQuote(
-			{
-				realChainId: WhChainIdToEvm[destChain],
-				srcToken: driverToken.contract,
-				destToken: toToken.contract,
-				amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
-				timeout: 2000,
-			},
-			this.rpcConfig.oneInchApiKey,
-			true,
-			3,
-		);
+		let bidAmount: bigint;
+		if (driverToken.contract === toToken.contract) {
+			bidAmount = BigInt(Math.floor(effectiveAmountInDriverToken * 0.9999 * 10 ** driverToken.decimals));
+		} else {
+			const quoteRes = await get1InchQuote(
+				{
+					realChainId: WhChainIdToEvm[destChain],
+					srcToken: driverToken.contract,
+					destToken: toToken.contract,
+					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
+					timeout: 2000,
+				},
+				this.rpcConfig.oneInchApiKey,
+				true,
+				3,
+			);
 
-		if (!quoteRes) {
-			throw new Error('1inch quote for bid in swift failed');
+			if (!quoteRes) {
+				throw new Error('1inch quote for bid in swift failed');
+			}
+
+			bidAmount = BigInt(Math.floor(Number(quoteRes.toAmount) * Number(0.99)));
 		}
-
-		const bidAmount = BigInt(Math.floor(Number(quoteRes.toAmount) * Number(0.99)));
 
 		let normalizedBidAmount = bidAmount;
 		if (toToken.decimals > 8) {

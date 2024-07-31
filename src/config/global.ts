@@ -12,8 +12,10 @@ export interface SwiftFeeParams {
 	solTxCost: number;
 	additionalSolfulfillCost: number;
 
-	baseFulfillGasWithBatch: number;
-	baseFulfillGasWithOutBatch: number;
+	auctionVaaVerificationAddedGas: number;
+	baseFulfillGasWithBatchEth: number;
+	baseFulfillGasWithOutBatchEth: number;
+	erc20GasOverHead: number;
 	swapFulfillAddedGas: number;
 	baseCancelGas: number;
 	baseBatchPostGas: number;

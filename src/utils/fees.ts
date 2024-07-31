@@ -44,6 +44,11 @@ export class FeeService {
 		const nativeFromPrice = prices.data[this.tokenList.nativeTokens[qr.fromChainId].coingeckoId];
 		const nativeToPrice = prices.data[this.tokenList.nativeTokens[qr.toChainId].coingeckoId];
 
+		const sourceUsdc = this.tokenList.getNativeUsdc(qr.fromChainId);
+		const sourceEth = this.tokenList.getEth(qr.fromChainId);
+		const destUsdc = this.tokenList.getNativeUsdc(qr.toChainId);
+		const destEth = this.tokenList.getEth(qr.toChainId);
+
 		let shrinkedStateCost = this.gConf.feeParams.shrinkedStateCost; // state cost after shrink rent
 		let sourceStateCost = this.gConf.feeParams.sourceStateCost; // source state rent
 		let solanaSimpleCost = this.gConf.feeParams.solanaSimpleCost; // state cost + tx fees
@@ -60,10 +65,16 @@ export class FeeService {
 			postAuctionCost = 0;
 		}
 
-		let baseFulfillGasWithBatch = this.gConf.feeParams.baseFulfillGasWithBatch;
-		let baseFulfillGasWithOutBatch = this.gConf.feeParams.baseFulfillGasWithOutBatch;
+		let baseFulfillGasWithBatch = this.gConf.feeParams.baseFulfillGasWithBatchEth;
+		let baseFulfillGasWithOutBatch = this.gConf.feeParams.baseFulfillGasWithOutBatchEth;
+		if (qr.fromToken.contract !== sourceEth?.contract) {
+			// when source is not eth, usdc (or other erc20) must be used at dest to fulfill and more gas overhead
+			baseFulfillGasWithOutBatch += this.gConf.feeParams.erc20GasOverHead;
+			baseFulfillGasWithBatch += this.gConf.feeParams.erc20GasOverHead;
+		}
 		let swapFulfillAddedGas = this.gConf.feeParams.swapFulfillAddedGas;
 		let baseBatchPostGas = this.gConf.feeParams.baseBatchPostGas;
+		let auctionVaaVerificationAddedGas = this.gConf.feeParams.auctionVaaVerificationAddedGas;
 
 		const overallMultiplier = 1.05;
 
@@ -73,6 +84,14 @@ export class FeeService {
 		]);
 		const srcGasPrice = srcFeeData?.gasPrice!;
 		const dstGasPrice = dstFeeData?.gasPrice!;
+
+		let hasDestSwap = true;
+		if (
+			(sourceUsdc?.contract === qr.fromToken.contract && destUsdc?.contract === qr.toToken.contract) ||
+			(sourceEth?.contract === qr.fromToken.contract && destEth?.contract === qr.toToken.contract)
+		) {
+			hasDestSwap = false;
+		}
 
 		let fulfillCost = 0;
 		if (qr.toChainId !== CHAIN_ID_SOLANA) {
@@ -88,8 +107,13 @@ export class FeeService {
 				// when destination is eth we do not use batch unlock. so fulfill is cheaper (no storage)
 				baseFulfillGas = baseFulfillGasWithOutBatch;
 			}
+
+            if (hasDestSwap) {
+                baseFulfillGas += swapFulfillAddedGas; // extra gas for swap on aggregators
+            }
+
 			if (qr.auctionMode !== AUCTION_MODES.DONT_CARE) {
-				baseFulfillGas += swapFulfillAddedGas; // extra gas for swap on evm
+				baseFulfillGas += auctionVaaVerificationAddedGas; // extra gas for swap on evm
 			}
 
 			let fulfillGas = baseFulfillGas * this.getChainPriceFactor(qr.toChainId);
