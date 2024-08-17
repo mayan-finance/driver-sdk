@@ -108,9 +108,9 @@ export class FeeService {
 				baseFulfillGas = baseFulfillGasWithOutBatch;
 			}
 
-            if (hasDestSwap) {
-                baseFulfillGas += swapFulfillAddedGas; // extra gas for swap on aggregators
-            }
+			if (hasDestSwap) {
+				baseFulfillGas += swapFulfillAddedGas; // extra gas for swap on aggregators
+			}
 
 			if (qr.auctionMode !== AUCTION_MODES.DONT_CARE) {
 				baseFulfillGas += auctionVaaVerificationAddedGas; // extra gas for swap on evm
@@ -129,7 +129,7 @@ export class FeeService {
 		} else {
 			let fulfillSolCost = solTxCost + additionalSolfulfillCost; // base tx fees;
 			fulfillSolCost += shrinkedStateCost;
-			fulfillCost += ataCreationCost; // asssumes we will always create user ata
+			fulfillSolCost += ataCreationCost; // asssumes we will always create user ata
 			fulfillCost = await this.calculateSolanaFee(
 				fulfillSolCost,
 				solPrice,
