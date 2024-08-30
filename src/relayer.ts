@@ -2,7 +2,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS, supportedChainIds } from './config/chains';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WORMHOLE_DECIMALS, supportedChainIds } from './config/chains';
 import { ContractsConfig } from './config/contracts';
 import { MayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
@@ -487,10 +487,13 @@ export class Relayer {
 	}
 
 	private isInputTokenAcceptable(swap: Swap) {
-		// We only accept ETH and USDC as input tokens in our quote API so we are ignoring anything
-		const [eth, usdc] = [this.tokenList.getEth(swap.sourceChain), this.tokenList.getNativeUsdc(swap.sourceChain)];
+		// We only accept ETH and USDC as input tokens (except for bsc) in our quote API so we are ignoring anything
+		let acceptedTokens = [this.tokenList.getEth(swap.sourceChain), this.tokenList.getNativeUsdc(swap.sourceChain)];
+		if (swap.sourceChain === CHAIN_ID_BSC) {
+			acceptedTokens.push(this.tokenList.getNativeUsdt(swap.sourceChain));
+		}
 
-		return [eth?.contract, usdc?.contract].includes(swap.fromToken.contract);
+		return acceptedTokens.map((t) => t?.contract).includes(swap.fromToken.contract);
 	}
 
 	private isMayanInitiatedSwap(swap: Swap) {

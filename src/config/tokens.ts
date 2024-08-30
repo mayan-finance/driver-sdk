@@ -4,6 +4,7 @@ import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
 	CHAIN_ID_BASE,
+	CHAIN_ID_BSC,
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
@@ -86,6 +87,10 @@ export class TokenList {
 		return this.tokensPerChain[chainId]?.find((tk) => tk.contract === UsdcContracts[chainId]);
 	}
 
+	getNativeUsdt(chainId: number): Token | undefined {
+		return this.tokensPerChain[chainId]?.find((tk) => tk.contract === UsdtContracts[chainId]);
+	}
+
 	getEth(chainId: number): Token | null {
 		if ([CHAIN_ID_ETH, CHAIN_ID_ARBITRUM, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE].includes(chainId as any)) {
 			return this.nativeTokens[chainId];
@@ -133,3 +138,13 @@ const UsdcContracts: { [key: number]: string } = {
 	[CHAIN_ID_OPTIMISM]: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
 	[CHAIN_ID_BASE]: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
 };
+
+const UsdtContracts: { [key: number]: string } = {
+	[CHAIN_ID_SOLANA]: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+	[CHAIN_ID_BSC]: '0x55d398326f99059ff775485246999027b3197955',
+	[CHAIN_ID_ETH]: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+	[CHAIN_ID_POLYGON]: '0xc2132d05d31c914a87c6611c10748aeb04b58e8f',
+	[CHAIN_ID_AVAX]: '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7',
+	[CHAIN_ID_ARBITRUM]: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+	[CHAIN_ID_OPTIMISM]: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
+ };

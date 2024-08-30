@@ -29,7 +29,7 @@ export async function getSuggestedOverrides(targetChain: number, networkFeeData:
 			logger.warn('failed to get gas price from polygon gas station', err);
 		}
 	} else if (targetChain === CHAIN_ID_BSC) {
-		overrides['gasPrice'] = ethers.parseUnits('3', 'gwei');
+		overrides['gasPrice'] = ethers.parseUnits('1.5', 'gwei');
 	} else if (targetChain === CHAIN_ID_OPTIMISM) {
 		overrides['gasPrice'] = networkFeeData.gasPrice!;
 	} else if (targetChain === CHAIN_ID_BASE) {
