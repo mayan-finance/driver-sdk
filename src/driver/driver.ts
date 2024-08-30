@@ -174,11 +174,18 @@ export class DriverService {
 	}
 
 	getDriverEvmTokenForBidAndSwap(srcChain: number, destChain: number, fromToken: Token): Token {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
 		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
 		const fromEth = this.tokenList.getEth(srcChain);
 
-		if (fromToken.contract === fromNativeUSDC?.contract) {
-			return this.tokenList.getNativeUsdc(destChain)!;
+		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
+			const destUsdc = this.tokenList.getNativeUsdc(destChain);
+			const destUsdt = this.tokenList.getNativeUsdt(destChain);
+			if (!destUsdc && !destUsdt) {
+				throw new Error(`Stable token not found on ${destChain} for driver! not bidding or swapping`);
+			}
+
+			return (destUsdc || destUsdt)!;
 		} else if (fromToken.contract === fromEth?.contract) {
 			return this.tokenList.getEth(destChain)!;
 		} else {
@@ -190,10 +197,11 @@ export class DriverService {
 	}
 
 	getDriverSolanaTokenForBidAndSwap(srcChain: number, fromToken: Token): Token {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
 		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
 		const fromEth = this.tokenList.getEth(srcChain);
 
-		if (fromToken.contract === fromNativeUSDC?.contract) {
+		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
 			return this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!;
 		} else if (fromToken.contract === fromEth?.contract) {
 			return this.tokenList.getWethSol();
@@ -278,6 +286,8 @@ export class DriverService {
 			[],
 			this.rpcConfig.solana.sendCount,
 			true,
+			undefined,
+			50_000,
 		);
 		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
 

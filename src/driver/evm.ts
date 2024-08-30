@@ -1,7 +1,14 @@
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers6';
 import { abi as SwiftAbi } from '../abis/swift.abi';
-import { CHAIN_ID_SOLANA, ETH_CHAINS, WORMHOLE_DECIMALS, WhChainIdToEvm, supportedChainIds } from '../config/chains';
+import {
+	CHAIN_ID_BSC,
+	CHAIN_ID_SOLANA,
+	ETH_CHAINS,
+	WORMHOLE_DECIMALS,
+	WhChainIdToEvm,
+	supportedChainIds,
+} from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
@@ -52,7 +59,10 @@ export class EvmFulfiller {
 				continue;
 			}
 			let networkFeeData = await this.evmProviders[chainId].getFeeData();
-			const driverERC20Tokens = [this.tokenList.getNativeUsdc(chainId)];
+			let driverERC20Tokens = [this.tokenList.getNativeUsdc(chainId)];
+			if (chainId === CHAIN_ID_BSC) {
+				driverERC20Tokens = [this.tokenList.getNativeUsdt(chainId)];
+			}
 			for (let driverToken of driverERC20Tokens) {
 				if (!driverToken) {
 					continue;

@@ -44,8 +44,10 @@ export class FeeService {
 		const nativeFromPrice = prices.data[this.tokenList.nativeTokens[qr.fromChainId].coingeckoId];
 		const nativeToPrice = prices.data[this.tokenList.nativeTokens[qr.toChainId].coingeckoId];
 
+		const sourceUsdt = this.tokenList.getNativeUsdt(qr.fromChainId);
 		const sourceUsdc = this.tokenList.getNativeUsdc(qr.fromChainId);
 		const sourceEth = this.tokenList.getEth(qr.fromChainId);
+		const destUsdt = this.tokenList.getNativeUsdt(qr.toChainId);
 		const destUsdc = this.tokenList.getNativeUsdc(qr.toChainId);
 		const destEth = this.tokenList.getEth(qr.toChainId);
 
@@ -87,6 +89,8 @@ export class FeeService {
 
 		let hasDestSwap = true;
 		if (
+			(sourceUsdc?.contract === qr.fromToken.contract && destUsdt?.contract === qr.toToken.contract) ||
+			(sourceUsdt?.contract === qr.fromToken.contract && destUsdc?.contract === qr.toToken.contract) ||
 			(sourceUsdc?.contract === qr.fromToken.contract && destUsdc?.contract === qr.toToken.contract) ||
 			(sourceEth?.contract === qr.fromToken.contract && destEth?.contract === qr.toToken.contract)
 		) {

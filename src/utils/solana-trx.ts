@@ -209,6 +209,7 @@ export class SolanaMultiTxSender {
 		sendCounts: number,
 		addPriorityFeeIns: boolean = true,
 		feePayer?: Signer,
+		manualComputeUnits?: number,
 	): Promise<string> {
 		const { trx } = await this.createOptimizedVersionedTransaction(
 			instructions,
@@ -216,6 +217,7 @@ export class SolanaMultiTxSender {
 			lookupTables,
 			addPriorityFeeIns,
 			feePayer,
+			manualComputeUnits,
 		);
 		const rawTrx = trx.serialize();
 		const trxHash = await this.sendAndConfirmTransaction(rawTrx, sendCounts);
@@ -229,6 +231,7 @@ export class SolanaMultiTxSender {
 		lookupTables: AddressLookupTableAccount[],
 		addPriorityFeeIns: boolean = true,
 		feePayer?: Signer,
+		manualComputeUnits?: number,
 	): Promise<{ trx: VersionedTransaction; lastValidBlockheight: number }> {
 		if (!signers.length) {
 			throw new Error('The transaction must have at least one signer');
@@ -253,7 +256,12 @@ export class SolanaMultiTxSender {
 			instructions.unshift(computeBudgetIx);
 		}
 
-		const units = await this.getComputeUnits(instructions, payerKey, lookupTables);
+		let units: number | null;
+		if (manualComputeUnits) {
+			units = manualComputeUnits;
+		} else {
+			units = await this.getComputeUnits(instructions, payerKey, lookupTables);
+		}
 
 		if (!units) {
 			throw new Error(`Error fetching compute units for the instructions provided`);
