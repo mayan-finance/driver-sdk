@@ -59,6 +59,7 @@ export class FeeService {
 		let postCancelCost = this.gConf.feeParams.postCancelCost;
 		let batchPostBaseCost = this.gConf.feeParams.batchPostBaseCost;
 		let batchPostAdddedCost = this.gConf.feeParams.batchPostAdddedCost;
+		let postUnlockVaaSingle = this.gConf.feeParams.postUnlockVaaSingle;
 		let postUnlockVaaBase = this.gConf.feeParams.postUnlockVaaBase;
 		let postUnlockVaaPerItem = this.gConf.feeParams.postUnlockVaaPerItem;
 		let solTxCost = this.gConf.feeParams.solTxCost;
@@ -79,6 +80,7 @@ export class FeeService {
 		let auctionVaaVerificationAddedGas = this.gConf.feeParams.auctionVaaVerificationAddedGas;
 
 		const overallMultiplier = 1.05;
+		const isSingleUnlock = qr.toChainId === CHAIN_ID_ETH;
 
 		const [srcFeeData, dstFeeData] = await Promise.all([
 			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
@@ -107,7 +109,7 @@ export class FeeService {
 				overallMultiplier,
 			);
 			let baseFulfillGas = baseFulfillGasWithBatch;
-			if (qr.toChainId === CHAIN_ID_ETH) {
+			if (isSingleUnlock) {
 				// when destination is eth we do not use batch unlock. so fulfill is cheaper (no storage)
 				baseFulfillGas = baseFulfillGasWithOutBatch;
 			}
@@ -148,31 +150,44 @@ export class FeeService {
 
 		let unlockFee: number;
 		if (qr.fromChainId === CHAIN_ID_SOLANA) {
-			let postUnlockVaaSol =
-				postUnlockVaaBase + postUnlockVaaPerItem * realBatchCount + solTxCost - ataCreationCost; // source state Ata is closed and paid to unlocker/refunder on solana
-			postUnlockVaaSol = Math.max(0, postUnlockVaaSol);
-			let unlockForAll = await this.calculateSolanaFee(
-				postUnlockVaaSol,
-				solPrice,
-				fromTokenPrice,
-				0,
-				overallMultiplier,
-			);
+			if (isSingleUnlock) {
+				let unlockTotal = await this.calculateSolanaFee(
+					postUnlockVaaSingle + solTxCost,
+					solPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+				let postOnDestCost = 0; // already posted on fulfill
 
-			let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
-			const batchPostCost = await this.calculateGenericEvmFee(
-				batchPostGas,
-				dstGasPrice,
-				nativeToPrice,
-				fromTokenPrice,
-				0,
-				overallMultiplier,
-			);
+				unlockFee = unlockTotal + postOnDestCost;
+			} else {
+				let postUnlockVaaSol =
+					postUnlockVaaBase + postUnlockVaaPerItem * realBatchCount + solTxCost - ataCreationCost; // source state Ata is closed and paid to unlocker/refunder on solana
+				postUnlockVaaSol = Math.max(0, postUnlockVaaSol);
+				let unlockForAll = await this.calculateSolanaFee(
+					postUnlockVaaSol,
+					solPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
 
-			unlockFee = (unlockForAll + batchPostCost) / batchCount;
+				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
+				const batchPostCost = await this.calculateGenericEvmFee(
+					batchPostGas,
+					dstGasPrice,
+					nativeToPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+
+				unlockFee = (unlockForAll + batchPostCost) / batchCount;
+			}
 		} else {
 			let batchPostCost = 0;
-			if (qr.toChainId === CHAIN_ID_ETH) {
+			if (isSingleUnlock) {
 				batchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
 			} else if (qr.toChainId === CHAIN_ID_SOLANA) {
 				const batchPostSolUsage = batchPostBaseCost + batchPostAdddedCost * realBatchCount + solTxCost;

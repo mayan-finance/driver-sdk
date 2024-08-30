@@ -7,6 +7,7 @@ export interface SwiftFeeParams {
 	postCancelCost: number;
 	batchPostBaseCost: number;
 	batchPostAdddedCost: number;
+	postUnlockVaaSingle: number;
 	postUnlockVaaBase: number;
 	postUnlockVaaPerItem: number;
 	solTxCost: number;
