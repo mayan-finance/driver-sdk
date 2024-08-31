@@ -4,6 +4,7 @@ import {
 	getOrCreateAssociatedTokenAccount,
 } from '@solana/spl-token';
 import {
+	AddressLookupTableAccount,
 	Connection,
 	Keypair,
 	MessageV0,
@@ -294,7 +295,16 @@ export class DriverService {
 		swap.bidAmount = bidAmount;
 	}
 
-	async postBid(swap: Swap, createStateAss: boolean, postAuction: boolean): Promise<bigint | null> {
+	async postBid(
+		swap: Swap,
+		createStateAss: boolean,
+		postAuction: boolean,
+		onlyTxData?: boolean,
+	): Promise<{
+		sequence?: bigint;
+		instructions?: TransactionInstruction[];
+		signers?: Array<Keypair>;
+	} | null> {
 		const stateAddr = this.getStateAddr(swap);
 
 		const srcChain = swap.sourceChain;
@@ -347,6 +357,10 @@ export class DriverService {
 			signers.push(newMessageAccount!);
 		}
 
+		if (!!onlyTxData) {
+			return { instructions, signers };
+		}
+
 		logger.info(`Sending post bid transaction for ${swap.sourceTxHash}`);
 		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			instructions,
@@ -365,7 +379,7 @@ export class DriverService {
 				whMessageInfo = await this.solanaConnection.getAccountInfo(newMessageAccount!.publicKey);
 			}
 
-			return getWormholeSequenceFromPostedMessage(whMessageInfo.data);
+			return { sequence: getWormholeSequenceFromPostedMessage(whMessageInfo.data) };
 		}
 		return null;
 	}
@@ -466,7 +480,15 @@ export class DriverService {
 		return result;
 	}
 
-	async fulfill(swap: Swap, postAuctionSignedVaa?: Uint8Array): Promise<void> {
+	async fulfill(
+		swap: Swap,
+		postAuctionSignedVaa?: Uint8Array,
+		onlySolTrx?: boolean,
+	): Promise<{
+		instructions: TransactionInstruction[];
+		lookupTables: AddressLookupTableAccount[];
+		signers: Array<Keypair>;
+	} | void> {
 		const stateAddr = this.getStateAddr(swap);
 
 		const fromTokenAddr = swap.fromTokenAddress;
@@ -514,6 +536,10 @@ export class DriverService {
 				toToken,
 				swap,
 			);
+
+			if (!!onlySolTrx) {
+				return trxData;
+			}
 
 			logger.info(`Sending fulfill transaction for ${swap.sourceTxHash}`);
 			const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
@@ -618,20 +644,12 @@ export class DriverService {
 		return [...instructions, settleIx];
 	}
 
-	async settle(swap: Swap): Promise<void> {
+	async settle(swap: Swap, onlyTxData?: boolean): Promise<{ instructions: TransactionInstruction[] } | void> {
 		const stateAddr = this.getStateAddr(swap);
 		const to = new PublicKey(swap.destAddress);
 
 		const toToken = swap.toToken;
 		const toMint = new PublicKey(toToken.mint);
-
-		const stateToAss = await getOrCreateAssociatedTokenAccount(
-			this.solanaConnection,
-			this.walletConfig.solana,
-			new PublicKey(toToken.mint),
-			stateAddr,
-			true,
-		);
 
 		const mayanAndReferrerAssInfo = this.getMayanAndReferrerFeeAssesInstructions(
 			swap.mayanBps,
@@ -647,20 +665,25 @@ export class DriverService {
 			instructions.push(ix);
 		}
 
-		const toAss = getAssociatedTokenAddressSync(toMint, to, true);
+		const stateToAss = getAssociatedTokenAddressSync(toMint, stateAddr, true);
 		instructions.push(
 			createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
-				toAss,
-				to,
-				new PublicKey(toMint),
+				stateToAss,
+				stateAddr,
+				toMint,
 			),
+		);
+
+		const toAss = getAssociatedTokenAddressSync(toMint, to, true);
+		instructions.push(
+			createAssociatedTokenAccountIdempotentInstruction(this.walletConfig.solana.publicKey, toAss, to, toMint),
 		);
 
 		const settleIx = await this.solanaIxService.getSettleIx(
 			this.walletConfig.solana.publicKey,
 			stateAddr,
-			stateToAss.address,
+			stateToAss,
 			to,
 			toAss,
 			mayanAndReferrerAssInfo.mayan,
@@ -671,6 +694,10 @@ export class DriverService {
 		);
 		instructions.push(settleIx);
 
+		if (!!onlyTxData) {
+			return { instructions };
+		}
+
 		logger.info(`Sending settle transaction for ${swap.sourceTxHash}`);
 		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			instructions,
@@ -680,6 +707,27 @@ export class DriverService {
 			true,
 		);
 		logger.info(`Sent settle transaction for ${swap.sourceTxHash} with ${hash}`);
+	}
+
+	async auctionFulfillAndSettlePackage(swap: Swap) {
+		logger.info(`Getting swapless fulfill-settle package for ${swap.sourceTxHash}`);
+		const postBidData = await this.postBid(swap, true, false, true);
+		const fulfillData = await this.fulfill(swap, undefined, true);
+		const settleData = await this.settle(swap, true);
+
+		let finalInstructions: TransactionInstruction[] = [];
+		finalInstructions.push(...postBidData!.instructions!);
+		finalInstructions.push(...fulfillData!.instructions!);
+		finalInstructions.push(...settleData!.instructions!);
+		logger.info(`Sending fulfill-settle package for ${swap.sourceTxHash}`);
+		const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
+			finalInstructions,
+			[this.walletConfig.solana, ...postBidData?.signers!, ...fulfillData?.signers!],
+			fulfillData!.lookupTables,
+			true,
+			this.rpcConfig.solana.sendCount,
+		);
+		logger.info(`Sent fulfill-settle package for ${swap.sourceTxHash} with ${hash}`);
 	}
 
 	async submitGaslessOrder(swap: Swap) {

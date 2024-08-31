@@ -35,7 +35,7 @@ export class ChainFinality {
 	};
 
 	private readonly minSwapValueUsd = 100;
-	private readonly maxSwapValueUsd = 100_000;
+	private readonly maxSwapValueUsd = 1_000_000;
 
 	constructor(
 		private readonly solanaConnection: Connection,
@@ -46,7 +46,7 @@ export class ChainFinality {
 		this.blockGenerationTimeSecond = {
 			[CHAIN_ID_ETH]: 13,
 			[CHAIN_ID_BSC]: 3,
-			[CHAIN_ID_POLYGON]: 2,
+			[CHAIN_ID_POLYGON]: 16,
 			[CHAIN_ID_AVAX]: 2,
 			[CHAIN_ID_ARBITRUM]: 100,
 			[CHAIN_ID_OPTIMISM]: 3,
@@ -54,13 +54,13 @@ export class ChainFinality {
 		};
 
 		this.minimumBlocksToFinality = {
-			[CHAIN_ID_ETH]: 2,
-			[CHAIN_ID_BSC]: 2,
+			[CHAIN_ID_ETH]: 1,
+			[CHAIN_ID_BSC]: 1,
 			[CHAIN_ID_POLYGON]: 4,
-			[CHAIN_ID_AVAX]: 2,
-			[CHAIN_ID_ARBITRUM]: 2,
-			[CHAIN_ID_OPTIMISM]: 2,
-			[CHAIN_ID_BASE]: 2,
+			[CHAIN_ID_AVAX]: 1,
+			[CHAIN_ID_ARBITRUM]: 1,
+			[CHAIN_ID_OPTIMISM]: 1,
+			[CHAIN_ID_BASE]: 1,
 		};
 	}
 
