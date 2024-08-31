@@ -262,7 +262,7 @@ export class Relayer {
 
 		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		let maxRetries = 10;
-		while (maxRetries > 0 && (!auctionState || auctionState.sequence < 1n)) {
+		while (maxRetries > 0 && !auctionState) {
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			await delay(1000);
 			maxRetries--;
