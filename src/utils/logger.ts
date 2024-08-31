@@ -12,7 +12,7 @@ export function getLogger(): Logger {
         format: combine(
             colorize(),
             timestamp({
-            format: 'YYYY-MM-DD HH:mm:ss'
+            format: 'YYYY-MM-DD HH:mm:ss.SSS'
             }),
             logFormat
         ),

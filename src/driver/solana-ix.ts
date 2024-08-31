@@ -21,6 +21,7 @@ import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
 export class NewSolanaIxHelper {
 	private readonly swiftProgram: Program<SwiftT>;
 	private readonly auctionProgram: Program<AuctionT>;
+	private readonly auctionConfig: PublicKey;
 
 	constructor(swiftProgramId: PublicKey, auctionProgramId: PublicKey, connection: Connection) {
 		// Use a random keypair wallet because we won't be sending tx using anchor wrapper
@@ -29,6 +30,8 @@ export class NewSolanaIxHelper {
 		});
 		this.swiftProgram = new Program(SwiftIdl, swiftProgramId, provider);
 		this.auctionProgram = new Program(AuctionIdl, auctionProgramId, provider);
+
+		this.auctionConfig = PublicKey.findProgramAddressSync([Buffer.from('CONFIG')], auctionProgramId)[0];
 	}
 
 	private createOrderParams(swap: Swap, fromTokenDecimals: number) {
@@ -196,6 +199,7 @@ export class NewSolanaIxHelper {
 		return this.auctionProgram.methods
 			.bid(this.createOrderParams(swap, fromTokenDecimals), new BN(normalizedBidAmount.toString()))
 			.accounts({
+				config: this.auctionConfig,
 				systemProgram: SystemProgram.programId,
 				driver: driver,
 				auctionState: auctionState,

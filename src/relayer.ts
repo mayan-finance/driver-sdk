@@ -173,17 +173,17 @@ export class Relayer {
 					await this.tryProgressFulfill(swap);
 				} catch (err) {
 					logger.error(`error in main while for tx: ${swap.sourceTxHash} ${err}`);
-					let backoff = 1000;
+					let backoff = 500;
 					switch (swap.retries) {
 						case 1:
-							backoff = 5_000;
+							backoff = 1_000;
 							break;
 						case 2:
-							backoff = 10_000;
+							backoff = 2_000;
 							break;
 						case 3:
 						case 4:
-							backoff = 20_000;
+							backoff = 5_000;
 							break;
 					}
 					swap.retries++;
@@ -275,7 +275,7 @@ export class Relayer {
 
 		let sequence: bigint | null = auctionState.sequence;
 		if (!sequence || sequence < 1n) {
-			sequence = await this.driverService.postBid(swap, false, true);
+			sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
 		} else {
 			sequence = sequence - 1n;
 		}
@@ -337,7 +337,7 @@ export class Relayer {
 			logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
 		}
 
-		await delay(this.gConf.auctionTimeSeconds * 1000);
+		// await delay(this.gConf.auctionTimeSeconds * 1000);
 
 		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 		let maxRetries = 10;
@@ -352,30 +352,37 @@ export class Relayer {
 			return;
 		}
 
-		await this.driverService.postBid(swap, true, false);
-
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
-		await this.waitForFinalizeOnSource(swap);
 
-		logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
-		let fulfillRetries = 0;
-		while (true) {
-			try {
-				await this.driverService.fulfill(swap);
-				break;
-			} catch (err) {
-				if (fulfillRetries > 3) {
-					throw err;
-				} else {
-					logger.warn(
-						`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
-					);
-					fulfillRetries++;
+		let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
+		if (driverToken.contract === swap.toToken.contract) {
+			await this.waitForFinalizeOnSource(swap);
+			await this.driverService.auctionFulfillAndSettlePackage(swap);
+			swap.status = SWAP_STATUS.ORDER_SETTLED;
+		} else {
+			await this.driverService.postBid(swap, true, false);
+			await this.waitForFinalizeOnSource(swap);
+
+			logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
+			let fulfillRetries = 0;
+			while (true) {
+				try {
+					await this.driverService.fulfill(swap);
+					break;
+				} catch (err) {
+					if (fulfillRetries > 3) {
+						throw err;
+					} else {
+						logger.warn(
+							`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
+						);
+						fulfillRetries++;
+					}
 				}
 			}
+			logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
+			swap.status = SWAP_STATUS.ORDER_FULFILLED;
 		}
-		logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
-		swap.status = SWAP_STATUS.ORDER_FULFILLED;
 	}
 
 	async simpleFulfillAndSettle(swap: Swap, state: SwiftDestState | null) {

@@ -347,12 +347,13 @@ export class SolanaMultiTxSender {
 		otherEnginesBackgroundSend();
 
 		while (!done && new Date().getTime() - startTime < timeoutSeconds * 1000) {
-			const trxStatus = await this.connection.getSignatureStatus(trxHash);
-			if (trxStatus && trxStatus.value) {
-				if (trxStatus.value.err) {
+			const sigStatuses = await this.connection.getSignatureStatuses([trxHash]);
+			const trxStatus = sigStatuses && sigStatuses.value[0];
+			if (trxStatus) {
+				if (trxStatus.err) {
 					done = true;
-					throw new Error(`${trxHash} reverted with ${trxStatus.value.err}`);
-				} else if (trxStatus.value.confirmationStatus === confirmationLevel) {
+					throw new Error(`${trxHash} reverted with ${trxStatus.err}`);
+				} else if (trxStatus.confirmationStatus === confirmationLevel) {
 					done = true;
 					return trxHash;
 				}
