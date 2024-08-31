@@ -186,7 +186,9 @@ export class EvmFulfiller {
 		} else {
 			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);
 			if (swapParams.expectedAmountOut < realMinAmountOut) {
-				throw new Error(`Can not evm fulfill ${swap.sourceTxHash} on evm. min amount out issue`);
+				throw new Error(
+					`Can not evm fulfill ${swap.sourceTxHash} on evm. min amount out issue ${swapParams.expectedAmountOut} ${realMinAmountOut} with input: ${amountIn64} raw input: ${swap.fromAmount64}`,
+				);
 			}
 
 			if (driverToken.contract === ethers.ZeroAddress) {
