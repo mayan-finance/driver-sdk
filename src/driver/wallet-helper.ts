@@ -67,8 +67,8 @@ export class WalletsHelper {
 		return this.evmWallets[chainId];
 	}
 
-	getWriteContract(chainId: number): ethers.Contract {
-		if (chainId === CHAIN_ID_ETH) {
+	getWriteContract(chainId: number, useFlashBots: boolean = true): ethers.Contract {
+		if (chainId === CHAIN_ID_ETH && useFlashBots) {
 			return this.flashBotSwiftContract;
 		} else {
 			return this.swiftContracts[chainId];

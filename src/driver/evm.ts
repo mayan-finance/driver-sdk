@@ -181,7 +181,7 @@ export class EvmFulfiller {
 				overrides['value'] = overrides['value'] + amountIn64;
 			}
 			fulfillTx = await this.walletHelper
-				.getWriteContract(swap.destChain)
+				.getWriteContract(swap.destChain, false)
 				.fulfillOrder(amountIn64, Buffer.from(postAuctionSignedVaa), unlockAddress32, batch, overrides);
 		} else {
 			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);

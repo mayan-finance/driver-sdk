@@ -83,6 +83,7 @@ export class SolanaMultiTxSender {
 		addPriorityFeeIns: boolean,
 		sendCounts: number,
 		feePayer?: Signer,
+		manualComputeUnits?: number,
 	): Promise<string> {
 		let promises: Promise<string>[] = [];
 
@@ -113,6 +114,7 @@ export class SolanaMultiTxSender {
 				sendCounts,
 				addPriorityFeeIns,
 				feePayer,
+				manualComputeUnits,
 			);
 			promises.push(normalResult);
 		}

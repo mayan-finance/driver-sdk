@@ -340,7 +340,9 @@ export class DriverService {
 			instructions.push(postAuctionIx);
 		}
 
+		let computeUnits: number = 50_000;
 		if (createStateAss) {
+			computeUnits = 55_000;
 			const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true);
 			const createdAtaIx = createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
@@ -354,6 +356,7 @@ export class DriverService {
 
 		const signers = [this.walletConfig.solana];
 		if (postAuction) {
+			computeUnits = 70_000;
 			signers.push(newMessageAccount!);
 		}
 
@@ -368,6 +371,8 @@ export class DriverService {
 			[],
 			this.rpcConfig.solana.sendCount,
 			true,
+			undefined,
+			computeUnits,
 		);
 		logger.info(`Sent post bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
@@ -726,6 +731,8 @@ export class DriverService {
 			fulfillData!.lookupTables,
 			true,
 			this.rpcConfig.solana.sendCount,
+			undefined,
+			200_000,
 		);
 		logger.info(`Sent fulfill-settle package for ${swap.sourceTxHash} with ${hash}`);
 	}
