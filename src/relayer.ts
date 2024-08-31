@@ -117,9 +117,6 @@ export class Relayer {
 
 	async relay(swap: Swap) {
 		try {
-			if (swap.sourceTxHash !== '0x7c0da00e09b95d1d7c64e6c64964123f3e8100af27e8da07e4c11c567d429b72') {
-				return;
-			}
 			if (!supportedChainIds.includes(swap.sourceChain) || !supportedChainIds.includes(swap.destChain)) {
 				logger.warn(`Swap chain id is not supported yet on sdk`);
 				return;
