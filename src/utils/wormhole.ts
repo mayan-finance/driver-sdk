@@ -69,7 +69,13 @@ export function getEmitterAddressSolana(programAddress: string) {
 		.toString('hex');
 }
 
-export async function getSignedVaa(guardianRpcs: string[], chainId: number, contractAddress: string, sequence: string) {
+export async function getSignedVaa(
+	guardianRpcs: string[],
+	chainId: number,
+	contractAddress: string,
+	sequence: string,
+	retryTime?: number,
+) {
 	let mayanBridgeEmitterAddress;
 	if (ethers.isAddress(contractAddress)) {
 		mayanBridgeEmitterAddress = getEmitterAddressEth(contractAddress);
@@ -90,7 +96,7 @@ export async function getSignedVaa(guardianRpcs: string[], chainId: number, cont
 				{
 					transport: NodeHttpTransportWithDefaultTimeout(3000),
 				},
-				3000,
+				retryTime || 3000,
 				6 * guardianRpcs.length,
 			);
 

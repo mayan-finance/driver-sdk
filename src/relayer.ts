@@ -256,28 +256,27 @@ export class Relayer {
 			logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
 			await this.driverService.bid(swap, false);
 			logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
+			await delay(this.gConf.auctionTimeSeconds * 1000);
+			logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
 		}
-
-		await delay(this.gConf.auctionTimeSeconds * 1000);
 
 		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-		let maxRetries = 10;
-		while (maxRetries > 0 && !auctionState) {
+
+		let sequence: bigint | undefined = auctionState?.sequence;
+		try {
+			// because validators fall behind, we will always send postBid regardless to avoid
+			// wasting afew seconds on waiting for auction state update...
+			if (!sequence || sequence < 1n) {
+				sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
+			} else {
+				sequence = sequence - 1n;
+			}
+		} catch (err) {
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-			await delay(1000);
-			maxRetries--;
-		}
-
-		if (auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
-			logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
-			return;
-		}
-
-		let sequence: bigint | null = auctionState.sequence;
-		if (!sequence || sequence < 1n) {
-			sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
-		} else {
-			sequence = sequence - 1n;
+			if (!!auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
+				logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
+				return;
+			}
 		}
 
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
@@ -289,6 +288,7 @@ export class Relayer {
 			CHAIN_ID_SOLANA,
 			this.contractsConfig.auctionAddr,
 			sequence!.toString(),
+			500,
 		);
 		logger.info(`Got auction signed VAA for ${swap.sourceTxHash}. Fulfilling...`);
 
@@ -335,19 +335,13 @@ export class Relayer {
 			let shouldRegisterOrder = !destState;
 			await this.driverService.bid(swap, shouldRegisterOrder);
 			logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
+			await delay(this.gConf.auctionTimeSeconds * 1000);
+			logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
 		}
-
-		// await delay(this.gConf.auctionTimeSeconds * 1000);
 
 		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-		let maxRetries = 10;
-		while (maxRetries > 0 && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
-			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-			await delay(1000);
-			maxRetries--;
-		}
 
-		if (auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
+		if (auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
 			logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
 			return;
 		}
