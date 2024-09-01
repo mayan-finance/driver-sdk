@@ -64,9 +64,7 @@ export class SolanaMultiTxSender {
 			const url = 'ws://bundles-api-rest.jito.wtf/api/v1/bundles/tip_stream';
 			const connection = new WebSocket(url);
 			connection.on('message', (message) => {
-				const newFiftyPercentileTip = Number(
-					JSON.parse(message.toString())[0]['ema_landed_tips_50th_percentile'],
-				);
+				const newFiftyPercentileTip = Number(JSON.parse(message.toString())[0]['landed_tips_75th_percentile']);
 				this.minJitoTipAmount = Math.min(
 					this.maxJitoTipAmount,
 					Math.max(newFiftyPercentileTip, this.minJitoTipAmount),
@@ -137,7 +135,7 @@ export class SolanaMultiTxSender {
 		const interval = 1000;
 		const startTime = Date.now();
 
-		while (Date.now() - startTime < timeout || (await this.connection.getBlockHeight()) <= lastValidBlockHeight) {
+		while (Date.now() - startTime < timeout && (await this.connection.getBlockHeight()) <= lastValidBlockHeight) {
 			const bundleStatuses = await getBundleStatuses(
 				[bundleId],
 				`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
