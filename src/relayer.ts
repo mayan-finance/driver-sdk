@@ -49,21 +49,14 @@ export class Relayer {
 	) {}
 
 	private async tryProgressFulfill(swap: Swap) {
-		let sourceState: SwiftSourceState | null = null;
-		let destState: SwiftDestState | null = null;
-		let destEvmOrder: EvmStoredOrder | null = null;
-		let sourceEvmOrder: EvmStoredOrder | null = null;
-
-		if (swap.destChain === CHAIN_ID_SOLANA) {
-			destState = await getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr));
-		} else {
-			destEvmOrder = await this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash);
-		}
-		if (swap.sourceChain === CHAIN_ID_SOLANA) {
-			sourceState = await getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr));
-		} else {
-			sourceEvmOrder = await this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash);
-		}
+		const isSolDst = swap.destChain === CHAIN_ID_SOLANA;
+		const isSolSrc = swap.sourceChain === CHAIN_ID_SOLANA;
+		let [destState, destEvmOrder, sourceState, sourceEvmOrder] = await Promise.all([
+			isSolDst ? getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
+			!isSolDst ? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash) : null,
+			isSolSrc ? getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
+			!isSolSrc ? this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash) : null,
+		]);
 
 		switch (swap.status) {
 			case SWAP_STATUS.ORDER_SUBMITTED:
@@ -317,8 +310,10 @@ export class Relayer {
 			return;
 		}
 
-		const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-		let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+		let [solanaTime, auctionState] = await Promise.all([
+			getCurrentSolanaTimeMS(this.solanaConnection),
+			getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr)),
+		]);
 		if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 			const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
 			if (!openToBid) {
@@ -354,6 +349,18 @@ export class Relayer {
 			await this.driverService.auctionFulfillAndSettlePackage(swap);
 			swap.status = SWAP_STATUS.ORDER_SETTLED;
 		} else {
+			if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
+				try {
+					// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
+					await this.driverService.auctionFulfillAndSettleJitoBundle(swap);
+					swap.status = SWAP_STATUS.ORDER_SETTLED;
+					return;
+				} catch (e: any) {
+					logger.warn(
+						`Failed to send bundle for ${swap.sourceTxHash}. Falling back to sending each tx separately. errors: ${e} ${e.stack}`,
+					);
+				}
+			}
 			await this.driverService.postBid(swap, true, false);
 			await this.waitForFinalizeOnSource(swap);
 

@@ -547,12 +547,12 @@ export class DriverService {
 			}
 
 			logger.info(`Sending fulfill transaction for ${swap.sourceTxHash}`);
-			const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
+			const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 				trxData.instructions,
 				trxData.signers,
 				trxData.lookupTables,
-				true,
 				this.rpcConfig.solana.sendCount,
+				true,
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
 		} else {
@@ -581,12 +581,12 @@ export class DriverService {
 		let instructions = [registerOrderIx, ...fulfillIxs, ...settleIxs];
 
 		logger.info(`Sending noacution settle transaction for ${swap.sourceTxHash}`);
-		const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			instructions,
 			[this.walletConfig.solana],
 			[],
-			true,
 			this.rpcConfig.solana.sendCount,
+			true,
 		);
 		logger.info(`Sent noauction settle transaction for ${swap.sourceTxHash} with ${hash}`);
 		return hash;
@@ -716,25 +716,59 @@ export class DriverService {
 
 	async auctionFulfillAndSettlePackage(swap: Swap) {
 		logger.info(`Getting swapless fulfill-settle package for ${swap.sourceTxHash}`);
-		const postBidData = await this.postBid(swap, true, false, true);
-		const fulfillData = await this.fulfill(swap, undefined, true);
-		const settleData = await this.settle(swap, true);
+		const [postBidData, fulfillData, settleData] = await Promise.all([
+			this.postBid(swap, true, false, true),
+			this.fulfill(swap, undefined, true),
+			this.settle(swap, true),
+		]);
 
 		let finalInstructions: TransactionInstruction[] = [];
 		finalInstructions.push(...postBidData!.instructions!);
 		finalInstructions.push(...fulfillData!.instructions!);
 		finalInstructions.push(...settleData!.instructions!);
 		logger.info(`Sending fulfill-settle package for ${swap.sourceTxHash}`);
-		const hash = await this.solanaSender.createAndSendTransactionJitoAndNormal(
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
 			finalInstructions,
 			[this.walletConfig.solana, ...postBidData?.signers!, ...fulfillData?.signers!],
 			fulfillData!.lookupTables,
-			true,
 			this.rpcConfig.solana.sendCount,
+			true,
 			undefined,
 			200_000,
 		);
 		logger.info(`Sent fulfill-settle package for ${swap.sourceTxHash} with ${hash}`);
+	}
+
+	async auctionFulfillAndSettleJitoBundle(swap: Swap) {
+		logger.info(`Getting jito fulfill-settle package for ${swap.sourceTxHash}`);
+		const [postBidData, fulfillData, settleData] = await Promise.all([
+			this.postBid(swap, true, false, true),
+			this.fulfill(swap, undefined, true),
+			this.settle(swap, true),
+		]);
+
+		logger.info(`Sending jito fulfill-settle package for ${swap.sourceTxHash}`);
+		await this.solanaSender.createAndSendJitoBundle(
+			[
+				{
+					instructions: postBidData!.instructions!,
+					signers: postBidData!.signers!,
+					lookupTables: [],
+				},
+				{
+					instructions: fulfillData!.instructions!,
+					signers: fulfillData!.signers!,
+					lookupTables: fulfillData!.lookupTables,
+				},
+				{
+					instructions: [...settleData!.instructions!],
+					signers: [],
+					lookupTables: [],
+				},
+			],
+			4,
+		);
+		logger.info(`Sent jito fulfill-settle package for ${swap.sourceTxHash}`);
 	}
 
 	async submitGaslessOrder(swap: Swap) {

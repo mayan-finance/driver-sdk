@@ -3,6 +3,7 @@ import {
 	AddressLookupTableAccount,
 	ComputeBudgetProgram,
 	Connection,
+	MessageV0,
 	PublicKey,
 	Signer,
 	SystemProgram,
@@ -76,95 +77,55 @@ export class SolanaMultiTxSender {
 		}
 	}
 
-	async createAndSendTransactionJitoAndNormal(
-		instructions: TransactionInstruction[],
-		signers: Signer[],
-		lookupTables: AddressLookupTableAccount[],
-		addPriorityFeeIns: boolean,
-		sendCounts: number,
-		feePayer?: Signer,
-		manualComputeUnits?: number,
-	): Promise<string> {
-		let promises: Promise<string>[] = [];
-
-		if (['JITO', 'BOTH'].includes(this.rpcConfig.solana.fulfillTxMode)) {
-			let newInstructions = [];
-			for (let ins of instructions) {
-				newInstructions.push(ins);
-			}
-			const jitoResult = this.createAndSendWithJito(
-				newInstructions,
-				signers,
-				lookupTables,
-				addPriorityFeeIns,
-				feePayer,
-			);
-			promises.push(jitoResult);
-		}
-
-		if (['NORMAL', 'BOTH'].includes(this.rpcConfig.solana.fulfillTxMode)) {
-			let newInstructions = [];
-			for (let ins of instructions) {
-				newInstructions.push(ins);
-			}
-			const normalResult = this.createAndSendOptimizedTransaction(
-				newInstructions,
-				signers,
-				lookupTables,
-				sendCounts,
-				addPriorityFeeIns,
-				feePayer,
-				manualComputeUnits,
-			);
-			promises.push(normalResult);
-		}
-
-		const results = await Promise.allSettled(promises);
-		for (let res of results) {
-			if (res.status === 'fulfilled') {
-				return res.value;
-			}
-		}
-
-		for (let res of results) {
-			if (res.status === 'rejected') {
-				logger.error(`Error sending transaction: ${res.reason}`);
-			}
-		}
-
-		throw new Error('Both jito and normal send tx failed');
+	getRandomJitoTransferIx(): TransactionInstruction {
+		const ix = SystemProgram.transfer({
+			fromPubkey: this.walletConfig.solana.publicKey,
+			toPubkey: this.chooseJitoTipAccount(),
+			lamports: Math.floor(this.minJitoTipAmount * 10 ** 9),
+		});
+		return ix;
 	}
 
-	async createAndSendWithJito(
-		instructions: TransactionInstruction[],
-		signers: Signer[],
-		lookupTables: AddressLookupTableAccount[],
-		addPriorityFeeIns: boolean = true,
-		feePayer?: Signer,
+	async createAndSendJitoBundle(
+		txDatas: {
+			instructions: TransactionInstruction[];
+			signers: Signer[];
+			lookupTables: AddressLookupTableAccount[];
+		}[],
+		timeoutSeconds: number,
 	): Promise<string> {
-		instructions.unshift(
-			SystemProgram.transfer({
-				fromPubkey: this.walletConfig.solana.publicKey,
-				toPubkey: this.chooseJitoTipAccount(),
-				lamports: Math.floor(this.minJitoTipAmount * 10 ** 9),
-			}),
-		);
-		const { trx, lastValidBlockheight } = await this.createOptimizedVersionedTransaction(
-			instructions,
-			signers,
-			lookupTables,
-			addPriorityFeeIns,
-			feePayer,
-		);
-		const rawTrx = trx.serialize();
+		if (txDatas.length > 5) {
+			throw new Error('Cannot send more than 5 transactions in a single bundle');
+		}
 
+		let txs: string[] = [];
+		let { blockhash: recentBlockhash, lastValidBlockHeight } = await this.connection.getLatestBlockhash();
+		for (let i = 0; i < txDatas.length; i++) {
+			const txData = txDatas[i];
+			let instructions = txData.instructions;
+			if (i === txDatas.length - 1) {
+				instructions.push(this.getRandomJitoTransferIx());
+			}
+			const msg = MessageV0.compile({
+				payerKey: this.walletConfig.solana.publicKey,
+				instructions: instructions,
+				addressLookupTableAccounts: txData.lookupTables,
+				recentBlockhash,
+			});
+			const trx = new VersionedTransaction(msg);
+			trx.sign([this.walletConfig.solana, ...txData.signers]);
+			const trxBS58 = binary_to_base58(trx.serialize());
+			txs.push(trxBS58);
+		}
+
+		logger.info(`Posting ${txs.length} transactions to jito`);
 		const res = await axios.post(
 			`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
 			{
 				jsonrpc: '2.0',
 				id: 1,
 				method: 'sendBundle',
-				params: [[binary_to_base58(rawTrx)]],
+				params: [txs],
 			},
 			{
 				headers: { 'Content-Type': 'application/json' },
@@ -172,11 +133,11 @@ export class SolanaMultiTxSender {
 		);
 		const bundleId = res.data.result;
 
-		const timeout = 60000; // 30 second timeout
-		const interval = 3000; // 3 second interval
+		const timeout = timeoutSeconds * 1000;
+		const interval = 1000;
 		const startTime = Date.now();
 
-		while (Date.now() - startTime < timeout || (await this.connection.getBlockHeight()) <= lastValidBlockheight) {
+		while (Date.now() - startTime < timeout || (await this.connection.getBlockHeight()) <= lastValidBlockHeight) {
 			const bundleStatuses = await getBundleStatuses(
 				[bundleId],
 				`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
@@ -184,7 +145,6 @@ export class SolanaMultiTxSender {
 
 			if (bundleStatuses && bundleStatuses.value && bundleStatuses.value.length > 0) {
 				const status = bundleStatuses.value[0].confirmation_status;
-
 				if (status === 'confirmed' || status === 'finalized') {
 					const txHash = bundleStatuses.value[0].transactions[0];
 					const tx = await this.connection.getSignatureStatus(txHash);
@@ -195,10 +155,11 @@ export class SolanaMultiTxSender {
 						throw new Error(`Bundle failed with error: ${tx.value.err}`);
 					}
 
+					logger.info(`Posted ${status} transactions to jito with ${bundleId}`);
+
 					return txHash;
 				}
 			}
-
 			await new Promise((resolve) => setTimeout(resolve, interval));
 		}
 		throw new Error('Bundle failed to confirm within the timeout period');
