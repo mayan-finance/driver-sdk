@@ -288,7 +288,7 @@ export class DriverService {
 			this.rpcConfig.solana.sendCount,
 			true,
 			undefined,
-			50_000,
+			70_000,
 		);
 		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
@@ -734,7 +734,7 @@ export class DriverService {
 			this.rpcConfig.solana.sendCount,
 			true,
 			undefined,
-			200_000,
+			220_000,
 		);
 		logger.info(`Sent fulfill-settle package for ${swap.sourceTxHash} with ${hash}`);
 	}
