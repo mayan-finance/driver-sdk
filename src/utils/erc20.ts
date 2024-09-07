@@ -118,3 +118,58 @@ export async function getEthBalance(evmProvider: ethers.JsonRpcProvider, address
 	const balance = await evmProvider.getBalance(address);
 	return balance;
 }
+
+const erc20NameSymbolAbi = [
+	{
+		constant: true,
+		inputs: [],
+		name: 'decimals',
+		outputs: [
+			{
+				name: '',
+				type: 'uint8',
+			},
+		],
+		payable: false,
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		constant: true,
+		inputs: [],
+		name: 'name',
+		outputs: [
+			{
+				name: '',
+				type: 'string',
+			},
+		],
+		payable: false,
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		constant: true,
+		inputs: [],
+		name: 'symbol',
+		outputs: [
+			{
+				name: '',
+				type: 'string',
+			},
+		],
+		payable: false,
+		stateMutability: 'view',
+		type: 'function',
+	},
+];
+
+export async function getSymbol(evmProvider: ethers.JsonRpcProvider, address: string): Promise<string> {
+	const contract = new ethers.Contract(address, erc20NameSymbolAbi, evmProvider);
+	return await contract.symbol();
+}
+
+export async function getDecimals(evmProvider: ethers.JsonRpcProvider, address: string): Promise<number> {
+	const contract = new ethers.Contract(address, erc20NameSymbolAbi, evmProvider);
+	return await contract.decimals();
+}

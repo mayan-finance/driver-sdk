@@ -13,5 +13,5 @@ export const mayanEndpoints: MayanEndpoints = {
 	explorerApiUrl: process.env.EXPLORER_API_URL || 'https://explorer-api.mayan.finance',
 	priceApiUrl: process.env.PRICE_API_URL || 'https://price-api.mayan.finance',
 	lutApiUrl: process.env.LUT_API_URL || 'https://lut-api.mayan.finance',
-	refreshTokenIntervalSeconds: Number(process.env.REFRESH_TOKEN_INTERVAL_SECONDS) || 120,
+	refreshTokenIntervalSeconds: Number(process.env.REFRESH_TOKEN_INTERVAL_SECONDS) || 600,
 };

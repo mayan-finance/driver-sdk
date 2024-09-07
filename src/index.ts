@@ -81,7 +81,7 @@ export async function main() {
 
 	const walletHelper = new WalletsHelper(evmProviders, walletConf, rpcConfig, contracts);
 
-	const tokenList = new TokenList(mayanEndpoints);
+	const tokenList = new TokenList(mayanEndpoints, evmProviders, solanaConnection);
 	await tokenList.init();
 
 	const solanaIxHelper = new NewSolanaIxHelper(
