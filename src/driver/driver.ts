@@ -342,7 +342,7 @@ export class DriverService {
 
 		let computeUnits: number = 50_000;
 		if (createStateAss) {
-			computeUnits = 55_000;
+			computeUnits = 65_000;
 			const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true);
 			const createdAtaIx = createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
@@ -356,7 +356,7 @@ export class DriverService {
 
 		const signers = [this.walletConfig.solana];
 		if (postAuction) {
-			computeUnits = 70_000;
+			computeUnits = 80_000;
 			signers.push(newMessageAccount!);
 		}
 

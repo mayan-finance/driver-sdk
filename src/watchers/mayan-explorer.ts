@@ -37,9 +37,9 @@ export class MayanExplorerWatcher {
 		}
 	}
 
-	private createSwapFromJson(rawSwap: any) {
-		const fromToken = this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
-		const toToken = this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
+	private async createSwapFromJson(rawSwap: any) {
+		const fromToken = await this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
+		const toToken = await this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
 		const swap: Swap = {
 			retries: 0,
 			trader: rawSwap.trader,
@@ -115,7 +115,7 @@ export class MayanExplorerWatcher {
 						return;
 					}
 
-					const swap = this.createSwapFromJson(rawSwap);
+					const swap = await this.createSwapFromJson(rawSwap);
 
 					logger.info(
 						`Received explorer swap with ` +
@@ -167,7 +167,7 @@ export class MayanExplorerWatcher {
 					return;
 				}
 
-				const swap = this.createSwapFromJson(s);
+				const swap = await this.createSwapFromJson(s);
 
 				this.relayer.relay(swap);
 			}

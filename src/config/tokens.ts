@@ -1,4 +1,7 @@
+import { Connection, ParsedAccountData, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
+import { getDecimals, getSymbol } from '../utils/erc20';
+import { EvmProviders } from '../utils/evm-providers';
 import logger from '../utils/logger';
 import {
 	CHAIN_ID_ARBITRUM,
@@ -10,6 +13,7 @@ import {
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
 	mapNameToWormholeChainId,
+	WhChainIdToEvm,
 } from './chains';
 import { MayanEndpoints } from './endpoints';
 
@@ -36,7 +40,11 @@ export class TokenList {
 
 	private initialized = false;
 
-	constructor(endpoints: MayanEndpoints) {
+	constructor(
+		endpoints: MayanEndpoints,
+		private readonly evmProviders: EvmProviders,
+		private readonly connection: Connection,
+	) {
 		this.endpoints = endpoints;
 	}
 
@@ -104,7 +112,69 @@ export class TokenList {
 		)!;
 	}
 
-	getTokenData(tokenChain: number, tokenContract: string): Token {
+	async getTokenData(tokenChain: number, tokenContract: string): Promise<Token> {
+		const preDefinedToken = this.getPreDefinedTokenData(tokenChain, tokenContract);
+		if (preDefinedToken) {
+			return preDefinedToken;
+		}
+
+		if (tokenChain === CHAIN_ID_SOLANA) {
+			return await this.fetchSolanaTokenData(tokenContract);
+		} else {
+			return await this.fetchErc20TokenData(tokenChain, tokenContract);
+		}
+	}
+
+	async fetchErc20TokenData(chainId: number, tokenContract: string): Promise<Token> {
+		const [symbol, decimals] = await Promise.all([
+			getSymbol(this.evmProviders[chainId], tokenContract),
+			getDecimals(this.evmProviders[chainId], tokenContract),
+		]);
+
+		return {
+			chainId: WhChainIdToEvm[chainId],
+			wChainId: chainId,
+			coingeckoId: tokenContract,
+			contract: tokenContract,
+			mint: tokenContract,
+			decimals: Number(decimals),
+			logoURI: '',
+			name: symbol,
+			realOriginChainId: WhChainIdToEvm[chainId],
+			realOriginContractAddress: tokenContract,
+			symbol: symbol,
+			supportsPermit: false,
+		};
+	}
+
+	private async fetchSolanaTokenData(tokenContract: string): Promise<Token> {
+		const mintAccountInfo = await this.connection.getParsedAccountInfo(new PublicKey(tokenContract));
+		if (!mintAccountInfo.value) {
+			throw new Error(`Token account not found on solana chain for ${tokenContract}`);
+		}
+		const mintData = mintAccountInfo.value.data as ParsedAccountData;
+		const decimals = Number(mintData.parsed.info.decimals);
+
+		return {
+			chainId: CHAIN_ID_SOLANA,
+			coingeckoId: '',
+			contract: tokenContract,
+			mint: tokenContract,
+			decimals: decimals,
+			logoURI: '',
+			name: '',
+			realOriginChainId: CHAIN_ID_SOLANA,
+			realOriginContractAddress: tokenContract,
+			symbol: '',
+			supportsPermit: false,
+		};
+	}
+
+	// private fetchERC20TokenData(tokenContract: string): Promise<Token> {
+	// 	const tokenData = null;
+	// }
+
+	private getPreDefinedTokenData(tokenChain: number, tokenContract: string): Token | undefined {
 		if (!this.tokensPerChain[tokenChain]) {
 			throw new Error(`Chain ${tokenChain} is not found in token list`);
 		}
@@ -120,10 +190,6 @@ export class TokenList {
 					return t.contract.toLowerCase() === tokenContract.toLowerCase();
 			}
 		});
-
-		if (!token) {
-			throw new Error(`Token ${tokenContract} is not found in token list`);
-		}
 
 		return token;
 	}
@@ -147,4 +213,4 @@ const UsdtContracts: { [key: number]: string } = {
 	[CHAIN_ID_AVAX]: '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7',
 	[CHAIN_ID_ARBITRUM]: '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
 	[CHAIN_ID_OPTIMISM]: '0x94b008aa00579c1307b0ef2c499ad98a8ce58e58',
- };
+};
