@@ -349,6 +349,7 @@ export class Relayer {
 			await this.driverService.auctionFulfillAndSettlePackage(swap);
 			swap.status = SWAP_STATUS.ORDER_SETTLED;
 		} else {
+			await this.waitForFinalizeOnSource(swap);
 			if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
 				try {
 					// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
@@ -362,7 +363,6 @@ export class Relayer {
 				}
 			}
 			await this.driverService.postBid(swap, true, false);
-			await this.waitForFinalizeOnSource(swap);
 
 			logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
 			let fulfillRetries = 0;
