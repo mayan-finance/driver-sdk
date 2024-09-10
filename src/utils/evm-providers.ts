@@ -1,4 +1,4 @@
-import { ethers } from "ethers6";
+import { ethers } from 'ethers6';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
@@ -7,8 +7,8 @@ import {
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
-} from "../config/chains";
-import { RpcConfig } from "../config/rpc";
+} from '../config/chains';
+import { RpcConfig } from '../config/rpc';
 
 export type EvmProviders = { [evmNetworkId: number | string]: ethers.JsonRpcProvider };
 
@@ -42,6 +42,44 @@ export function makeEvmProviders(chainIds: number[], rpcConfig: RpcConfig): EvmP
 			});
 		} else if (chainId === CHAIN_ID_BASE) {
 			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.base, 8453, {
+				staticNetwork: ethers.Network.from(8453),
+			});
+		}
+	}
+
+	return result;
+}
+
+export function makeSecondEvmProviders(chainIds: number[], rpcConfig: RpcConfig): EvmProviders {
+	const result: { [key: number]: ethers.JsonRpcProvider } = {};
+
+	for (const chainId of chainIds) {
+		if (chainId === CHAIN_ID_BSC) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.bsc2nd, 56, {
+				staticNetwork: ethers.Network.from(56),
+			});
+		} else if (chainId === CHAIN_ID_POLYGON) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.polygon2nd, 137, {
+				staticNetwork: ethers.Network.from(137),
+			});
+		} else if (chainId === CHAIN_ID_ETH) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.ethereum2nd, 1, {
+				staticNetwork: ethers.Network.from(1),
+			});
+		} else if (chainId === CHAIN_ID_AVAX) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.avalanche2nd, 43114, {
+				staticNetwork: ethers.Network.from(43114),
+			});
+		} else if (chainId === CHAIN_ID_ARBITRUM) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.arbitrum2nd, 42161, {
+				staticNetwork: ethers.Network.from(42161),
+			});
+		} else if (chainId === CHAIN_ID_OPTIMISM) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.optimism2nd, 10, {
+				staticNetwork: ethers.Network.from(10),
+			});
+		} else if (chainId === CHAIN_ID_BASE) {
+			result[chainId] = new ethers.JsonRpcProvider(rpcConfig.evmEndpoints.base2nd, 8453, {
 				staticNetwork: ethers.Network.from(8453),
 			});
 		}
