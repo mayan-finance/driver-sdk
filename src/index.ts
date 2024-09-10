@@ -25,7 +25,7 @@ import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
 import { Relayer } from './relayer';
 import { SimpleFulfillerConfig } from './simple';
-import { makeEvmProviders } from './utils/evm-providers';
+import { makeEvmProviders, makeSecondEvmProviders } from './utils/evm-providers';
 import { FeeService } from './utils/fees';
 import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
@@ -71,6 +71,7 @@ export async function main() {
 	}, 60_000);
 
 	const evmProviders = makeEvmProviders(supportedChainIds, rpcConfig);
+	const secondaryEvmProviders = makeSecondEvmProviders(supportedChainIds, rpcConfig);
 	const solanaConnection = new Connection(rpcConfig.solana.solanaMainRpc, {
 		commitment: 'confirmed',
 	});
@@ -155,7 +156,13 @@ export async function main() {
 		tokenList,
 		solanaTxSender,
 	);
-	const chainFinalitySvc = new ChainFinality(solanaConnection, contracts, rpcConfig, evmProviders);
+	const chainFinalitySvc = new ChainFinality(
+		solanaConnection,
+		contracts,
+		rpcConfig,
+		evmProviders,
+		secondaryEvmProviders,
+	);
 	const relayer = new Relayer(
 		rpcConfig,
 		mayanEndpoints,
