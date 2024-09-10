@@ -1,3 +1,5 @@
+import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { ethers } from 'ethers6';
 import { getSuggestedOverrides } from './evm-trx';
 
@@ -172,4 +174,19 @@ export async function getSymbol(evmProvider: ethers.JsonRpcProvider, address: st
 export async function getDecimals(evmProvider: ethers.JsonRpcProvider, address: string): Promise<number> {
 	const contract = new ethers.Contract(address, erc20NameSymbolAbi, evmProvider);
 	return await contract.decimals();
+}
+
+export async function getAssBalance(connection: Connection, mint: PublicKey, wallet: PublicKey) {
+	const tokenAcc = getAssociatedTokenAddressSync(mint, wallet, false);
+	const acc = await connection.getTokenAccountBalance(tokenAcc);
+	if (!acc || !acc.value) {
+		return {
+			amount: BigInt(0),
+			decimals: 0,
+		};
+	}
+	return {
+		amount: BigInt(acc.value.amount),
+		decimals: acc.value.decimals,
+	};
 }

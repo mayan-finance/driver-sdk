@@ -12,22 +12,27 @@ import {
 	TransactionInstruction,
 	VersionedTransaction,
 } from '@solana/web3.js';
+import axios from 'axios';
 import { AuctionFulfillerConfig } from '../auction';
-import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
+import { CHAIN_ID_SOLANA, WhChainIdToEvm, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
+import { MayanEndpoints } from '../config/endpoints';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { SimpleFulfillerConfig } from '../simple';
 import { Swap } from '../swap.dto';
 import { tryNativeToUint8Array } from '../utils/buffer';
+import { getAssBalance, getEthBalance } from '../utils/erc20';
+import { EvmProviders } from '../utils/evm-providers';
 import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
 import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
-import { getWormholeSequenceFromPostedMessage, get_wormhole_core_accounts } from '../utils/wormhole';
+import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from '../utils/wormhole';
 import { EvmFulfiller } from './evm';
+import { get1InchQuote } from './routers';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
@@ -36,6 +41,8 @@ export class DriverService {
 	private readonly swiftProgram: PublicKey;
 	private readonly swiftAuctionProgram: PublicKey;
 	constructor(
+		private readonly evmProviders: EvmProviders,
+		private readonly endPoints: MayanEndpoints,
 		private readonly simpleFulfillerCfg: SimpleFulfillerConfig,
 		private readonly auctionFulfillerCfg: AuctionFulfillerConfig,
 		private readonly solanaConnection: Connection,
@@ -174,7 +181,7 @@ export class DriverService {
 		return instruction;
 	}
 
-	getDriverEvmTokenForBidAndSwap(srcChain: number, destChain: number, fromToken: Token): Token {
+	getDriverEvmTokenForBid(srcChain: number, destChain: number, fromToken: Token): Token {
 		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
 		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
 		const fromEth = this.tokenList.getEth(srcChain);
@@ -197,6 +204,59 @@ export class DriverService {
 		}
 	}
 
+	async getDriverEvmTokenForSwap(
+		srcChain: number,
+		destChain: number,
+		fromToken: Token,
+		toToken: Token,
+		realMinAmountOut: bigint,
+	): Promise<Token> {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
+		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
+		const fromEth = this.tokenList.getEth(srcChain);
+
+		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
+			const destUsdc = this.tokenList.getNativeUsdc(destChain);
+			const destUsdt = this.tokenList.getNativeUsdt(destChain);
+			if (!destUsdc && !destUsdt) {
+				throw new Error(`Stable token not found on ${destChain} for driver! not bidding or swapping`);
+			}
+
+			return (destUsdc || destUsdt)!;
+		} else if (fromToken.contract === fromEth?.contract) {
+			const ethBalance = await getEthBalance(this.evmProviders[destChain], this.walletConfig.evm.address);
+			const quote = await get1InchQuote(
+				{
+					amountIn: ((ethBalance * 98n) / 100n).toString(),
+					destToken: toToken.contract,
+					realChainId: WhChainIdToEvm[destChain],
+					srcToken: '0x0000000000000000000000000000000000000000',
+					timeout: 2500,
+				},
+				this.rpcConfig.oneInchApiKey,
+				false,
+			);
+
+			if (BigInt(quote.toAmount) < realMinAmountOut) {
+				// choose usdc when eth is not enough for fulfill
+				const destUsdc = this.tokenList.getNativeUsdc(destChain);
+				const destUsdt = this.tokenList.getNativeUsdt(destChain);
+				if (!destUsdc && !destUsdt) {
+					throw new Error(`Stable token not found on ${destChain} for driver! not bidding or swapping`);
+				}
+
+				return (destUsdc || destUsdt)!;
+			}
+
+			return this.tokenList.getEth(destChain)!;
+		} else {
+			throw new Error(
+				`Unsupported input token ${fromToken.contract} on
+				${srcChain} for driver! not bidding or swapping`,
+			);
+		}
+	}
+
 	getDriverSolanaTokenForBidAndSwap(srcChain: number, fromToken: Token): Token {
 		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
 		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
@@ -205,6 +265,49 @@ export class DriverService {
 		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
 			return this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!;
 		} else if (fromToken.contract === fromEth?.contract) {
+			return this.tokenList.getWethSol();
+		} else {
+			throw new Error(`Unsupported input token ${fromToken.contract} for driver! not bidding or swapping`);
+		}
+	}
+
+	async getDriverSolanaTokenForSwap(
+		srcChain: number,
+		fromToken: Token,
+		toToken: Token,
+		realMinAmountOut: bigint,
+	): Promise<Token> {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
+		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
+		const fromEth = this.tokenList.getEth(srcChain);
+
+		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
+			return this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!;
+		} else if (fromToken.contract === fromEth?.contract) {
+			// const ethBalance = await getEthBalance(this.evmProviders[destChain], this.walletConfig.evm.address);
+			const weth = this.tokenList.getWethSol();
+			const balanceDta = await getAssBalance(
+				this.solanaConnection,
+				new PublicKey(weth.mint),
+				this.walletConfig.solana.publicKey,
+			);
+			let params: any = {
+				inputMint: weth.mint,
+				outputMint: toToken.mint,
+				slippageBps: 500,
+				maxAccounts: 64 - 7, // 7 accounts reserved for other instructions
+				amount: balanceDta.amount.toString(),
+			};
+			if (!!this.rpcConfig.jupApiKey) {
+				params['token'] = this.rpcConfig.jupApiKey;
+			}
+			const { data } = await axios.get(`${this.rpcConfig.jupV6Endpoint}/quote`, {
+				params: params,
+			});
+			if (data.expectedAmountOut < realMinAmountOut) {
+				return this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!;
+			}
+
 			return this.tokenList.getWethSol();
 		} else {
 			throw new Error(`Unsupported input token ${fromToken.contract} for driver! not bidding or swapping`);
@@ -248,7 +351,7 @@ export class DriverService {
 				toToken,
 			);
 		} else {
-			const driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+			const driverToken = this.getDriverEvmTokenForBid(srcChain, dstChain, fromToken);
 			normalizedBidAmount = await this.evmFulFiller.getNormalizedBid(
 				dstChain,
 				driverToken,
@@ -525,10 +628,11 @@ export class DriverService {
 		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(swap, effectiveAmntIn, expenses);
 
 		if (swap.destChain === CHAIN_ID_SOLANA) {
-			let driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
+
+			let driverToken = await this.getDriverSolanaTokenForSwap(srcChain, fromToken, toToken, realMinAmountOut);
 
 			const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true); // already created via the instruction package in bid
 
@@ -556,10 +660,18 @@ export class DriverService {
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
 		} else {
-			let driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
+			const minAmountOut = swap.minAmountOut;
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
+
+			let driverToken = await this.getDriverEvmTokenForSwap(
+				srcChain,
+				dstChain,
+				fromToken,
+				toToken,
+				realMinAmountOut,
+			);
 
 			await this.evmFulFiller.fulfillAuction(
 				swap,

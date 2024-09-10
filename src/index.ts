@@ -141,6 +141,8 @@ export async function main() {
 	);
 	await evmFulFiller.init();
 	const driverSvc = new DriverService(
+		evmProviders,
+		mayanEndpoints,
 		new SimpleFulfillerConfig(),
 		new AuctionFulfillerConfig(),
 		solanaConnection,
