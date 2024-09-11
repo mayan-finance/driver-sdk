@@ -27,11 +27,11 @@ export class ChainFinality {
 	private readonly finalizedBlocks: { [chainId: number]: number } = {
 		[CHAIN_ID_ETH]: 20,
 		[CHAIN_ID_BSC]: 8,
-		[CHAIN_ID_POLYGON]: 200,
+		[CHAIN_ID_POLYGON]: 80,
 		[CHAIN_ID_AVAX]: 2,
-		[CHAIN_ID_ARBITRUM]: 2,
-		[CHAIN_ID_OPTIMISM]: 2,
-		[CHAIN_ID_BASE]: 2,
+		[CHAIN_ID_ARBITRUM]: 1,
+		[CHAIN_ID_OPTIMISM]: 1,
+		[CHAIN_ID_BASE]: 1,
 	};
 
 	private readonly minSwapValueUsd = 100;
@@ -49,7 +49,7 @@ export class ChainFinality {
 			[CHAIN_ID_BSC]: 3,
 			[CHAIN_ID_POLYGON]: 2,
 			[CHAIN_ID_AVAX]: 2,
-			[CHAIN_ID_ARBITRUM]: 100,
+			[CHAIN_ID_ARBITRUM]: 0.3,
 			[CHAIN_ID_OPTIMISM]: 3,
 			[CHAIN_ID_BASE]: 3,
 		};
