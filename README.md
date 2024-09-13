@@ -1,4 +1,5 @@
-# Mayan driver sdk
+# Mayan Driver SDK
+Drivers participate in on-chain auctions to compete for the opportunity to fulfill user intents, ensuring that users receive the best possible outcomes for their transactions. They act as the operational core that processes and completes transactions by finding optimal execution paths. In other protocols, this role is commonly known as a Solver or Relayer, but we refer to them as Drivers to emphasize their dynamic role in navigating and steering transactions to successful completion.
 
 ## Running the driver
 
