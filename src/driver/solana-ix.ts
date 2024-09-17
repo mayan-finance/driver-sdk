@@ -1,5 +1,5 @@
 import { AnchorProvider, BN, Program, Wallet } from '@coral-xyz/anchor';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
 	ComputeBudgetProgram,
 	Connection,
@@ -174,6 +174,7 @@ export class NewSolanaIxHelper {
 		mintTo: PublicKey,
 		state: PublicKey,
 		stateToAss: PublicKey,
+		isToken2022: boolean,
 	): Promise<TransactionInstruction> {
 		return this.swiftProgram.methods
 			.fulfill(Array.from(unlockerAddress32))
@@ -184,6 +185,7 @@ export class NewSolanaIxHelper {
 				mintTo: mintTo,
 				state: state,
 				stateToAcc: stateToAss,
+				tokenProgram: isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			})
 			.instruction();
 	}
@@ -264,9 +266,11 @@ export class NewSolanaIxHelper {
 		mintTo: PublicKey,
 		referrerAddr: PublicKey,
 		referrerAddrAss: PublicKey,
+		isToken2022: boolean,
+		closeAta: boolean,
 	): Promise<TransactionInstruction> {
 		return this.swiftProgram.methods
-			.settle()
+			.settle(closeAta)
 			.accounts({
 				relayer: driver,
 				state: state,
@@ -280,7 +284,7 @@ export class NewSolanaIxHelper {
 				referrer: referrerAddr,
 				referrerFeeAcc: referrerAddrAss,
 				systemProgram: SystemProgram.programId,
-				tokenProgram: TOKEN_PROGRAM_ID,
+				tokenProgram: isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			})
 			.instruction();
 	}

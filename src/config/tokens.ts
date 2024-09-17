@@ -1,3 +1,4 @@
+import { TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import { Connection, ParsedAccountData, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { getDecimals, getSymbol } from '../utils/erc20';
@@ -31,6 +32,8 @@ export type Token = {
 	realOriginChainId: number;
 	realOriginContractAddress: string;
 	supportsPermit?: boolean;
+	hasTransferFee?: boolean;
+	standard: 'native' | 'erc20' | 'spl' | 'spl2022';
 };
 
 export class TokenList {
@@ -144,6 +147,7 @@ export class TokenList {
 			realOriginContractAddress: tokenContract,
 			symbol: symbol,
 			supportsPermit: false,
+			standard: 'erc20',
 		};
 	}
 
@@ -152,8 +156,27 @@ export class TokenList {
 		if (!mintAccountInfo.value) {
 			throw new Error(`Token account not found on solana chain for ${tokenContract}`);
 		}
+		let isToken2022 = false;
+		if (mintAccountInfo && mintAccountInfo.value) {
+			const ownerProgramId = (mintAccountInfo.value as any).owner;
+			isToken2022 = ownerProgramId.equals(TOKEN_2022_PROGRAM_ID);
+		}
 		const mintData = mintAccountInfo.value.data as ParsedAccountData;
 		const decimals = Number(mintData.parsed.info.decimals);
+		let transferFeeExtension = mintData.parsed.info.extensions?.find(
+			(e: any) => e.extension === 'transferFeeConfig',
+		);
+
+		let hasTransferFee = false;
+		if (transferFeeExtension) {
+			if (Number(transferFeeExtension.withheldAmount)) {
+				hasTransferFee = true;
+			}
+
+			if (Number(transferFeeExtension.state?.newerTransferFee?.transferFeeBasisPoints)) {
+				hasTransferFee = true;
+			}
+		}
 
 		return {
 			chainId: CHAIN_ID_SOLANA,
@@ -167,12 +190,10 @@ export class TokenList {
 			realOriginContractAddress: tokenContract,
 			symbol: '',
 			supportsPermit: false,
+			standard: isToken2022 ? 'spl2022' : 'spl',
+			hasTransferFee: hasTransferFee,
 		};
 	}
-
-	// private fetchERC20TokenData(tokenContract: string): Promise<Token> {
-	// 	const tokenData = null;
-	// }
 
 	private getPreDefinedTokenData(tokenChain: number, tokenContract: string): Token | undefined {
 		if (!this.tokensPerChain[tokenChain]) {

@@ -1,7 +1,8 @@
 import {
 	createAssociatedTokenAccountIdempotentInstruction,
 	getAssociatedTokenAddressSync,
-	getOrCreateAssociatedTokenAccount,
+	TOKEN_2022_PROGRAM_ID,
+	TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import {
 	AddressLookupTableAccount,
@@ -26,7 +27,7 @@ import logger from '../utils/logger';
 import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
-import { getWormholeSequenceFromPostedMessage, get_wormhole_core_accounts } from '../utils/wormhole';
+import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from '../utils/wormhole';
 import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
@@ -64,7 +65,7 @@ export class DriverService {
 		referrerAddress: string,
 		destChain: number,
 		toTokenMint: PublicKey,
-		stateAddr: PublicKey,
+		isToken2022: boolean,
 	): { ixs: TransactionInstruction[]; mayan: PublicKey; mayanAss: PublicKey; referrerAss: PublicKey } {
 		let result: {
 			ixs: TransactionInstruction[];
@@ -88,6 +89,7 @@ export class DriverService {
 				toTokenMint,
 				new PublicKey(this.contractsConfig.feeCollectorSolana),
 				true,
+				isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			);
 			result.ixs.push(
 				createAssociatedTokenAccountIdempotentInstruction(
@@ -95,71 +97,32 @@ export class DriverService {
 					mayanFeeAss,
 					new PublicKey(this.contractsConfig.feeCollectorSolana),
 					toTokenMint,
+					isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 				),
 			);
 			result.mayanAss = mayanFeeAss;
 		}
 
 		if (referrerBps !== 0) {
-			const referrerFeeAss = getAssociatedTokenAddressSync(toTokenMint, new PublicKey(referrer), true);
+			const referrerFeeAss = getAssociatedTokenAddressSync(
+				toTokenMint,
+				new PublicKey(referrer),
+				true,
+				isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			);
 			result.ixs.push(
 				createAssociatedTokenAccountIdempotentInstruction(
 					this.walletConfig.solana.publicKey,
 					referrerFeeAss,
 					new PublicKey(referrer),
 					toTokenMint,
+					isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 				),
 			);
 			result.referrerAss = referrerFeeAss;
 		}
 
 		return result;
-	}
-
-	async getMayanAndReferrerFeeAsses(
-		mayanBps: number,
-		referrerBps: number,
-		referrerAddress: string,
-		destChain: number,
-		toTokenMint: PublicKey,
-		stateAddr: PublicKey,
-	): Promise<[PublicKey, PublicKey]> {
-		let referrer: string | Uint8Array = referrerAddress;
-		if (referrer.length === 44) {
-			referrer = tryNativeToUint8Array(referrer as string, destChain);
-		}
-
-		let mayanFeeAss: PublicKey;
-		if (mayanBps !== 0) {
-			mayanFeeAss = (
-				await getOrCreateAssociatedTokenAccount(
-					this.solanaConnection,
-					this.walletConfig.solana,
-					toTokenMint,
-					new PublicKey(this.contractsConfig.feeCollectorSolana),
-					true,
-				)
-			).address;
-		} else {
-			mayanFeeAss = stateAddr;
-		}
-
-		let referrerAss: PublicKey;
-		if (referrerBps !== 0) {
-			referrerAss = (
-				await getOrCreateAssociatedTokenAccount(
-					this.solanaConnection,
-					this.walletConfig.solana,
-					toTokenMint,
-					new PublicKey(referrer),
-					true,
-				)
-			).address;
-		} else {
-			referrerAss = stateAddr;
-		}
-
-		return [mayanFeeAss, referrerAss];
 	}
 
 	async getRegisterOrderFromSwap(swap: Swap): Promise<TransactionInstruction> {
@@ -344,12 +307,18 @@ export class DriverService {
 		let computeUnits: number = 50_000;
 		if (createStateAss) {
 			computeUnits = 65_000;
-			const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true);
+			const stateToAss = getAssociatedTokenAddressSync(
+				new PublicKey(toToken.mint),
+				stateAddr,
+				true,
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			);
 			const createdAtaIx = createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
 				stateToAss,
 				stateAddr,
 				new PublicKey(toToken.mint),
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			);
 
 			instructions.unshift(createdAtaIx);
@@ -462,7 +431,12 @@ export class DriverService {
 
 		const fulfillAmount = await this.simpleFulfillerCfg.fulfillAmount(swap, effectiveAmountIn, expenses);
 
-		const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true);
+		const stateToAss = getAssociatedTokenAddressSync(
+			new PublicKey(toToken.mint),
+			stateAddr,
+			true,
+			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+		);
 
 		let result: TransactionInstruction[] = [];
 		result.push(
@@ -471,6 +445,7 @@ export class DriverService {
 				stateToAss,
 				stateAddr,
 				new PublicKey(toToken.mint),
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			),
 		);
 		const fulfillIxs = await this.solanaFulfiller.getSimpleFulfillIxPackage(
@@ -531,7 +506,12 @@ export class DriverService {
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
 
-			const stateToAss = getAssociatedTokenAddressSync(new PublicKey(toToken.mint), stateAddr, true); // already created via the instruction package in bid
+			const stateToAss = getAssociatedTokenAddressSync(
+				new PublicKey(toToken.mint),
+				stateAddr,
+				true,
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			); // already created via the instruction package in bid
 
 			const trxData = await this.solanaFulfiller.getFulfillTransferTrxData(
 				driverToken,
@@ -602,13 +582,19 @@ export class DriverService {
 
 		let instructions: TransactionInstruction[] = [];
 
-		const stateToAss = getAssociatedTokenAddressSync(toMint, stateAddr, true);
+		const stateToAss = getAssociatedTokenAddressSync(
+			toMint,
+			stateAddr,
+			true,
+			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+		);
 		instructions.push(
 			createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
 				stateToAss,
 				stateAddr,
 				new PublicKey(toToken.mint),
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			),
 		);
 
@@ -618,19 +604,25 @@ export class DriverService {
 			swap.referrerAddress,
 			swap.destChain,
 			toMint,
-			stateAddr,
+			toToken.standard === 'spl2022',
 		);
 		for (let ix of mayanAndReferrerAssInfo.ixs) {
 			instructions.push(ix);
 		}
 
-		const toAss = getAssociatedTokenAddressSync(toMint, to, true);
+		const toAss = getAssociatedTokenAddressSync(
+			toMint,
+			to,
+			true,
+			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+		);
 		instructions.push(
 			createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
 				toAss,
 				to,
 				new PublicKey(toMint),
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			),
 		);
 
@@ -645,6 +637,8 @@ export class DriverService {
 			toMint,
 			new PublicKey(swap.referrerAddress),
 			mayanAndReferrerAssInfo.referrerAss,
+			toToken.standard === 'spl2022',
+			!toToken.hasTransferFee,
 		);
 
 		return [...instructions, settleIx];
@@ -663,7 +657,7 @@ export class DriverService {
 			swap.referrerAddress,
 			swap.destChain,
 			toMint,
-			stateAddr,
+			toToken.standard === 'spl2022',
 		);
 
 		let instructions: TransactionInstruction[] = [];
@@ -671,19 +665,36 @@ export class DriverService {
 			instructions.push(ix);
 		}
 
-		const stateToAss = getAssociatedTokenAddressSync(toMint, stateAddr, true);
+		const stateToAss = getAssociatedTokenAddressSync(
+			toMint,
+			stateAddr,
+			true,
+			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+		);
 		instructions.push(
 			createAssociatedTokenAccountIdempotentInstruction(
 				this.walletConfig.solana.publicKey,
 				stateToAss,
 				stateAddr,
 				toMint,
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			),
 		);
 
-		const toAss = getAssociatedTokenAddressSync(toMint, to, true);
+		const toAss = getAssociatedTokenAddressSync(
+			toMint,
+			to,
+			true,
+			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+		);
 		instructions.push(
-			createAssociatedTokenAccountIdempotentInstruction(this.walletConfig.solana.publicKey, toAss, to, toMint),
+			createAssociatedTokenAccountIdempotentInstruction(
+				this.walletConfig.solana.publicKey,
+				toAss,
+				to,
+				toMint,
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			),
 		);
 
 		const settleIx = await this.solanaIxService.getSettleIx(
@@ -697,6 +708,8 @@ export class DriverService {
 			toMint,
 			new PublicKey(swap.referrerAddress),
 			mayanAndReferrerAssInfo.referrerAss,
+			toToken.standard === 'spl2022',
+			!toToken.hasTransferFee,
 		);
 		instructions.push(settleIx);
 
