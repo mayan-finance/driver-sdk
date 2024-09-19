@@ -629,7 +629,7 @@ export class Unlocker {
 		const swiftContract = this.walletsHelper.getWriteContract(sourceChain);
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
-		let overrides = await getSuggestedOverrides(destChain, networkFeeData);
+		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData);
 		let tx: ethers.TransactionResponse;
 		if (isBatch) {
 			tx = await swiftContract.unlockBatch(hexToUint8Array(signedVaa), overrides);
