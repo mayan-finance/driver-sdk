@@ -496,7 +496,11 @@ export class Relayer {
 
 	private isInputTokenAcceptable(swap: Swap) {
 		// We only accept ETH and USDC as input tokens (except for bsc) in our quote API so we are ignoring anything
-		let acceptedTokens = [this.tokenList.getEth(swap.sourceChain), this.tokenList.getNativeUsdc(swap.sourceChain)];
+		let acceptedTokens = [
+			this.tokenList.getEth(swap.sourceChain),
+			this.tokenList.getNativeUsdc(swap.sourceChain),
+			this.tokenList.getWethSol(),
+		];
 		if (swap.sourceChain === CHAIN_ID_BSC) {
 			acceptedTokens.push(this.tokenList.getNativeUsdt(swap.sourceChain));
 		}

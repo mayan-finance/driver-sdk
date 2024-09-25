@@ -3,6 +3,7 @@ import * as mathjs from 'mathjs';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_BASE,
+	CHAIN_ID_BSC,
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
@@ -45,6 +46,7 @@ export class FeeService {
 		const sourceUsdt = this.tokenList.getNativeUsdt(qr.fromChainId);
 		const sourceUsdc = this.tokenList.getNativeUsdc(qr.fromChainId);
 		const sourceEth = this.tokenList.getEth(qr.fromChainId);
+		const sourceSolEth = qr.fromChainId === CHAIN_ID_SOLANA ? this.tokenList.getWethSol() : null;
 		const destUsdt = this.tokenList.getNativeUsdt(qr.toChainId);
 		const destUsdc = this.tokenList.getNativeUsdc(qr.toChainId);
 		const destEth = this.tokenList.getEth(qr.toChainId);
@@ -68,7 +70,7 @@ export class FeeService {
 
 		let baseFulfillGasWithBatch = this.gConf.feeParams.baseFulfillGasWithBatchEth;
 		let baseFulfillGasWithOutBatch = this.gConf.feeParams.baseFulfillGasWithOutBatchEth;
-		if (qr.fromToken.contract !== sourceEth?.contract) {
+		if (qr.fromToken.contract !== sourceEth?.contract && qr.fromToken.contract !== sourceSolEth?.contract) {
 			// when source is not eth, usdc (or other erc20) must be used at dest to fulfill and more gas overhead
 			baseFulfillGasWithOutBatch += this.gConf.feeParams.erc20GasOverHead;
 			baseFulfillGasWithBatch += this.gConf.feeParams.erc20GasOverHead;
@@ -89,10 +91,15 @@ export class FeeService {
 
 		let hasDestSwap = true;
 		if (
-			(sourceUsdc?.contract === qr.fromToken.contract && destUsdt?.contract === qr.toToken.contract) ||
-			(sourceUsdt?.contract === qr.fromToken.contract && destUsdc?.contract === qr.toToken.contract) ||
+			(sourceUsdc?.contract === qr.fromToken.contract &&
+				destUsdt?.contract === qr.toToken.contract &&
+				qr.toChainId === CHAIN_ID_BSC) ||
+			(sourceUsdt?.contract === qr.fromToken.contract &&
+				qr.fromChainId === CHAIN_ID_BSC &&
+				destUsdc?.contract === qr.toToken.contract) ||
 			(sourceUsdc?.contract === qr.fromToken.contract && destUsdc?.contract === qr.toToken.contract) ||
-			(sourceEth?.contract === qr.fromToken.contract && destEth?.contract === qr.toToken.contract)
+			(sourceEth?.contract === qr.fromToken.contract && destEth?.contract === qr.toToken.contract) ||
+			(sourceSolEth?.contract === qr.fromToken.contract && destEth?.contract === qr.toToken.contract)
 		) {
 			hasDestSwap = false;
 		}
