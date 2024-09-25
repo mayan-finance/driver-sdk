@@ -178,6 +178,7 @@ export class DriverService {
 		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
 		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
 		const fromEth = this.tokenList.getEth(srcChain);
+		const fromSolWeth = srcChain === CHAIN_ID_SOLANA ? this.tokenList.getWethSol() : null;
 
 		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
 			const destUsdc = this.tokenList.getNativeUsdc(destChain);
@@ -187,7 +188,7 @@ export class DriverService {
 			}
 
 			return (destUsdc || destUsdt)!;
-		} else if (fromToken.contract === fromEth?.contract) {
+		} else if (fromToken.contract === fromEth?.contract || fromToken.contract === fromSolWeth?.contract) {
 			return this.tokenList.getEth(destChain)!;
 		} else {
 			throw new Error(
