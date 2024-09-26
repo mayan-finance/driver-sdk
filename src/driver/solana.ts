@@ -197,6 +197,7 @@ export class SolanaFulfiller {
 				new PublicKey(targetToken.mint),
 				stateAddress,
 				stateToAss,
+				targetToken.standard === 'spl2022',
 			),
 		);
 
@@ -223,6 +224,7 @@ export class SolanaFulfiller {
 			new PublicKey(toToken.mint),
 			stateAddress,
 			stateToAss,
+			toToken.standard === 'spl2022',
 		);
 
 		let fulfillAmountIxs = [];

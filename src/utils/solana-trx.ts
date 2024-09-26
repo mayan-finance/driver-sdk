@@ -1,4 +1,3 @@
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
 	AddressLookupTableAccount,
 	ComputeBudgetProgram,
@@ -153,7 +152,9 @@ export class SolanaMultiTxSender {
 						throw new Error(`Bundle failed with error: ${tx.value.err}`);
 					}
 
-					logger.info(`Posted ${status} transactions to jito with ${bundleId}`);
+					logger.info(
+						`Posted ${status} transactions to jito with ${bundleId} ${bundleStatuses.value[0].transactions}`,
+					);
 
 					return txHash;
 				}
@@ -358,38 +359,6 @@ export class SolanaMultiTxSender {
 		const idx = Math.floor(Math.random() * (this.jitoTipAccounts.length - 1));
 		return this.jitoTipAccounts[idx];
 	}
-}
-
-export function isBadJupAggIns(
-	instruction: TransactionInstruction,
-	address: PublicKey,
-	mints: Array<PublicKey>,
-	mintsAss: Array<PublicKey>,
-): boolean {
-	if (instruction.programId.equals(ComputeBudgetProgram.programId)) {
-		return true;
-	}
-	if (instruction.programId.equals(TOKEN_PROGRAM_ID)) {
-		if (instruction.data[0] === 9) {
-			if (mintsAss.find((m) => instruction.keys[0].pubkey.equals(m))) {
-				return true;
-			}
-		}
-	}
-	if (!instruction.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
-		return false;
-	}
-	if (instruction.data.length > 0) {
-		return false;
-	}
-	if (!instruction.keys[2].pubkey.equals(address)) {
-		return false;
-	}
-	const currentMint = instruction.keys[3].pubkey;
-	if (mints.find((m) => m.equals(currentMint))) {
-		return true;
-	}
-	return false;
 }
 
 export class PriorityFeeHelper {

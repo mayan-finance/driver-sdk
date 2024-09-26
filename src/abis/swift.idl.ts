@@ -85,6 +85,11 @@ export type Swift = {
 					isMut: false;
 					isSigner: false;
 				},
+				{
+					name: 'tokenProgram';
+					isMut: false;
+					isSigner: false;
+				},
 			];
 			args: [
 				{
@@ -167,7 +172,12 @@ export type Swift = {
 					isSigner: false;
 				},
 			];
-			args: [];
+			args: [
+				{
+					name: 'tryCloseAta';
+					type: 'bool';
+				},
+			];
 		},
 		{
 			name: 'postUnlock';
@@ -282,22 +292,6 @@ export type Swift = {
 					name: 'rent';
 					isMut: false;
 					isSigner: false;
-				},
-				{
-					name: 'mintTo';
-					isMut: false;
-					isSigner: false;
-				},
-				{
-					name: 'tokenProgram';
-					isMut: false;
-					isSigner: false;
-				},
-				{
-					name: 'stateToAcc';
-					isMut: true;
-					isSigner: false;
-					isOptional: true;
 				},
 			];
 			args: [
@@ -653,7 +647,7 @@ export type Swift = {
 						type: 'u64';
 					},
 					{
-						name: 'lastSeqMsg';
+						name: 'seqMsg';
 						type: 'u64';
 					},
 				];
@@ -1111,71 +1105,81 @@ export type Swift = {
 		},
 		{
 			code: 6036;
+			name: 'RelayerIsTraderFeeSubmit';
+			msg: 'relayer is trader but fee_submit > 0';
+		},
+		{
+			code: 6037;
+			name: 'MintAndTokenProgramMismatch';
+			msg: 'Mint is not match with token program';
+		},
+		{
+			code: 6038;
 			name: 'InvalidUnlockBatchVAA';
 			msg: 'Invalid unlock batch vaa';
 		},
 		{
-			code: 6037;
+			code: 6039;
 			name: 'InvalidUnlockVAA';
 			msg: 'Invalid unlock vaa';
 		},
 		{
-			code: 6038;
+			code: 6040;
 			name: 'DriverIsNotUnlocker';
 			msg: 'Driver is not equal to vaa unlocker';
 		},
 		{
-			code: 6039;
+			code: 6041;
 			name: 'MintIsNotTokenIn';
 			msg: 'Mint is not equal to vaa token in';
 		},
 		{
-			code: 6040;
+			code: 6042;
 			name: 'InvalidRemainingAccountsCount';
 		},
 		{
-			code: 6041;
+			code: 6043;
 			name: 'InvalidTokenAccountMint';
 		},
 		{
-			code: 6042;
+			code: 6044;
 			name: 'InvalidTokenAccountOwner';
 		},
 		{
-			code: 6043;
+			code: 6045;
 			name: 'InvalidEmitterChain';
 		},
 		{
-			code: 6044;
+			code: 6046;
 			name: 'InvalidEmitterAddress';
 		},
 		{
-			code: 6045;
+			code: 6047;
 			name: 'InvalidCancelVAA';
 			msg: 'Invalid cancel vaa';
 		},
 		{
-			code: 6046;
+			code: 6048;
 			name: 'WrongCancelRelayerAddress';
 		},
 		{
-			code: 6047;
+			code: 6049;
 			name: 'InsufficientFundsToRefundFee';
 		},
 		{
-			code: 6048;
+			code: 6050;
 			name: 'InvalidTrader';
 		},
 		{
-			code: 6049;
+			code: 6051;
 			name: 'InvalidOneOwner';
 		},
 		{
-			code: 6050;
+			code: 6052;
 			name: 'InvalidTwoOwner';
 		},
 		{
-			code: 6051;
+			code: 6053;
 			name: 'InvalidThreeOwner';
 		},
 	];
@@ -1268,6 +1272,11 @@ export const IDL: Swift = {
 					isMut: false,
 					isSigner: false,
 				},
+				{
+					name: 'tokenProgram',
+					isMut: false,
+					isSigner: false,
+				},
 			],
 			args: [
 				{
@@ -1350,7 +1359,12 @@ export const IDL: Swift = {
 					isSigner: false,
 				},
 			],
-			args: [],
+			args: [
+				{
+					name: 'tryCloseAta',
+					type: 'bool',
+				},
+			],
 		},
 		{
 			name: 'postUnlock',
@@ -1465,22 +1479,6 @@ export const IDL: Swift = {
 					name: 'rent',
 					isMut: false,
 					isSigner: false,
-				},
-				{
-					name: 'mintTo',
-					isMut: false,
-					isSigner: false,
-				},
-				{
-					name: 'tokenProgram',
-					isMut: false,
-					isSigner: false,
-				},
-				{
-					name: 'stateToAcc',
-					isMut: true,
-					isSigner: false,
-					isOptional: true,
 				},
 			],
 			args: [
@@ -1836,7 +1834,7 @@ export const IDL: Swift = {
 						type: 'u64',
 					},
 					{
-						name: 'lastSeqMsg',
+						name: 'seqMsg',
 						type: 'u64',
 					},
 				],
@@ -2294,71 +2292,81 @@ export const IDL: Swift = {
 		},
 		{
 			code: 6036,
+			name: 'RelayerIsTraderFeeSubmit',
+			msg: 'relayer is trader but fee_submit > 0',
+		},
+		{
+			code: 6037,
+			name: 'MintAndTokenProgramMismatch',
+			msg: 'Mint is not match with token program',
+		},
+		{
+			code: 6038,
 			name: 'InvalidUnlockBatchVAA',
 			msg: 'Invalid unlock batch vaa',
 		},
 		{
-			code: 6037,
+			code: 6039,
 			name: 'InvalidUnlockVAA',
 			msg: 'Invalid unlock vaa',
 		},
 		{
-			code: 6038,
+			code: 6040,
 			name: 'DriverIsNotUnlocker',
 			msg: 'Driver is not equal to vaa unlocker',
 		},
 		{
-			code: 6039,
+			code: 6041,
 			name: 'MintIsNotTokenIn',
 			msg: 'Mint is not equal to vaa token in',
 		},
 		{
-			code: 6040,
+			code: 6042,
 			name: 'InvalidRemainingAccountsCount',
 		},
 		{
-			code: 6041,
+			code: 6043,
 			name: 'InvalidTokenAccountMint',
 		},
 		{
-			code: 6042,
+			code: 6044,
 			name: 'InvalidTokenAccountOwner',
 		},
 		{
-			code: 6043,
+			code: 6045,
 			name: 'InvalidEmitterChain',
 		},
 		{
-			code: 6044,
+			code: 6046,
 			name: 'InvalidEmitterAddress',
 		},
 		{
-			code: 6045,
+			code: 6047,
 			name: 'InvalidCancelVAA',
 			msg: 'Invalid cancel vaa',
 		},
 		{
-			code: 6046,
+			code: 6048,
 			name: 'WrongCancelRelayerAddress',
 		},
 		{
-			code: 6047,
+			code: 6049,
 			name: 'InsufficientFundsToRefundFee',
 		},
 		{
-			code: 6048,
+			code: 6050,
 			name: 'InvalidTrader',
 		},
 		{
-			code: 6049,
+			code: 6051,
 			name: 'InvalidOneOwner',
 		},
 		{
-			code: 6050,
+			code: 6052,
 			name: 'InvalidTwoOwner',
 		},
 		{
-			code: 6051,
+			code: 6053,
 			name: 'InvalidThreeOwner',
 		},
 	],
