@@ -200,27 +200,18 @@ export class DriverService {
 			throw new Error('Shall not bid because effectiveAmountIn is less than 0');
 		}
 
-		const bidAmount = await this.auctionFulfillerCfg.bidAmount(swap, effectiveAmountIn, expenses);
-
-		let normalizedBidAmount: bigint;
+		let driverToken: Token;
 		if (dstChain === CHAIN_ID_SOLANA) {
-			const driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-			normalizedBidAmount = await this.solanaFulfiller.getNormalizedBid(
-				driverToken,
-				bidAmount,
-				normalizedMinAmountOut,
-				toToken,
-			);
+			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
 		} else {
-			const driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
-			normalizedBidAmount = await this.evmFulFiller.getNormalizedBid(
-				dstChain,
-				driverToken,
-				bidAmount,
-				normalizedMinAmountOut,
-				toToken,
-			);
+			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
 		}
+		let normalizedBidAmount = await this.auctionFulfillerCfg.normalizedBidAmount(
+			driverToken,
+			effectiveAmountIn,
+			swap,
+			expenses,
+		);
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
 			logger.error(
@@ -255,8 +246,6 @@ export class DriverService {
 			70_000,
 		);
 		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
-
-		swap.bidAmount = bidAmount;
 	}
 
 	async postBid(
@@ -498,10 +487,21 @@ export class DriverService {
 			throw new Error('Shall not bid because effectiveAmountIn is less than 0');
 		}
 
-		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(swap, effectiveAmntIn, expenses);
+		let driverToken: Token;
+		if (swap.destChain === CHAIN_ID_SOLANA) {
+			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
+		} else {
+			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		}
+
+		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(
+			driverToken,
+			effectiveAmntIn,
+			swap,
+			expenses,
+		);
 
 		if (swap.destChain === CHAIN_ID_SOLANA) {
-			let driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
@@ -537,7 +537,6 @@ export class DriverService {
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
 		} else {
-			let driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));

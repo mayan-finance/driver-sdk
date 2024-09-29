@@ -143,7 +143,7 @@ export async function main() {
 	await evmFulFiller.init();
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(),
+		new AuctionFulfillerConfig(rpcConfig),
 		solanaConnection,
 		walletConf,
 		rpcConfig,
