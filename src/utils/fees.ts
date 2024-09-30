@@ -234,6 +234,7 @@ export class FeeService {
 			fulfillCost: fulfillCost, //fulfillCost,
 			unlockSource: unlockFee, //unlockFee,
 			fulfillAndUnlock: fulfillCost + unlockFee,
+			fromTokenPrice: fromTokenPrice,
 		};
 	}
 
@@ -364,6 +365,7 @@ export type SwiftCosts = {
 	fulfillCost: number;
 	unlockSource: number;
 	fulfillAndUnlock: number;
+	fromTokenPrice: number;
 };
 
 export type ExpenseParams = {

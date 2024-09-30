@@ -19,8 +19,12 @@ export class AuctionFulfillerConfig {
 		driverToken: Token,
 		effectiveAmountIn: number,
 		swap: Swap,
-		expenses: SwiftCosts,
+		costs: SwiftCosts,
 	): Promise<bigint> {
+		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
+			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping bid`);
+		}
+
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
 		let output64: bigint;
