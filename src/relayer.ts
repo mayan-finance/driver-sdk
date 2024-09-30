@@ -9,6 +9,7 @@ import { GlobalConfig } from './config/global';
 import { RpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { WalletConfig } from './config/wallet';
+import { driverConfig } from './driver.conf';
 import { DriverService } from './driver/driver';
 import { WalletsHelper } from './driver/wallet-helper';
 import { SWAP_STATUS, Swap } from './swap.dto';
@@ -111,7 +112,15 @@ export class Relayer {
 	async relay(swap: Swap) {
 		try {
 			if (!supportedChainIds.includes(swap.sourceChain) || !supportedChainIds.includes(swap.destChain)) {
-				logger.warn(`Swap chain id is not supported yet on sdk`);
+				logger.warn(`Swap chain id is not supported yet on sdk for ${swap.sourceTxHash}`);
+				return;
+			}
+
+			if (
+				!driverConfig.acceptedInputChains.has(swap.sourceChain) ||
+				!driverConfig.acceptedOutputChains.has(swap.destChain)
+			) {
+				logger.warn(`Swap chain id is disabled in driver conf for ${swap.sourceTxHash}`);
 				return;
 			}
 

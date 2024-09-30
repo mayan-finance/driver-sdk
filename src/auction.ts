@@ -2,14 +2,15 @@ import axios from 'axios';
 import { CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
+import { driverConfig } from './driver.conf';
 import { get1InchQuote } from './driver/routers';
 import { Swap } from './swap.dto';
 import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
 
 export class AuctionFulfillerConfig {
-	private readonly bidAggressionPercent = 1; // 1% above approximated available profit
-	private readonly fulfillProfitPercent = 0.1; // 0.1% of approximated available profit
+	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent; // 1% above approximated available profit
+	private readonly fulfillProfitPercent = driverConfig.fulfillProfitPercent; // 0.1% of approximated available profit
 	private readonly forceBid = true;
 
 	constructor(private readonly rpcConfig: RpcConfig) {}
