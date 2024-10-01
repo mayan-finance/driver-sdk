@@ -9,8 +9,8 @@ import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
 
 export class AuctionFulfillerConfig {
-	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent; // 1% above approximated available profit
-	private readonly fulfillProfitPercent = driverConfig.fulfillProfitPercent; // 0.1% of approximated available profit
+	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
+	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
 	private readonly forceBid = true;
 
 	constructor(private readonly rpcConfig: RpcConfig) {}
@@ -147,12 +147,11 @@ export class AuctionFulfillerConfig {
 		return output;
 	}
 
-	async fulfillAmount(
-		driverToken: Token,
-		effectiveAmountIn: number,
-		swap: Swap,
-		costDetails: SwiftCosts,
-	): Promise<number> {
+	async fulfillAmount(driverToken: Token, effectiveAmountIn: number, swap: Swap, costs: SwiftCosts): Promise<number> {
+		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
+			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping fulfill`);
+		}
+
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
 		let output64: bigint;
@@ -193,11 +192,11 @@ export class AuctionFulfillerConfig {
 			throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
 		}
 
-		const profitPercent = this.fulfillProfitPercent; // 0 - 100
+		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
 
 		const profitMargin = effectiveAmountIn - mappedMinAmountIn - mappedBpsAmountIn;
 
-		const finalAmountIn = mappedMinAmountIn + (profitMargin * (100 - profitPercent)) / 100;
+		const finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
 
 		return finalAmountIn;
 	}
