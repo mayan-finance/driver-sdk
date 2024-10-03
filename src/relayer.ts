@@ -124,8 +124,11 @@ export class Relayer {
 				return;
 			}
 
-			if (this.gConf.blackListedReferrerAddresses.has(swap.referrerAddress)) {
-				logger.warn(`Referrer address is blacklisted for ${swap.sourceTxHash}. discarding...`);
+			if (
+				this.gConf.ignoreReferrers.has(swap.referrerAddress) ||
+				this.gConf.blackListedReferrerAddresses.has(swap.referrerAddress)
+			) {
+				logger.warn(`Referrer address is blacklisted/ignored for ${swap.sourceTxHash}. discarding...`);
 				return;
 			}
 

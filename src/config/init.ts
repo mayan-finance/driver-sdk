@@ -20,6 +20,7 @@ export async function fetchDynamicSdkParams(): Promise<{
 	singleBatchChainIds: string;
 	scheduleUnlockInterval: number;
 	feeParams: SwiftFeeParams;
+	ignoreReferrers: string[];
 }> {
 	const result = await axios.get(initEndpoint);
 	const serverChains = Object.keys(result.data.swiftContracts).map((k) => +k);

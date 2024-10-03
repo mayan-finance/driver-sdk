@@ -44,6 +44,7 @@ export async function main() {
 	rpcConfig.wormholeGuardianRpcs = initialDynamicConfig.wormholeGuardianRpcs.split(',');
 
 	const globalConfig: GlobalConfig = {
+		ignoreReferrers: new Set(initialDynamicConfig.ignoreReferrers),
 		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
 		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,
 		registerInterval: initialDynamicConfig.registerInterval,
