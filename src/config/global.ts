@@ -25,6 +25,7 @@ export interface SwiftFeeParams {
 }
 
 export type GlobalConfig = {
+	ignoreReferrers: Set<string>;
 	blackListedReferrerAddresses: Set<string>;
 	auctionTimeSeconds: number;
 	batchUnlockThreshold: number; // Optimal Number of swaps to select for unlocking

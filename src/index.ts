@@ -44,6 +44,7 @@ export async function main() {
 	rpcConfig.wormholeGuardianRpcs = initialDynamicConfig.wormholeGuardianRpcs.split(',');
 
 	const globalConfig: GlobalConfig = {
+		ignoreReferrers: new Set(initialDynamicConfig.ignoreReferrers),
 		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
 		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,
 		registerInterval: initialDynamicConfig.registerInterval,
@@ -143,7 +144,7 @@ export async function main() {
 	await evmFulFiller.init();
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(),
+		new AuctionFulfillerConfig(rpcConfig),
 		solanaConnection,
 		walletConf,
 		rpcConfig,
