@@ -191,6 +191,7 @@ export class DriverService {
 			fromToken: fromToken,
 			toChainId: dstChain,
 			toToken: toToken,
+			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
 		});
 		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
@@ -404,6 +405,7 @@ export class DriverService {
 			fromToken: fromToken,
 			toChainId: dstChain,
 			toToken: toToken,
+			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
 		});
 		const effectiveAmntIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
