@@ -41,7 +41,7 @@ export class StateCloser {
 		const serializedTrx = trx.serialize();
 
 		logger.info(`Closing ${destSolanaStates.length} dest swap states`);
-		await this.solanaTxSender.sendAndConfirmTransaction(serializedTrx, 10);
+		await this.solanaTxSender.sendAndConfirmTransaction(serializedTrx, 10, 'confirmed', 60, 100, false);
 		logger.info(`Closed ${destSolanaStates.length} dest swap states`);
 	}
 
@@ -73,7 +73,7 @@ export class StateCloser {
 		const serializedTrx = trx.serialize();
 
 		logger.info(`Closing ${auctionStates.length} auction states`);
-		await this.solanaTxSender.sendAndConfirmTransaction(serializedTrx, 10);
+		await this.solanaTxSender.sendAndConfirmTransaction(serializedTrx, 10, 'confirmed', 30, 100, false);
 		logger.info(`Closed ${auctionStates.length} auction states`);
 	}
 
