@@ -260,13 +260,14 @@ export class SolanaMultiTxSender {
 		confirmationLevel: 'confirmed' | 'finalized' = 'confirmed',
 		timeoutSeconds: number = 59,
 		maxTotalSendCount: number = 150,
+		skipPreflightFirst: boolean = true,
 	): Promise<string> {
 		const sendInterval = this.rpcConfig.solana.sendInterval;
 		const otherSendInterval = this.rpcConfig.solana.otherSendInterval;
 
 		let ongoingSends: any[] = [];
 		let done = false;
-		const trxHash = await this.connection.sendRawTransaction(rawTrx, { skipPreflight: true });
+		const trxHash = await this.connection.sendRawTransaction(rawTrx, { skipPreflight: skipPreflightFirst });
 
 		let startTime = new Date().getTime();
 		const backgroundSend = async () => {

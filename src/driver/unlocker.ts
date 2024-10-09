@@ -90,22 +90,6 @@ export class Unlocker {
 		this.driverAddresses.push(this.walletConfig.evm.address);
 	}
 
-	private async getOwnedUnlockableSwaps(driverAddresses: string[]): Promise<{
-		singleData: UnlockableSwapSingleItem[];
-		batchData: UnlockableSwapBatchItem[];
-		postedBatchData: UnlockableSwapBatchItem[];
-	}> {
-		const rawData = await axios.get(this.endpoints.explorerApiUrl + '/v3/unlockable-swaps', {
-			params: {
-				batchUnlockThreshold: this.gConf.batchUnlockThreshold,
-				singleBatchChainIds: this.gConf.singleBatchChainIds.join(','),
-				driverAddresses: driverAddresses.join(','),
-			},
-		});
-
-		return rawData.data;
-	}
-
 	scheduleUnlockJobs() {
 		if (this.gConf.disableUnlocker) {
 			logger.info(`Unlocker is disabled and ignored.`);
@@ -164,6 +148,21 @@ export class Unlocker {
 			}
 
 			for (let postedUnlockData of freshExplorerData.postedBatchData) {
+				const orderHashs = postedUnlockData.orders.map((order) => order.orderHash);
+				let alreadyUnlocked: Set<string>;
+				if (+postedUnlockData.fromChain === CHAIN_ID_SOLANA) {
+					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSolana(orderHashs);
+				} else {
+					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderEvm(
+						postedUnlockData.fromChain,
+						orderHashs,
+					);
+				}
+
+				postedUnlockData.orders = postedUnlockData.orders.filter(
+					(order) => !alreadyUnlocked.has(order.orderHash),
+				);
+
 				this.scheduleAlreadyPostedUnlocks(postedUnlockData);
 			}
 
@@ -366,6 +365,8 @@ export class Unlocker {
 			this.rpcConfig.solana.sendCount,
 			'confirmed',
 			30,
+			100,
+			false,
 		);
 
 		return txHash;
@@ -433,6 +434,9 @@ export class Unlocker {
 			serializedTrx,
 			this.rpcConfig.solana.sendCount,
 			'confirmed',
+			60,
+			100,
+			false,
 		);
 
 		return txHash;
@@ -601,6 +605,8 @@ export class Unlocker {
 			this.rpcConfig.solana.sendCount,
 			'confirmed',
 			30,
+			100,
+			false,
 		);
 		logger.verbose(`Batch posted Successfully Solana, getting batch sequence`);
 
@@ -744,6 +750,22 @@ export class Unlocker {
 			}
 		}
 		return result;
+	}
+
+	private async getOwnedUnlockableSwaps(driverAddresses: string[]): Promise<{
+		singleData: UnlockableSwapSingleItem[];
+		batchData: UnlockableSwapBatchItem[];
+		postedBatchData: UnlockableSwapBatchItem[];
+	}> {
+		const rawData = await axios.get(this.endpoints.explorerApiUrl + '/v3/unlockable-swaps', {
+			params: {
+				batchUnlockThreshold: this.gConf.batchUnlockThreshold,
+				singleBatchChainIds: this.gConf.singleBatchChainIds.join(','),
+				driverAddresses: driverAddresses.join(','),
+			},
+		});
+
+		return rawData.data;
 	}
 
 	private async getSignedVaa(sequence: string, destChainId: number, deadlineSeconds?: number): Promise<string> {
