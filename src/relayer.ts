@@ -125,6 +125,16 @@ export class Relayer {
 			}
 
 			if (
+				this.gConf.whiteListedReferrerAddresses.size > 0 &&
+				!this.gConf.whiteListedReferrerAddresses.has(swap.referrerAddress)
+			) {
+				logger.warn(
+					`Whitelist enabled and referrer address ${swap.referrerAddress} is not whitelisted for ${swap.sourceTxHash}. discarding...`,
+				);
+				return;
+			}
+
+			if (
 				this.gConf.ignoreReferrers.has(swap.referrerAddress) ||
 				this.gConf.blackListedReferrerAddresses.has(swap.referrerAddress)
 			) {

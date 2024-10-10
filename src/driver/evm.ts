@@ -75,7 +75,7 @@ export class EvmFulfiller {
 						this.contractsConfig.contracts[chainId],
 					);
 
-					if (current < ethers.MaxUint256 - 1_000_000_000_000_000_000n) {
+					if (current < ethers.MaxUint256 - 1_000_000_000_000_000_000_000_000_000n) {
 						logger.info(`Setting allowance for ${driverToken.contract} on chain ${chainId}`);
 						await giveErc20Allowance(
 							this.walletHelper.getDriverWallet(chainId),
@@ -104,7 +104,7 @@ export class EvmFulfiller {
 						this.contractsConfig.evmFulfillHelpers[chainId],
 					);
 
-					if (current < ethers.MaxUint256 - 1_000_000_000_000_000_000n) {
+					if (current < ethers.MaxUint256 - 1_000_000_000_000_000_000_000_000_000n) {
 						logger.info(`Setting allowance for helper ${driverToken.contract} on chain ${chainId}`);
 						await giveErc20Allowance(
 							this.walletHelper.getDriverWallet(chainId),

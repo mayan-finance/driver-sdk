@@ -43,6 +43,11 @@ export async function main() {
 	const initialDynamicConfig = await fetchDynamicSdkParams();
 	rpcConfig.wormholeGuardianRpcs = initialDynamicConfig.wormholeGuardianRpcs.split(',');
 
+	let whiteListedReferrerAddresses: Set<string> = new Set();
+	if (process.env.WHITELISTED_REFERRERS) {
+		whiteListedReferrerAddresses = new Set(process.env.WHITELISTED_REFERRERS.split(','));
+	}
+
 	const globalConfig: GlobalConfig = {
 		ignoreReferrers: new Set(initialDynamicConfig.ignoreReferrers),
 		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
@@ -59,6 +64,8 @@ export async function main() {
 			acc.add(x);
 			return acc;
 		}, new Set<string>()),
+
+		whiteListedReferrerAddresses: whiteListedReferrerAddresses,
 	};
 
 	const contracts: ContractsConfig = {

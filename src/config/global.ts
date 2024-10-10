@@ -27,6 +27,7 @@ export interface SwiftFeeParams {
 export type GlobalConfig = {
 	ignoreReferrers: Set<string>;
 	blackListedReferrerAddresses: Set<string>;
+	whiteListedReferrerAddresses: Set<string>;
 	auctionTimeSeconds: number;
 	batchUnlockThreshold: number; // Optimal Number of swaps to select for unlocking
 	singleBatchChainIds: number[]; // Expensive chain-ids that use direct vaa post instead of batch (e.g ethereum)
