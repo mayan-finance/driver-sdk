@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as mathjs from 'mathjs';
 import {
 	CHAIN_ID_ARBITRUM,
+	CHAIN_ID_AVAX,
 	CHAIN_ID_BASE,
 	CHAIN_ID_BSC,
 	CHAIN_ID_ETH,
@@ -150,7 +151,14 @@ export class FeeService {
 			);
 		}
 
-		let batchCount = 6; // we can send 8 unlock batches, but we consider 6 so that we can unlock with loss in case of liquidity emergencies
+		let maxBatchCount = 6; // we can send 8 unlock batches, but we consider 6 so that we can unlock with loss in case of liquidity emergencies
+		let estimatedBatchCount = this.calculateBatchCount(
+			qr.fromChainId,
+			qr.toChainId,
+			qr.fromAmount,
+			fromTokenPrice,
+			maxBatchCount,
+		);
 		let realBatchCount = 8;
 
 		let unlockFee: number;
@@ -188,12 +196,12 @@ export class FeeService {
 					overallMultiplier,
 				);
 
-				unlockFee = (unlockForAll + batchPostCost) / batchCount;
+				unlockFee = (unlockForAll + batchPostCost) / estimatedBatchCount;
 			}
 		} else {
 			let batchPostCost = 0;
 			if (isSingleUnlock) {
-				batchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
+				estimatedBatchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
 			} else if (qr.toChainId === CHAIN_ID_SOLANA) {
 				const batchPostSolUsage = batchPostBaseCost + batchPostAdddedCost * realBatchCount + solTxCost;
 				batchPostCost = await this.calculateSolanaFee(
@@ -203,7 +211,7 @@ export class FeeService {
 					0,
 					overallMultiplier,
 				);
-				batchPostCost /= batchCount;
+				batchPostCost /= estimatedBatchCount;
 			} else {
 				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
 				batchPostCost = await this.calculateGenericEvmFee(
@@ -214,7 +222,7 @@ export class FeeService {
 					0,
 					overallMultiplier,
 				);
-				batchPostCost /= batchCount;
+				batchPostCost /= estimatedBatchCount;
 			}
 
 			const { unlock } = await this.calculateUnlockAndRefundOnEvmFee(
@@ -224,7 +232,7 @@ export class FeeService {
 				nativeFromPrice,
 				this.tokenList.nativeTokens[qr.fromChainId].contract,
 				fromTokenPrice,
-				batchCount,
+				estimatedBatchCount,
 				overallMultiplier,
 			);
 			unlockFee = unlock + batchPostCost;
@@ -359,6 +367,37 @@ export class FeeService {
 			.div(10 ** 8)
 			.toNumber();
 	}
+
+	private calculateBatchCount(
+		fromChain: number,
+		toChain: number,
+		fromAmount: number,
+		fromTokenPrice: number,
+		maxBatchSize: number,
+	): number {
+		const volume = fromAmount * fromTokenPrice;
+
+		let volumeStep = 20_000;
+		switch (fromChain) {
+			case CHAIN_ID_ARBITRUM:
+			case CHAIN_ID_BASE:
+			case CHAIN_ID_OPTIMISM:
+			case CHAIN_ID_POLYGON:
+			case CHAIN_ID_BSC:
+				volumeStep = 2000;
+				break;
+			case CHAIN_ID_AVAX:
+				volumeStep = 3000;
+				break;
+			case CHAIN_ID_ETH:
+				volumeStep = 6000;
+				break;
+			default:
+				break;
+		}
+
+		return maxBatchSize - Math.min(maxBatchSize - 1, Math.floor(volume / volumeStep));
+	}
 }
 
 export type SwiftCosts = {
@@ -376,5 +415,6 @@ export type ExpenseParams = {
 	fromChainId: number;
 	toToken: Token;
 	toChainId: number;
+	fromAmount: number;
 	gasDrop: number;
 };
