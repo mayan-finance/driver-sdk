@@ -7,6 +7,7 @@ export const CHAIN_ID_AVAX = 6;
 export const CHAIN_ID_ARBITRUM = 23;
 export const CHAIN_ID_OPTIMISM = 24;
 export const CHAIN_ID_BASE = 30;
+export const CHAIN_ID_SUI = 21;
 
 export function mapNameToWormholeChainId(name: string): number | null {
 	if (!(name in chainMap)) {
@@ -34,6 +35,7 @@ export const chainMap: { [key: string]: number } = {
 	arbitrum: CHAIN_ID_ARBITRUM,
 	optimism: CHAIN_ID_OPTIMISM,
 	base: CHAIN_ID_BASE,
+	sui: CHAIN_ID_SUI,
 };
 
 export const supportedChainIds: number[] = [
@@ -45,7 +47,18 @@ export const supportedChainIds: number[] = [
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_BASE,
+	CHAIN_ID_SUI,
 ];
+
+export const EVM_CHAINS = new Set([
+	CHAIN_ID_ETH,
+	CHAIN_ID_BSC,
+	CHAIN_ID_POLYGON,
+	CHAIN_ID_AVAX,
+	CHAIN_ID_ARBITRUM,
+	CHAIN_ID_OPTIMISM,
+	CHAIN_ID_BASE,
+]);
 
 export const ETH_CHAINS: number[] = [CHAIN_ID_ETH, CHAIN_ID_ARBITRUM, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE];
 
@@ -60,3 +73,7 @@ export const WhChainIdToEvm: { [chainId: number]: number } = {
 };
 
 export const WORMHOLE_DECIMALS = 8;
+
+export function isEVMChainId(chainId: number) {
+	return EVM_CHAINS.has(chainId);
+}

@@ -1,3 +1,4 @@
+import { SuiClient } from '@mysten/sui/client';
 import { Connection, PublicKey } from '@solana/web3.js';
 import 'dotenv/config';
 import { AuctionFulfillerConfig } from './auction';
@@ -37,7 +38,10 @@ import { MayanExplorerWatcher } from './watchers/mayan-explorer';
 export async function main() {
 	const walletConf = getWalletConfig();
 	logger.info(
-		`Solana Wallet is ${walletConf.solana.publicKey.toString()} and Ethereum Wallet is ${walletConf.evm.address}`,
+		`Wallets:
+		 - Solana Wallet is ${walletConf.solana.publicKey.toString()}
+		 - Ethereum Wallet is ${walletConf.evm.address}
+		 - Sui Wallet is ${walletConf.sui.getPublicKey().toSuiAddress()}`,
 	);
 
 	const initialDynamicConfig = await fetchDynamicSdkParams();
@@ -83,6 +87,7 @@ export async function main() {
 	const solanaConnection = new Connection(rpcConfig.solana.solanaMainRpc, {
 		commitment: 'confirmed',
 	});
+	const suiClient = new SuiClient({ url: rpcConfig.suiFullNode });
 
 	const solanaTxSender = new SolanaMultiTxSender(rpcConfig, walletConf);
 
@@ -90,7 +95,7 @@ export async function main() {
 
 	const walletHelper = new WalletsHelper(evmProviders, walletConf, rpcConfig, contracts);
 
-	const tokenList = new TokenList(mayanEndpoints, evmProviders, solanaConnection);
+	const tokenList = new TokenList(mayanEndpoints, evmProviders, solanaConnection, suiClient);
 	await tokenList.init();
 
 	const solanaIxHelper = new NewSolanaIxHelper(
@@ -136,7 +141,6 @@ export async function main() {
 		walletConf,
 		solanaIxHelper,
 		lutOptimizer,
-		walletHelper,
 		tokenList,
 	);
 	const evmFulFiller = new EvmFulfiller(
@@ -164,13 +168,7 @@ export async function main() {
 		tokenList,
 		solanaTxSender,
 	);
-	const chainFinalitySvc = new ChainFinality(
-		solanaConnection,
-		contracts,
-		rpcConfig,
-		evmProviders,
-		secondaryEvmProviders,
-	);
+	const chainFinalitySvc = new ChainFinality(solanaConnection, suiClient, evmProviders, secondaryEvmProviders);
 	const relayer = new Relayer(
 		rpcConfig,
 		mayanEndpoints,
