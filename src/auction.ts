@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEVMChainId, WhChainIdToEvm } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { driverConfig } from './driver.conf';
-import { get1InchQuote } from './driver/routers';
+import { get1InchQuote, getSuiSwapQuote } from './driver/routers';
 import { Swap } from './swap.dto';
 import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
@@ -30,7 +30,9 @@ export class AuctionFulfillerConfig {
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			output64 = await this.getSolanaEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
-		} else {
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			output64 = await this.getSuiEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
+		} else if (isEVMChainId(swap.destChain)) {
 			output64 = await this.getEvmEquivalentOutput(
 				swap.destChain,
 				driverToken,
@@ -38,6 +40,8 @@ export class AuctionFulfillerConfig {
 				normalizedMinAmountOut,
 				swap.toToken,
 			);
+		} else {
+			throw new Error(`Chain ${swap.destChain} is not supported`);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
 
@@ -85,6 +89,31 @@ export class AuctionFulfillerConfig {
 		}
 
 		return normalizedAmountOut;
+	}
+
+	async getSuiEquivalentOutput(
+		driverToken: Token,
+		effectiveAmountInDriverToken: number,
+		toToken: Token,
+	): Promise<bigint> {
+		let output: bigint;
+		if (driverToken.contract === toToken.contract) {
+			output = BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals));
+		} else {
+			const quote = await getSuiSwapQuote({
+				coinInType: driverToken.contract,
+				coinOutType: toToken.contract,
+				coinInAmount: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
+			});
+
+			if (!quote) {
+				throw new Error('sui quote for bid/fulfill in swift failed');
+			}
+
+			output = quote.outAmount;
+		}
+
+		return output;
 	}
 
 	async getEvmEquivalentOutput(
@@ -157,7 +186,9 @@ export class AuctionFulfillerConfig {
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			output64 = await this.getSolanaEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
-		} else {
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			output64 = await this.getSuiEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
+		} else if (isEVMChainId(swap.destChain)) {
 			output64 = await this.getEvmEquivalentOutput(
 				swap.destChain,
 				driverToken,
@@ -165,6 +196,8 @@ export class AuctionFulfillerConfig {
 				normalizedMinAmountOut,
 				swap.toToken,
 			);
+		} else {
+			throw new Error(`Chain ${swap.destChain} is not supported`);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
 

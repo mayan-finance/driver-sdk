@@ -1,6 +1,7 @@
 import { PublicKey } from '@solana/web3.js';
 import { ethers, zeroPadValue } from 'ethers6';
-import { CHAIN_ID_SOLANA, supportedChainIds } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, supportedChainIds } from '../config/chains';
+import { Token } from '../config/tokens';
 
 const MAX_U64 = BigInt(2) ** BigInt(64) - BigInt(1);
 export function getSafeU64Blob(value: bigint): Buffer {
@@ -45,6 +46,22 @@ export const tryNativeToHexString = (address: string, chainId: number): string =
  */
 export function tryNativeToUint8Array(address: string, chainId: number): Uint8Array {
 	return hexToUint8Array(tryNativeToHexString(address, chainId));
+}
+
+export function tryNativeToUint8ArrayGeneral(address: string, chainId: number): Uint8Array {
+	if (chainId === CHAIN_ID_SUI) {
+		return hexToUint8Array(address);
+	} else {
+		return tryNativeToUint8Array(address, chainId);
+	}
+}
+
+export function tryTokenToUint8ArrayGeneral(token: Token, chainId: number): Uint8Array {
+	if (chainId === CHAIN_ID_SUI) {
+		return hexToUint8Array(token.verifiedAddress!);
+	} else {
+		return tryNativeToUint8Array(token.contract, chainId);
+	}
 }
 
 export const tryUint8ArrayToNative = (a: Uint8Array, chainId: number): string => {

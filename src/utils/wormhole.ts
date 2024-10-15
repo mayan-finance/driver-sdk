@@ -1,5 +1,7 @@
 import { ChainId, getSignedVAAWithRetry, parseVaa } from '@certusone/wormhole-sdk';
 import { publicrpc } from '@certusone/wormhole-sdk-proto-web';
+import { Transaction } from '@mysten/sui/transactions';
+import { SUI_CLOCK_OBJECT_ID } from '@mysten/sui/utils';
 import { PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
@@ -7,9 +9,34 @@ import { CHAIN_ID_SOLANA } from '../config/chains';
 import { NodeHttpTransportWithDefaultTimeout } from './grpc';
 import logger from './logger';
 import { delay } from './util';
+
 const { GrpcWebImpl, PublicRPCServiceClientImpl } = publicrpc;
 
 export const WORMHOLE_CORE_BRIDGE = new PublicKey('worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth');
+export const WORMHOLE_SUI_PACKAGE = '0x5306f64e312b581766351c07af79c72fcb1cd25147157fdc2f8ad76de9a3fb6a';
+export const WORMHOLE_SUI_CORE_ID = '0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c';
+export const WORMHOLE_SUI_TOKEN_BRIDGE_ID = '0xc57508ee0d4595e5a8728974a4a93a787d38f339757230d441e895422c07aba9';
+
+export function addParseAndVerifySui(
+	tx: Transaction,
+	signedVaa: Uint8Array,
+): {
+	tx: Transaction;
+	vaa: {
+		$kind: 'NestedResult';
+		NestedResult: [number, number];
+	};
+} {
+	const [vaa] = tx.moveCall({
+		target: `${WORMHOLE_SUI_PACKAGE}::vaa::parse_and_verify`,
+		arguments: [tx.object(WORMHOLE_SUI_CORE_ID), tx.pure.vector('u8', signedVaa), tx.object(SUI_CLOCK_OBJECT_ID)],
+	});
+
+	return {
+		tx: tx,
+		vaa: vaa,
+	};
+}
 
 function serializePayload(parsedVaa: any) {
 	const x = Buffer.alloc(51 + parsedVaa.payload.length);

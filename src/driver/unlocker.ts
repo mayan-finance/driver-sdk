@@ -1,14 +1,18 @@
 import { ChainId, getSignedVAAWithRetry, parseVaa } from '@certusone/wormhole-sdk';
+import { SuiClient } from '@mysten/sui/client';
+import { Transaction } from '@mysten/sui/transactions';
+import { SUI_CLOCK_OBJECT_ID } from '@mysten/sui/utils';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Connection, Keypair, MessageV0, PublicKey, VersionedTransaction } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
 import { abi as WormholeAbi } from '../abis/wormhole.abi';
-import { CHAIN_ID_SOLANA } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEVMChainId } from '../config/chains';
 import { ContractsConfig, SolanaProgram } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
+import { TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { hexToUint8Array, tryUint8ArrayToNative, uint8ArrayToHex } from '../utils/buffer';
 import { EvmProviders } from '../utils/evm-providers';
@@ -26,6 +30,9 @@ import {
 import { delay } from '../utils/util';
 import { VaaPoster } from '../utils/vaa-poster';
 import {
+	WORMHOLE_SUI_CORE_ID,
+	WORMHOLE_SUI_PACKAGE,
+	addParseAndVerifySui,
 	findVaaAddress,
 	getEmitterAddressEth,
 	getEmitterAddressSolana,
@@ -34,6 +41,7 @@ import {
 } from '../utils/wormhole';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
+
 const LogMessagePublishedSig = 'LogMessagePublished(address,uint64,uint32,bytes,uint8)';
 
 export type UnlockableSwapBatchItem = {
@@ -43,6 +51,7 @@ export type UnlockableSwapBatchItem = {
 		fromTokenAddress: string;
 		orderHash: string;
 		unlockSequence?: string;
+		lockedFundObjectId?: string;
 	}[];
 };
 export type UnlockableSwapSingleItem = {
@@ -52,6 +61,7 @@ export type UnlockableSwapSingleItem = {
 		fromTokenAddress: string;
 		orderHash: string;
 		unlockSequence: string;
+		lockedFundObjectId?: string;
 	};
 };
 
@@ -77,17 +87,21 @@ export class Unlocker {
 		private readonly rpcConfig: RpcConfig,
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaConnection: Connection,
+		private readonly suiClient: SuiClient,
 		private readonly evmProviders: EvmProviders,
 		private readonly solanaIx: NewSolanaIxHelper,
 		private readonly priorityFeeService: PriorityFeeHelper,
 		private readonly solanaSender: SolanaMultiTxSender,
 		private readonly walletsHelper: WalletsHelper,
 		private readonly vaaPoster: VaaPoster,
+		private readonly tokenList: TokenList,
 	) {
 		this.sequenceStore = new SequenceStore();
 
 		this.driverAddresses.push(this.walletConfig.solana.publicKey.toString());
 		this.driverAddresses.push(this.walletConfig.evm.address);
+		this.driverAddresses.push(this.walletConfig.evm.address.toLowerCase());
+		this.driverAddresses.push(this.walletConfig.sui.getPublicKey().toSuiAddress());
 	}
 
 	scheduleUnlockJobs() {
@@ -112,13 +126,22 @@ export class Unlocker {
 						postTxHash,
 						postedData.orders,
 					);
-				} else {
+				} else if (postedData.fromChainId === CHAIN_ID_SUI) {
+					await this.getPendingBatchUnlockAndUnlockSui(
+						postedData.toChainId,
+						postedData.sequence.toString(),
+						postTxHash,
+						postedData.orders,
+					);
+				} else if (isEVMChainId(postedData.fromChainId)) {
 					await this.getPendingBatchUnlockAndUnlockEvm(
 						postedData.fromChainId,
 						postedData.toChainId,
 						postedData.sequence.toString(),
 						postTxHash,
 					);
+				} else {
+					logger.error(`Unknown from chainId ${postedData.fromChainId} in unlockPostedBatches`);
 				}
 				await delay(20); // avoid running everything together
 			}
@@ -142,6 +165,7 @@ export class Unlocker {
 						singleUnlockData.order.orderHash,
 						singleUnlockData.order.fromTokenAddress,
 						singleUnlockData.order.unlockSequence,
+						singleUnlockData.order.lockedFundObjectId,
 					),
 				);
 				await delay(20); // avoid running everything together
@@ -152,11 +176,16 @@ export class Unlocker {
 				let alreadyUnlocked: Set<string>;
 				if (+postedUnlockData.fromChain === CHAIN_ID_SOLANA) {
 					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSolana(orderHashs);
-				} else {
+				} else if (+postedUnlockData.fromChain === CHAIN_ID_SUI) {
+					// TODO
+					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSui(orderHashs);
+				} else if (isEVMChainId(+postedUnlockData.fromChain)) {
 					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderEvm(
 						postedUnlockData.fromChain,
 						orderHashs,
 					);
+				} else {
+					throw new Error(`Unknown from chainId ${postedUnlockData.fromChain} in fetchAndProgressUnlocks`);
 				}
 
 				postedUnlockData.orders = postedUnlockData.orders.filter(
@@ -171,11 +200,15 @@ export class Unlocker {
 				let alreadyUnlocked: Set<string>;
 				if (+batchUnlockData.fromChain === CHAIN_ID_SOLANA) {
 					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSolana(orderHashs);
-				} else {
+				} else if (+batchUnlockData.fromChain === CHAIN_ID_SUI) {
+					// TODO
+					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSui(orderHashs);
+				} else if (isEVMChainId(+batchUnlockData.fromChain)) {
 					alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderEvm(
 						batchUnlockData.fromChain,
 						orderHashs,
 					);
+				} else {
 				}
 
 				let filteredOrders = batchUnlockData.orders.filter((order) => !alreadyUnlocked.has(order.orderHash));
@@ -233,11 +266,16 @@ export class Unlocker {
 				alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSolana(
 					initialOrders.map((o) => o.orderHash),
 				);
-			} else {
+			} else if (sourceChainId === CHAIN_ID_SUI) {
+				// TODO
+				alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderSui(initialOrders.map((o) => o.orderHash));
+			} else if (isEVMChainId(sourceChainId)) {
 				alreadyUnlocked = await this.getAlreadyUnlockedOrPendingOrderEvm(
 					sourceChainId,
 					initialOrders.map((o) => o.orderHash),
 				);
+			} else {
+				throw new Error(`Unknown from chainId ${sourceChainId} in selectAndPostWhSequence`);
 			}
 
 			let filteredOrders = initialOrders.filter((order) => !alreadyUnlocked.has(order.orderHash));
@@ -263,10 +301,16 @@ export class Unlocker {
 				const result = await this.batchPostSolana(orderHashes);
 				sequence = result.sequence;
 				txHash = result.txHash;
-			} else {
+			} else if (destChainId === CHAIN_ID_SUI) {
+				const result = await this.batchPostSui(orderHashes);
+				sequence = result.sequence;
+				txHash = result.txHash;
+			} else if (isEVMChainId(destChainId)) {
 				const result = await this.batchPostEvm(destChainId, orderHashes);
 				sequence = result.sequence;
 				txHash = result.txHash;
+			} else {
+				throw new Error(`Unknown to chainId ${destChainId} in selectAndPostWhSequence`);
 			}
 			const postSequence = sequence;
 			const postTxHash = txHash;
@@ -281,6 +325,39 @@ export class Unlocker {
 			delete this.locks[lockKey];
 		} catch (err) {
 			logger.error(`selectAndPostWhSequence failed for ${sourceChainId} to ${destChainId} ${err}`);
+			delete this.locks[lockKey];
+		}
+	}
+
+	private async getPendingBatchUnlockAndUnlockSui(
+		destChainId: number,
+		sequence: string,
+		postTxHash: string,
+		orders: { fromTokenAddress: string; orderHash: string; lockedFundObjectId?: string }[],
+	) {
+		const sourceChainId = CHAIN_ID_SUI;
+		const lockKey = `lock:getPendingBatchUnlockAndUnlockSui:${postTxHash}`;
+
+		try {
+			const locked = this.locks[lockKey];
+			if (locked) {
+				return;
+			} else {
+				this.locks[lockKey] = true;
+			}
+
+			logger.info(`Getting batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
+			let signedVaa = await this.getSignedVaa(sequence, destChainId, 60);
+			logger.info(`Got batch unlock signed VAA for ${sourceChainId}-${destChainId} with ${sequence}`);
+
+			const txHash = await this.unlockBatchOnSui(Buffer.from(signedVaa.replace('0x', ''), 'hex'), orders);
+			logger.info(`Unlocked batch sui for ${sourceChainId} to ${destChainId} with ${txHash}`);
+
+			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
+
+			delete this.locks[lockKey];
+		} catch (err) {
+			logger.error(`getPendingBatchUnlockAndUnlockSui failed for ${sourceChainId} to ${destChainId} ${err}`);
 			delete this.locks[lockKey];
 		}
 	}
@@ -314,6 +391,39 @@ export class Unlocker {
 			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
 			delete this.locks[lockKey];
 		}
+	}
+
+	private async unlockSingleOnSui(
+		signedVaa: Buffer,
+		fromTokenAddress: string,
+		lockedFundId: string,
+	): Promise<string> {
+		let tx = new Transaction();
+
+		let results = addParseAndVerifySui(tx, signedVaa);
+		tx = results.tx;
+		const vaa = results.vaa;
+
+		const fromToken = await this.tokenList.getTokenData(CHAIN_ID_SUI, fromTokenAddress);
+
+		tx.moveCall({
+			target: `${this.contracts.suiIds.packageId}::unlock::unlock`,
+			arguments: [
+				tx.object(this.contracts.suiIds.stateId),
+				tx.object(lockedFundId),
+				tx.object(fromToken.verifiedAddress!),
+				vaa,
+			],
+			typeArguments: [fromToken.contract],
+		});
+
+		const result = await this.suiClient.signAndExecuteTransaction({
+			signer: this.walletConfig.sui,
+			transaction: tx,
+			options: {},
+		});
+
+		return result.digest;
 	}
 
 	private async unlockSingleOnSolana(
@@ -370,6 +480,77 @@ export class Unlocker {
 		);
 
 		return txHash;
+	}
+
+	private async unlockBatchOnSui(
+		signedVaa: Buffer,
+		orders: { fromTokenAddress: string; orderHash: string; lockedFundObjectId?: string }[],
+	): Promise<string> {
+		let i = -1;
+		let tx = new Transaction();
+
+		let results = addParseAndVerifySui(tx, signedVaa);
+		tx = results.tx;
+		const vaa = results.vaa;
+
+		let [unlockBatchReceipt] = tx.moveCall({
+			target: `${this.contracts.suiIds.packageId}::unlock_batch::prepare_unlock_batch`,
+			arguments: [tx.object(this.contracts.suiIds.stateId), vaa],
+		});
+
+		const parsedPayload = this.parseBatchUnlockVaaPayload(parseVaa(signedVaa).payload);
+
+		for (let ord of parsedPayload.orders) {
+			i++;
+			const relatedOrder = orders.find((o) => o.orderHash === ord.orderHash);
+			if (!relatedOrder) {
+				throw new Error(`Could not find related order for ${ord.orderHash}`);
+			}
+			// const fromMint = new PublicKey(ord.tokenIn);
+			const driver = '0x' + Buffer.from(ord.addrUnlocker).toString('hex');
+			const fromToken = await this.tokenList.getTokenData(CHAIN_ID_SUI, '0x' + ord.tokenIn.toString('hex'));
+
+			// because driver needs to be signer, if this batch posts contains another unlockAddress than the current wallet, it is ignored
+			// to unlock it we must set
+			if (this.walletConfig.sui.getPublicKey().toSuiAddress() !== driver) {
+				logger.warn(
+					`Ignoring unlock for ${ord.orderHash} as driver is the current set solana driver and needs to be signer`,
+				);
+				continue;
+			}
+
+			[unlockBatchReceipt] = tx.moveCall({
+				target: `${this.contracts.suiIds.packageId}::unlock_batch::unlock_batch_item`,
+				arguments: [
+					tx.object(this.contracts.suiIds.stateId),
+					tx.object(relatedOrder.lockedFundObjectId!),
+					tx.object(fromToken.verifiedAddress!),
+					unlockBatchReceipt,
+					tx.pure.u16(i),
+				],
+				typeArguments: [fromToken.contract],
+			});
+		}
+
+		tx.moveCall({
+			target: `${this.contracts.suiIds.packageId}::unlock_batch::complete_unlock_batch`,
+			arguments: [unlockBatchReceipt],
+		});
+
+		const result = await this.suiClient.signAndExecuteTransaction({
+			signer: this.walletConfig.sui,
+			transaction: tx,
+			options: {
+				showEvents: true,
+				showEffects: true,
+			},
+		});
+
+		if (!!result.errors) {
+			throw new Error(`Error unlocking batch on SUI ${result.errors}`);
+		}
+
+		return result.digest;
 	}
 
 	private async unlockBatchOnSolana(signedVaa: Buffer, orders: { fromTokenAddress: string; orderHash: string }[]) {
@@ -483,10 +664,15 @@ export class Unlocker {
 					return true;
 				}
 			}
-		} else {
+		} else if (isEVMChainId(sourceChainId)) {
 			const sourceOrder = await this.walletsHelper.getReadContract(sourceChainId).orders(orderHash);
 			if (sourceOrder.status == EVM_STATES.UNLOCKED) {
+				return true;
 			}
+		} else if (sourceChainId === CHAIN_ID_SUI) {
+			return false;
+		} else {
+			throw new Error(`Unknown chainId ${sourceChainId} in isUnlocked`);
 		}
 
 		return false;
@@ -498,6 +684,7 @@ export class Unlocker {
 		orderHash: string,
 		fromTokenAddress: string,
 		unlockSequence: string,
+		lockedFundObjectId?: string,
 	) {
 		const lockKey = `lock:getPendingSingleUnlocksForEth:${sourceChainId}:${destChainId}:${orderHash}`;
 		try {
@@ -523,8 +710,16 @@ export class Unlocker {
 					orderHash,
 					fromTokenAddress,
 				);
-			} else {
+			} else if (sourceChainId === CHAIN_ID_SUI) {
+				txHash = await this.unlockSingleOnSui(
+					Buffer.from(signedVaa.replace('0x', ''), 'hex'),
+					fromTokenAddress,
+					lockedFundObjectId!,
+				);
+			} else if (isEVMChainId(sourceChainId)) {
 				txHash = await this.unlockOnEvm(signedVaa, sourceChainId, destChainId, false);
+			} else {
+				throw new Error(`Unknown chainId ${sourceChainId} in performSingleUnlocks`);
 			}
 
 			logger.info(`Unlocked single evm for ${sourceChainId} to ${destChainId} with tx ${txHash}`);
@@ -557,6 +752,41 @@ export class Unlocker {
 		return {
 			sequence: sequence,
 			txHash: tx.hash,
+		};
+	}
+
+	private async batchPostSui(orderHashes: string[]): Promise<{
+		sequence: bigint;
+		txHash: string;
+	}> {
+		let tx = new Transaction();
+		const [ticket] = tx.moveCall({
+			target: `${this.contracts.suiIds.packageId}::batch_post::post_batch`,
+			arguments: [tx.object(this.contracts.suiIds.stateId), tx.pure.vector('address', orderHashes)],
+		});
+
+		const [whFeeCoin] = tx.splitCoins(tx.gas, [0n]);
+
+		tx.moveCall({
+			target: `${WORMHOLE_SUI_PACKAGE}::publish_message::publish_message`,
+			arguments: [tx.object(WORMHOLE_SUI_CORE_ID), whFeeCoin, ticket, tx.object(SUI_CLOCK_OBJECT_ID)],
+		});
+
+		const result = await this.suiClient.signAndExecuteTransaction({
+			signer: this.walletConfig.sui,
+			transaction: tx,
+			options: {
+				showEvents: true,
+			},
+		});
+
+		let wormholeEvent = result.events?.find(
+			(e) => e.type === `${WORMHOLE_SUI_PACKAGE}::publish_message::WormholeMessage`,
+		);
+
+		return {
+			sequence: BigInt((wormholeEvent?.parsedJson as any).sequence),
+			txHash: result.digest,
 		};
 	}
 
@@ -664,6 +894,17 @@ export class Unlocker {
 		return eventData.sequence;
 	}
 
+	private async getAlreadyUnlockedOrPendingOrderSui(orderHashes: string[]): Promise<Set<string>> {
+		let result: Set<string> = new Set();
+		for (let orderHash of orderHashes) {
+			if (this.sequenceStore.isOrderAlreadyPosted(orderHash)) {
+				result.add(orderHash);
+			}
+		}
+
+		return result;
+	}
+
 	private async getAlreadyUnlockedOrPendingOrderSolana(orderHashes: string[]): Promise<Set<string>> {
 		let result: Set<string> = new Set();
 		const maxFetchPerCall = 200;
@@ -699,7 +940,8 @@ export class Unlocker {
 	private scheduleAlreadyPostedUnlocks(batchUnlockData: UnlockableSwapBatchItem): Set<string> {
 		let result: Set<string> = new Set();
 
-		let posts: { [key: string]: { fromTokenAddress: string; orderHash: string }[] } = {};
+		let posts: { [key: string]: { fromTokenAddress: string; orderHash: string; lockedFundObjectId?: string }[] } =
+			{};
 		for (let item of batchUnlockData.orders) {
 			if (item.unlockSequence && item.unlockSequence !== '0') {
 				result.add(item.orderHash);
@@ -709,6 +951,7 @@ export class Unlocker {
 				posts[item.unlockSequence].push({
 					fromTokenAddress: item.fromTokenAddress,
 					orderHash: item.orderHash,
+					lockedFundObjectId: item.lockedFundObjectId,
 				});
 			}
 		}
@@ -775,6 +1018,8 @@ export class Unlocker {
 			mayanBridgeEmitterAddress = getEmitterAddressEth(contractAddress);
 		} else if (destChainId === CHAIN_ID_SOLANA) {
 			mayanBridgeEmitterAddress = getEmitterAddressSolana(contractAddress);
+		} else if (destChainId === CHAIN_ID_SUI) {
+			mayanBridgeEmitterAddress = this.contracts.suiIds.emitterId.slice(2);
 		} else {
 			throw new Error('Cannot get emitter address for chainId=' + destChainId);
 		}
@@ -890,6 +1135,7 @@ class SequenceStore {
 			orders: {
 				fromTokenAddress: string;
 				orderHash: string;
+				lockedFundObjectId?: string; // only for sui source
 			}[];
 			insertedAt: Date;
 		}
