@@ -1,6 +1,74 @@
+import { Transaction } from '@mysten/sui/transactions';
+import { Aftermath, Router, RouterCompleteTradeRoute } from 'aftermath-ts-sdk';
 import axios, { AxiosRequestConfig } from 'axios';
+import logger from '../utils/logger';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+let aftermathRouter: Router;
+
+export async function getSuiSwapQuote(
+	params: {
+		coinInType: string;
+		coinOutType: string;
+		coinInAmount: bigint;
+	},
+	config?: {
+		timeout?: number;
+		retries?: number;
+	},
+): Promise<{
+	outAmount: bigint;
+}> {
+	let timeoutId: NodeJS.Timeout | null = null;
+
+	try {
+		if (!aftermathRouter) {
+			aftermathRouter = new Aftermath('MAINNET').Router();
+		}
+
+		const controller = new globalThis.AbortController();
+		timeoutId = setTimeout(() => controller.abort(), config?.timeout || 5000);
+
+		const route = await aftermathRouter.getCompleteTradeRouteGivenAmountIn(
+			{
+				coinInType: params.coinInType,
+				coinOutType: params.coinOutType,
+				coinInAmount: params.coinInAmount,
+			},
+			controller.signal,
+		);
+		return {
+			outAmount: route.coinOut.amount,
+		};
+	} catch (err) {
+		logger.warn(`Failed to fetch Sui swap quote: ${params} ${err}`);
+		if (!!config?.retries && config?.retries > 0) {
+			return getSuiSwapQuote(params, {
+				...config,
+				retries: config.retries - 1,
+			});
+		}
+		throw err;
+	} finally {
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+	}
+}
+
+export async function getAftermathSuiTx(swapParams: {
+	route: RouterCompleteTradeRoute;
+	walletAddress: string;
+	slippageBps: number;
+}): Promise<Transaction> {
+	const router = new Aftermath('MAINNET').Router();
+	const tx = await router.getTransactionForCompleteTradeRoute({
+		walletAddress: swapParams.walletAddress,
+		completeRoute: swapParams.route,
+		slippage: swapParams.slippageBps / 10000,
+	});
+	return tx;
+}
 
 export async function get1InchQuote(
 	swapParams: {

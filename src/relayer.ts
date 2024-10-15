@@ -2,7 +2,14 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WORMHOLE_DECIMALS, supportedChainIds } from './config/chains';
+import {
+	CHAIN_ID_BSC,
+	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
+	WORMHOLE_DECIMALS,
+	isEVMChainId,
+	supportedChainIds,
+} from './config/chains';
 import { ContractsConfig } from './config/contracts';
 import { MayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
@@ -51,12 +58,16 @@ export class Relayer {
 
 	private async tryProgressFulfill(swap: Swap) {
 		const isSolDst = swap.destChain === CHAIN_ID_SOLANA;
+		const isEvmDst = isEVMChainId(swap.destChain);
+		const isSuiDst = swap.destChain === CHAIN_ID_SUI;
 		const isSolSrc = swap.sourceChain === CHAIN_ID_SOLANA;
+		const isEvmSrc = isEVMChainId(swap.sourceChain);
+		const isSuiSrc = swap.sourceChain === CHAIN_ID_SUI;
 		let [destState, destEvmOrder, sourceState, sourceEvmOrder] = await Promise.all([
 			isSolDst ? getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
-			!isSolDst ? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash) : null,
+			isEvmDst ? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash) : null,
 			isSolSrc ? getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
-			!isSolSrc ? this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash) : null,
+			isEvmSrc ? this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash) : null,
 		]);
 
 		switch (swap.status) {
@@ -68,7 +79,7 @@ export class Relayer {
 					break;
 				}
 
-				if (swap.destChain === CHAIN_ID_SOLANA) {
+				if (isSolDst) {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
 						await this.waitForFinalizeOnSource(swap);
 						await this.simpleFulfillAndSettle(swap, destState);
@@ -77,7 +88,10 @@ export class Relayer {
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
-				} else {
+				} else if (isSuiDst) {
+					// TODO
+					throw new Error('NOT IMPLEMENTED');
+				} else if (isEvmDst) {
 					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
 						// await this.submitGaslessOrderIfRequired(swap, sourceState, sourceEvmOrder);
 						await this.waitForFinalizeOnSource(swap);
@@ -87,10 +101,12 @@ export class Relayer {
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
+				} else {
+					throw new Error('Unrecognized destination chain');
 				}
 				break;
 			case SWAP_STATUS.ORDER_FULFILLED:
-				if (swap.destChain === CHAIN_ID_SOLANA) {
+				if (isSolDst) {
 					if (destState && POST_FULFILL_STATUSES.includes(destState.status)) {
 						logger.info(`Order is already settled on solana for ${swap.sourceTxHash}`);
 						swap.status = SWAP_STATUS.ORDER_SETTLED;

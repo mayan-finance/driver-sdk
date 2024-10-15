@@ -14,7 +14,7 @@ import {
 	VersionedTransaction,
 } from '@solana/web3.js';
 import { AuctionFulfillerConfig } from '../auction';
-import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEVMChainId, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
@@ -203,8 +203,13 @@ export class DriverService {
 		let driverToken: Token;
 		if (dstChain === CHAIN_ID_SOLANA) {
 			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-		} else {
+		} else if (dstChain === CHAIN_ID_SUI) {
+			// TODO
+			throw new Error('NOT IMPLEMENTED BID SUI');
+		} else if (isEVMChainId(dstChain)) {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
 		let normalizedBidAmount = await this.auctionFulfillerCfg.normalizedBidAmount(
 			driverToken,
@@ -490,8 +495,13 @@ export class DriverService {
 		let driverToken: Token;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-		} else {
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			// TODO
+			throw new Error('NOT IMPLEMENTED FULFILL  SUI');
+		} else if (isEVMChainId(swap.destChain)) {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
 
 		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(
@@ -536,7 +546,10 @@ export class DriverService {
 				true,
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
-		} else {
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			// TODO
+			throw new Error('NOT IMPLEMENTED FULFILL SUI');
+		} else if (isEVMChainId(swap.destChain)) {
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
@@ -550,6 +563,8 @@ export class DriverService {
 				postAuctionSignedVaa!,
 				realMinAmountOut,
 			);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
 	}
 
