@@ -17,15 +17,6 @@ import Decimal from "decimal.js";
 import { fakeSwap, fakeSwiftCosts, fakeToken } from "./util/faker";
 import { mock } from "ts-jest-mocker";
 import { getAssociatedTokenAddressSync } from "@solana/spl-token";
-//jest.mock("@solana/spl-token", () => {
-//  const originalModule = jest.requireActual("@solana/spl-token");
-//
-//  return {
-//    __esModule: true,
-//    ...originalModule,
-//    getAssociatedTokenAddressSync: jest.fn(() => "mocked baz"),
-//  };
-//});
 jest.mock("@solana/spl-token");
 
 describe("Driver service", () => {
@@ -168,8 +159,8 @@ describe("Driver service", () => {
     expect(solanaSender.createAndSendOptimizedTransaction)
       .toHaveBeenCalledTimes(1);
 
-    const ret2 = await driverService.fulfill(swap);
-    expect(ret2).not.toBe(void 0);
+    const ret2 = await driverService.fulfill(swap, undefined, true);
+    expect((ret2 as any).signers.length).toBe(0);
   });
 
   test("fulfill swap destination not soloana", async () => {
