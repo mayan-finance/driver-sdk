@@ -8,6 +8,8 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
+	isEVMChainId,
 } from '../config/chains';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
@@ -83,8 +85,8 @@ export class FeeService {
 		const isSingleUnlock = qr.toChainId === CHAIN_ID_ETH;
 
 		const [srcFeeData, dstFeeData] = await Promise.all([
-			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
-			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
+			isEVMChainId(qr.fromChainId) ? this.evmProviders[qr.fromChainId].getFeeData() : null,
+			isEVMChainId(qr.toChainId) ? this.evmProviders[qr.toChainId].getFeeData() : null,
 		]);
 		const srcGasPrice = srcFeeData?.gasPrice!;
 		const dstGasPrice = dstFeeData?.gasPrice!;
@@ -105,7 +107,7 @@ export class FeeService {
 		}
 
 		let fulfillCost = 0;
-		if (qr.toChainId !== CHAIN_ID_SOLANA) {
+		if (isEVMChainId(qr.toChainId)) {
 			fulfillCost = await this.calculateSolanaFee(
 				postAuctionCost,
 				solPrice,
@@ -137,7 +139,10 @@ export class FeeService {
 				qr.gasDrop,
 				overallMultiplier,
 			);
-		} else {
+		} else if (qr.toChainId === CHAIN_ID_SUI) {
+			// TODO. assume input is always usdc
+			fulfillCost = 0.5 + qr.gasDrop * nativeToPrice * 1.05;
+		} else if (qr.toChainId === CHAIN_ID_SOLANA) {
 			let fulfillSolCost = solTxCost + additionalSolfulfillCost; // base tx fees;
 			fulfillSolCost += shrinkedStateCost;
 			fulfillSolCost += ataCreationCost; // asssumes we will always create user ata
@@ -148,6 +153,8 @@ export class FeeService {
 				qr.gasDrop,
 				overallMultiplier,
 			);
+		} else {
+			throw new Error('Unsupported destination chain fee');
 		}
 
 		let batchCount = 6; // we can send 8 unlock batches, but we consider 6 so that we can unlock with loss in case of liquidity emergencies
@@ -178,19 +185,27 @@ export class FeeService {
 					overallMultiplier,
 				);
 
-				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
-				const batchPostCost = await this.calculateGenericEvmFee(
-					batchPostGas,
-					dstGasPrice,
-					nativeToPrice,
-					fromTokenPrice,
-					0,
-					overallMultiplier,
-				);
+				let batchPostCost: number;
+				if (isEVMChainId(qr.toChainId)) {
+					let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
+					batchPostCost = await this.calculateGenericEvmFee(
+						batchPostGas,
+						dstGasPrice,
+						nativeToPrice,
+						fromTokenPrice,
+						0,
+						overallMultiplier,
+					);
+				} else if (qr.toChainId === CHAIN_ID_SUI) {
+					batchPostCost = 0.2;
+				} else {
+					throw new Error('Unsupported destination chain fee 3');
+				}
 
 				unlockFee = (unlockForAll + batchPostCost) / batchCount;
 			}
-		} else {
+		} else if (qr.fromChainId === CHAIN_ID_SUI) {
+			// TODO: fix these
 			let batchPostCost = 0;
 			if (isSingleUnlock) {
 				batchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
@@ -204,7 +219,9 @@ export class FeeService {
 					overallMultiplier,
 				);
 				batchPostCost /= batchCount;
-			} else {
+			} else if (qr.toChainId === CHAIN_ID_SUI) {
+				batchPostCost = 0.1;
+			} else if (isEVMChainId(qr.toChainId)) {
 				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
 				batchPostCost = await this.calculateGenericEvmFee(
 					batchPostGas,
@@ -215,6 +232,40 @@ export class FeeService {
 					overallMultiplier,
 				);
 				batchPostCost /= batchCount;
+			} else {
+				throw new Error('Unsupported destination chain dst fee 4');
+			}
+
+			unlockFee = 0.1 + batchPostCost;
+		} else if (isEVMChainId(qr.fromChainId)) {
+			let batchPostCost = 0;
+			if (isSingleUnlock) {
+				batchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
+			} else if (qr.toChainId === CHAIN_ID_SOLANA) {
+				const batchPostSolUsage = batchPostBaseCost + batchPostAdddedCost * realBatchCount + solTxCost;
+				batchPostCost = await this.calculateSolanaFee(
+					batchPostSolUsage,
+					solPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+				batchPostCost /= batchCount;
+			} else if (qr.toChainId === CHAIN_ID_SUI) {
+				batchPostCost = 0.1;
+			} else if (isEVMChainId(qr.toChainId)) {
+				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
+				batchPostCost = await this.calculateGenericEvmFee(
+					batchPostGas,
+					dstGasPrice,
+					nativeToPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+				batchPostCost /= batchCount;
+			} else {
+				throw new Error('Unsupported destination chain dst fee 5');
 			}
 
 			const { unlock } = await this.calculateUnlockAndRefundOnEvmFee(
@@ -228,6 +279,8 @@ export class FeeService {
 				overallMultiplier,
 			);
 			unlockFee = unlock + batchPostCost;
+		} else {
+			throw new Error('Unsupported source chain fee2');
 		}
 
 		return {

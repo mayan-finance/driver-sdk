@@ -4,9 +4,11 @@ import { abi as SwiftAbi } from '../abis/swift.abi';
 import {
 	CHAIN_ID_BSC,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
 	ETH_CHAINS,
 	WORMHOLE_DECIMALS,
 	WhChainIdToEvm,
+	isEVMChainId,
 	supportedChainIds,
 } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
@@ -22,7 +24,7 @@ import { getSuggestedOverrides, getTypicalBlocksToConfirm } from '../utils/evm-t
 import logger from '../utils/logger';
 import { deserializePermitFromHex } from '../utils/permit';
 import { delay } from '../utils/util';
-import { get1InchQuote, get1InchSwap } from './routers';
+import { get1InchSwap } from './routers';
 import { WalletsHelper } from './wallet-helper';
 
 export class EvmFulfiller {
@@ -42,8 +44,15 @@ export class EvmFulfiller {
 		for (let chainId of supportedChainIds) {
 			if (chainId === CHAIN_ID_SOLANA) {
 				this.unlockWallets32.set(chainId, this.walletConfig.solana.publicKey.toBuffer());
-			} else {
+			} else if (chainId === CHAIN_ID_SUI) {
+				this.unlockWallets32.set(
+					chainId,
+					Buffer.from(this.walletConfig.sui.getPublicKey().toSuiAddress().slice(2), 'hex'),
+				);
+			} else if (isEVMChainId(chainId)) {
 				this.unlockWallets32.set(chainId, Buffer.from(tryNativeToUint8Array(evmWalletAddr, chainId)));
+			} else {
+				throw new Error(`Invalid chainId for unlock wallet: ${chainId}`);
 			}
 		}
 	}
@@ -55,7 +64,7 @@ export class EvmFulfiller {
 	private async lazySetAllowances() {
 		let promises = [];
 		for (let chainId of supportedChainIds) {
-			if (chainId === CHAIN_ID_SOLANA) {
+			if (!isEVMChainId(chainId)) {
 				continue;
 			}
 			let networkFeeData = await this.evmProviders[chainId].getFeeData();
@@ -273,50 +282,6 @@ export class EvmFulfiller {
 			evmRouterCalldata: oneInchSwap.tx.data,
 			expectedAmountOut: BigInt(oneInchSwap.toAmount),
 		};
-	}
-
-	async getNormalizedBid(
-		destChain: number,
-		driverToken: Token,
-		effectiveAmountInDriverToken: number,
-		normalizedMinAmountOut: bigint,
-		toToken: Token,
-	): Promise<bigint> {
-		let bidAmount: bigint;
-		if (driverToken.contract === toToken.contract) {
-			bidAmount = BigInt(Math.floor(effectiveAmountInDriverToken * 0.9999 * 10 ** driverToken.decimals));
-		} else {
-			const quoteRes = await get1InchQuote(
-				{
-					realChainId: WhChainIdToEvm[destChain],
-					srcToken: driverToken.contract,
-					destToken: toToken.contract,
-					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
-					timeout: 2000,
-				},
-				this.rpcConfig.oneInchApiKey,
-				true,
-				3,
-			);
-
-			if (!quoteRes) {
-				throw new Error('1inch quote for bid in swift failed');
-			}
-
-			bidAmount = BigInt(Math.floor(Number(quoteRes.toAmount) * Number(0.99)));
-		}
-
-		let normalizedBidAmount = bidAmount;
-		if (toToken.decimals > 8) {
-			normalizedBidAmount = bidAmount / BigInt(10 ** (toToken.decimals - 8));
-		}
-
-		if (normalizedBidAmount < normalizedMinAmountOut) {
-			logger.warn(`normalizedBidAmount is less than minAmountOut`);
-			normalizedBidAmount = normalizedMinAmountOut;
-		}
-
-		return normalizedBidAmount;
 	}
 
 	async submitGaslessOrder(swap: Swap) {

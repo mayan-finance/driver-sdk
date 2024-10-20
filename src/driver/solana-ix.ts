@@ -16,7 +16,12 @@ import { IDL as AuctionIdl, SwiftAuction as AuctionT } from '../abis/swift-aucti
 import { IDL as SwiftIdl, Swift as SwiftT } from '../abis/swift.idl';
 import { WORMHOLE_DECIMALS } from '../config/chains';
 import { Swap } from '../swap.dto';
-import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
+import {
+	hexToUint8Array,
+	tryNativeToUint8Array,
+	tryNativeToUint8ArrayGeneral,
+	tryTokenToUint8ArrayGeneral,
+} from '../utils/buffer';
 
 export class NewSolanaIxHelper {
 	private readonly swiftProgram: Program<SwiftT>;
@@ -36,8 +41,8 @@ export class NewSolanaIxHelper {
 
 	private createOrderParams(swap: Swap, fromTokenDecimals: number) {
 		return {
-			addrDest: Array.from(tryNativeToUint8Array(swap.destAddress, swap.destChain)),
-			addrRef: Array.from(tryNativeToUint8Array(swap.referrerAddress, swap.destChain)),
+			addrDest: Array.from(tryNativeToUint8ArrayGeneral(swap.destAddress, swap.destChain)),
+			addrRef: Array.from(tryNativeToUint8ArrayGeneral(swap.referrerAddress, swap.destChain)),
 			amountOutMin: new BN(swap.minAmountOut64.toString()),
 			auctionMode: swap.auctionMode,
 			chainDest: swap.destChain,
@@ -63,8 +68,8 @@ export class NewSolanaIxHelper {
 			feeRateRef: swap.referrerBps,
 			gasDrop: new BN(swap.gasDrop64.toString()),
 			keyRnd: Array.from(hexToUint8Array(swap.randomKey)),
-			tokenIn: Array.from(tryNativeToUint8Array(swap.fromTokenAddress, swap.sourceChain)),
-			tokenOut: Array.from(tryNativeToUint8Array(swap.toTokenAddress, swap.destChain)),
+			tokenIn: Array.from(tryTokenToUint8ArrayGeneral(swap.fromToken, swap.sourceChain)),
+			tokenOut: Array.from(tryTokenToUint8ArrayGeneral(swap.toToken, swap.destChain)),
 			trader: Array.from(tryNativeToUint8Array(swap.trader, swap.sourceChain)),
 		};
 	}

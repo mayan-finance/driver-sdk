@@ -14,7 +14,7 @@ import {
 	VersionedTransaction,
 } from '@solana/web3.js';
 import { AuctionFulfillerConfig } from '../auction';
-import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEVMChainId, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
@@ -31,6 +31,7 @@ import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from
 import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
+import { SuiFulfiller } from './sui';
 import { WalletsHelper } from './wallet-helper';
 
 export class DriverService {
@@ -48,6 +49,7 @@ export class DriverService {
 		private readonly solanaFulfiller: SolanaFulfiller,
 		private readonly walletsHelper: WalletsHelper,
 		private readonly evmFulFiller: EvmFulfiller,
+		private readonly suiFulfiller: SuiFulfiller,
 		private readonly tokenList: TokenList,
 		private readonly solanaSender: SolanaMultiTxSender,
 	) {
@@ -175,6 +177,17 @@ export class DriverService {
 		}
 	}
 
+	getDriverSuiTokenForBidAndSwap(srcChain: number, fromToken: Token): Token {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
+		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
+
+		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
+			return this.tokenList.getNativeUsdc(CHAIN_ID_SUI)!;
+		} else {
+			throw new Error(`Unsupported input token ${fromToken.contract} for sui driver! not bidding or swapping`);
+		}
+	}
+
 	async bid(swap: Swap, registerOrder: boolean): Promise<void> {
 		const srcChain = swap.sourceChain;
 		const dstChain = swap.destChain;
@@ -203,8 +216,12 @@ export class DriverService {
 		let driverToken: Token;
 		if (dstChain === CHAIN_ID_SOLANA) {
 			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-		} else {
+		} else if (dstChain === CHAIN_ID_SUI) {
+			driverToken = this.getDriverSuiTokenForBidAndSwap(srcChain, fromToken);
+		} else if (isEVMChainId(dstChain)) {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
 		let normalizedBidAmount = await this.auctionFulfillerCfg.normalizedBidAmount(
 			driverToken,
@@ -277,6 +294,14 @@ export class DriverService {
 			const wormholeAccs = get_wormhole_core_accounts(auctionEmitter);
 			newMessageAccount = Keypair.generate();
 
+			let driverWallet32: Uint8Array;
+			if (isEVMChainId(dstChain)) {
+				driverWallet32 = tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain);
+			} else if (dstChain === CHAIN_ID_SUI) {
+				driverWallet32 = Buffer.from(this.walletConfig.sui.getPublicKey().toSuiAddress().slice(2), 'hex');
+			} else {
+				throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
+			}
 			const postAuctionIx = await this.solanaIxService.getPostAuctionIx(
 				this.walletConfig.solana.publicKey,
 				new PublicKey(swap.auctionStateAddr),
@@ -288,7 +313,7 @@ export class DriverService {
 				newMessageAccount.publicKey,
 				swap,
 				swap.fromToken.decimals,
-				tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
+				driverWallet32,
 			);
 			instructions.push(postAuctionIx);
 		}
@@ -490,8 +515,12 @@ export class DriverService {
 		let driverToken: Token;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-		} else {
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			driverToken = this.getDriverSuiTokenForBidAndSwap(srcChain, fromToken);
+		} else if (isEVMChainId(swap.destChain)) {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
 
 		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(
@@ -536,7 +565,19 @@ export class DriverService {
 				true,
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
-		} else {
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
+			const realMinAmountOut =
+				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
+			await this.suiFulfiller.fulfillAuction(
+				swap,
+				fulfillAmount,
+				toToken,
+				driverToken,
+				postAuctionSignedVaa!,
+				realMinAmountOut,
+			);
+		} else if (isEVMChainId(swap.destChain)) {
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
@@ -550,6 +591,8 @@ export class DriverService {
 				postAuctionSignedVaa!,
 				realMinAmountOut,
 			);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
 	}
 
