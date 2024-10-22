@@ -36,14 +36,14 @@ You only need to provide native `USDC` and `ETH` (wormhole's [`WETH`](https://so
 
 1. User submits their swap on-chain or off-chain (for gasless swaps)
 2. Mayan explorer indexes the swap and notifies registered drivers (via websockets or long polling)
-3. Driver receives the swap and starts bidding on the auction using the [mayan auction program](https://explorer.solana.com/account/4oUq8HocfbPUpvu1j5ZVbLcoak7DFz2CLK3f91qUuQzH)'s `bid` instruction
+3. Driver receives the swap and starts bidding on the auction using the [mayan auction program](https://explorer.solana.com/account/9w1D9okTM8xNE7Ntb7LpaAaoLc6LfU9nHFs2h2KTpX1H)'s `bid` instruction
 
-4.  1. If the destination is solana, driver registers itself as winner using [mayan program](https://explorer.solana.com/account/5vBpQGxxnzjhv3FNFVpVmGWsUhhNFu4xTbyGs3W2Sbbx)'s `registerWinner` instruction 2. If the destination is an evm chain, driver posts a wormhole message to the destination chain using mayan progarm's `postAuction` instruction
+4.  1. If the destination is solana, driver registers itself as winner using [mayan program](https://explorer.solana.com/account/BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY)'s `registerWinner` instruction 2. If the destination is an evm chain, driver posts a wormhole message to the destination chain using mayan progarm's `postAuction` instruction
 
-5. Driver fulfills the auction on the destination chain: 1. On solana the driver sends a transaction that transfers assets and calls the [mayan programs](https://explorer.solana.com/account/5vBpQGxxnzjhv3FNFVpVmGWsUhhNFu4xTbyGs3W2Sbbx) `fulfill` instruction 2. On evm chains the driver gets the wormhole signed VAA and uses the proof of auction to fulfill the promised amount using either `fulfillOrder` method of the main contract or
+5. Driver fulfills the auction on the destination chain: 1. On solana the driver sends a transaction that transfers assets and calls the [mayan programs](https://explorer.solana.com/account/BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY) `fulfill` instruction 2. On evm chains the driver gets the wormhole signed VAA and uses the proof of auction to fulfill the promised amount using either `fulfillOrder` method of the main contract or
    `fulfillWithERC20,fulfillWithEth` methods of the fulfill helper contract.
 
-6. If the destination chain is solana, another step is required for completiion. Driver calls the `settle` instruction of the [mayan programs](https://explorer.solana.com/account/5vBpQGxxnzjhv3FNFVpVmGWsUhhNFu4xTbyGs3W2Sbbx).
+6. If the destination chain is solana, another step is required for completiion. Driver calls the `settle` instruction of the [mayan programs](https://explorer.solana.com/account/BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY).
 
 7. After fulfilling multiple orders, fulfillment proofs are gathered in batch using `postBatch` solana instruction or evm method. Then signed VAAs are using in source chains to unlock assets. If the order was fulfilled without batch, proof will be immediatelly issues and available after being signed  by wormhole gaurdians
 
