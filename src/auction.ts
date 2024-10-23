@@ -3,7 +3,7 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA } from './config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
@@ -46,6 +46,7 @@ export class AuctionFulfillerConfig {
 		}
 
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
+		return normalizedMinAmountOut;
 
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
@@ -171,6 +172,13 @@ export class AuctionFulfillerConfig {
 			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping fulfill`);
 		}
 
+		if (
+			swap.sourceChain === CHAIN_ID_BSC &&
+			swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955'
+		) {
+			effectiveAmountIn = effectiveAmountIn / 1.0019;
+		}
+
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
 		let output64: bigint;
@@ -216,7 +224,7 @@ export class AuctionFulfillerConfig {
 
 		const finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
 
-		return finalAmountIn;
+		return Math.max(finalAmountIn * (1 - 3 / 10000), mappedMinAmountIn * 1.00001);
 	}
 
 	private async getJupQuoteWithRetry(
