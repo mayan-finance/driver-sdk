@@ -1,3 +1,4 @@
+import { SuiClient } from '@mysten/sui/client';
 import { TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import { Connection, ParsedAccountData, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
@@ -13,6 +14,8 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
+	isEVMChainId,
 	mapNameToWormholeChainId,
 	WhChainIdToEvm,
 } from './chains';
@@ -33,7 +36,8 @@ export type Token = {
 	realOriginContractAddress: string;
 	supportsPermit?: boolean;
 	hasTransferFee?: boolean;
-	standard: 'native' | 'erc20' | 'spl' | 'spl2022';
+	verifiedAddress?: string; // for mapped 32byte wormhole address on sui
+	standard: 'native' | 'erc20' | 'spl' | 'spl2022' | 'suicoin';
 };
 
 export class TokenList {
@@ -47,6 +51,7 @@ export class TokenList {
 		endpoints: MayanEndpoints,
 		private readonly evmProviders: EvmProviders,
 		private readonly connection: Connection,
+		private readonly suiClient: SuiClient,
 	) {
 		this.endpoints = endpoints;
 	}
@@ -65,7 +70,11 @@ export class TokenList {
 	async updateList() {
 		try {
 			let tokenCount = 0;
-			const allTokens = await axios.get(this.endpoints.priceApiUrl + '/v3/tokens');
+			const allTokens = await axios.get(this.endpoints.priceApiUrl + '/v3/tokens', {
+				params: {
+					standard: 'erc20,native,spl,spl2022,suicoin',
+				},
+			});
 			for (const chainName of Object.keys(allTokens.data)) {
 				const chainId = mapNameToWormholeChainId(chainName);
 				if (!!chainId) {
@@ -76,7 +85,9 @@ export class TokenList {
 			this.nativeTokens = Object.entries(this.tokensPerChain).reduce(
 				(acc, [chainId, tokens]) => {
 					const token = tokens.find(
-						(token) => token.contract === '0x0000000000000000000000000000000000000000',
+						(token) =>
+							token.contract === '0x0000000000000000000000000000000000000000' ||
+							token.contract === '0x2::sui::SUI',
 					) as Token;
 					if (!token) {
 						logger.info(`Native token not found for chain ${chainId} and ignored`);
@@ -123,9 +134,38 @@ export class TokenList {
 
 		if (tokenChain === CHAIN_ID_SOLANA) {
 			return await this.fetchSolanaTokenData(tokenContract);
-		} else {
+		} else if (tokenChain === CHAIN_ID_SUI) {
+			return await this.fetchSuiTokenData(tokenContract);
+		} else if (isEVMChainId(tokenChain)) {
 			return await this.fetchErc20TokenData(tokenChain, tokenContract);
+		} else {
+			throw new Error(`Chain ${tokenChain} is not supported`);
 		}
+	}
+
+	async fetchSuiTokenData(coinType: string): Promise<Token> {
+		const coinMeta = await this.suiClient.getCoinMetadata({
+			coinType: coinType,
+		});
+		if (!coinMeta || !coinMeta.id) {
+			throw new Error(`Coin ${coinType} not found on Sui chain`);
+		}
+
+		return {
+			chainId: 101,
+			coingeckoId: '',
+			contract: coinType,
+			decimals: coinMeta.decimals,
+			logoURI: coinMeta.iconUrl!,
+			mint: '',
+			name: coinMeta.name,
+			standard: 'suicoin',
+			realOriginChainId: CHAIN_ID_SUI,
+			realOriginContractAddress: coinType,
+			symbol: coinMeta.symbol,
+			wChainId: CHAIN_ID_SUI,
+			verifiedAddress: coinMeta.id,
+		};
 	}
 
 	async fetchErc20TokenData(chainId: number, tokenContract: string): Promise<Token> {
@@ -207,6 +247,8 @@ export class TokenList {
 						tokenContract = '0x0000000000000000000000000000000000000000';
 					}
 					return t.contract === tokenContract;
+				case CHAIN_ID_SUI:
+					return t.contract === tokenContract || t.verifiedAddress === tokenContract; // both coinType and verifiedAddress searched for sui
 				default:
 					return t.contract.toLowerCase() === tokenContract.toLowerCase();
 			}
@@ -224,6 +266,7 @@ const UsdcContracts: { [key: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
 	[CHAIN_ID_OPTIMISM]: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
 	[CHAIN_ID_BASE]: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+	[CHAIN_ID_SUI]: '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC',
 };
 
 const UsdtContracts: { [key: number]: string } = {

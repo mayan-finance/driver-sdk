@@ -26,6 +26,7 @@ export type RpcConfig = {
 		base: string;
 		base2nd: string;
 	};
+	suiFullNode: string;
 	jupV6Endpoint: string;
 	oneInchApiKey: string;
 	jupApiKey: string;
@@ -63,6 +64,7 @@ export const rpcConfig: RpcConfig = {
 		polygon: process.env.POLYGON_RPC || 'https://polygon-rpc.com/',
 		polygon2nd: process.env.POLYGON_2ND_RPC || 'https://polygon-rpc.com/',
 	},
+	suiFullNode: process.env.SUI_FULL_NODE || 'https://fullnode.mainnet.sui.io:443',
 	jupV6Endpoint: process.env.JUP_V6_ENDPOINT || 'https://quote-api.jup.ag/v6',
 	oneInchApiKey: process.env.ONE_INCH_API_KEY || '',
 	jupApiKey: process.env.JUP_API_KEY || '',

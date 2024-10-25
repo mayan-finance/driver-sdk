@@ -1,20 +1,21 @@
 import { ethers } from 'ethers6';
-import { WORMHOLE_DECIMALS } from '../config/chains';
+import { CHAIN_ID_SUI, WORMHOLE_DECIMALS } from '../config/chains';
+import { Token } from '../config/tokens';
 import { hexToUint8Array, tryNativeToUint8Array } from './buffer';
 
 export function reconstructOrderHash(
-	trader: string,
+	trader32: Buffer,
 	srcChainId: number,
-	tokenIn: string,
+	tokenIn32: Buffer,
 	destChainId: number,
-	tokenOut: string,
+	tokenOut32: Buffer,
 	minAmountOut64: bigint,
 	gasDrop64: bigint,
 	refundFeeDest64: bigint,
 	refundFeeSrc64: bigint,
 	deadline: number,
-	destAddr: string,
-	referrerAddr: string,
+	destAddr32: Buffer,
+	referrerAddr32: Buffer,
 	referrerBps: number,
 	mayanBps: number,
 	auctionMode: number,
@@ -23,25 +24,21 @@ export function reconstructOrderHash(
 	const writeBuffer = Buffer.alloc(239);
 	let offset = 0;
 
-	const trader32 = Buffer.from(tryNativeToUint8Array(trader, srcChainId));
 	writeBuffer.set(trader32, offset);
 	offset += 32;
 
 	writeBuffer.writeUInt16BE(srcChainId, offset);
 	offset += 2;
 
-	const tokenIn32 = Buffer.from(tryNativeToUint8Array(tokenIn, srcChainId));
 	writeBuffer.set(tokenIn32, offset);
 	offset += 32;
 
-	const destinationAddress32 = Buffer.from(tryNativeToUint8Array(destAddr, destChainId));
-	writeBuffer.set(destinationAddress32, offset);
+	writeBuffer.set(destAddr32, offset);
 	offset += 32;
 
 	writeBuffer.writeUInt16BE(destChainId, offset);
 	offset += 2;
 
-	const tokenOut32 = Buffer.from(tryNativeToUint8Array(tokenOut, destChainId));
 	writeBuffer.set(tokenOut32, offset);
 	offset += 32;
 
@@ -61,8 +58,7 @@ export function reconstructOrderHash(
 	writeBuffer.writeBigUInt64BE(deadline64, offset);
 	offset += 8;
 
-	const referrerAddress32 = Buffer.from(tryNativeToUint8Array(referrerAddr, destChainId));
-	writeBuffer.set(referrerAddress32, offset);
+	writeBuffer.set(referrerAddr32, offset);
 	offset += 32;
 
 	writeBuffer.writeUInt8(referrerBps, offset);
@@ -90,11 +86,9 @@ export function verifyOrderHash(
 	givenOrderHashHex: string,
 	trader: string,
 	srcChainId: number,
-	tokenIn: string,
-	tokenInDecimals: number,
+	fromToken: Token,
 	destChainId: number,
-	tokenOut: string,
-	tokenOutDecimals: number,
+	toToken: Token,
 	minAmountOut: string,
 	gasDrop: string,
 	refundFeeDest: string,
@@ -107,24 +101,47 @@ export function verifyOrderHash(
 	auctionMode: number,
 	random: string,
 ) {
-	const minAmountOut64 = getAmountOfFractionalAmount(minAmountOut, Math.min(WORMHOLE_DECIMALS, tokenOutDecimals));
+	const minAmountOut64 = getAmountOfFractionalAmount(minAmountOut, Math.min(WORMHOLE_DECIMALS, toToken.decimals));
 	const gasDrop64 = getAmountOfFractionalAmount(gasDrop, WORMHOLE_DECIMALS);
-	const refundFeeDest64 = getAmountOfFractionalAmount(refundFeeDest, Math.min(tokenInDecimals, WORMHOLE_DECIMALS));
-	const refundFeeSrc64 = getAmountOfFractionalAmount(refundFeeSrc, Math.min(tokenInDecimals, WORMHOLE_DECIMALS));
+	const refundFeeDest64 = getAmountOfFractionalAmount(refundFeeDest, Math.min(fromToken.decimals, WORMHOLE_DECIMALS));
+	const refundFeeSrc64 = getAmountOfFractionalAmount(refundFeeSrc, Math.min(fromToken.decimals, WORMHOLE_DECIMALS));
+
+	let trader32: Buffer,
+		tokenIn32: Buffer,
+		tokenOut32: Buffer,
+		destinationAddress32: Buffer,
+		referrerAddress32: Buffer;
+	if (srcChainId !== CHAIN_ID_SUI) {
+		trader32 = Buffer.from(tryNativeToUint8Array(trader, srcChainId));
+		tokenIn32 = Buffer.from(tryNativeToUint8Array(fromToken.contract, srcChainId));
+	} else {
+		trader32 = Buffer.from(hexToUint8Array(trader));
+		tokenIn32 = Buffer.from(hexToUint8Array(fromToken.verifiedAddress!));
+	}
+
+	if (destChainId !== CHAIN_ID_SUI) {
+		tokenOut32 = Buffer.from(tryNativeToUint8Array(toToken.contract, destChainId));
+		destinationAddress32 = Buffer.from(tryNativeToUint8Array(destAddr, destChainId));
+		referrerAddress32 = Buffer.from(tryNativeToUint8Array(referrerAddr, destChainId));
+	} else {
+		tokenOut32 = Buffer.from(hexToUint8Array(toToken.verifiedAddress!));
+		destinationAddress32 = Buffer.from(hexToUint8Array(destAddr));
+		referrerAddress32 = Buffer.from(hexToUint8Array(referrerAddr));
+	}
 
 	const orderHash = reconstructOrderHash(
-		trader,
+		trader32,
 		srcChainId,
-		tokenIn,
+		tokenIn32,
 		destChainId,
-		tokenOut,
+		tokenOut32,
 		minAmountOut64,
 		gasDrop64,
 		refundFeeDest64,
 		refundFeeSrc64,
 		deadline,
-		destAddr,
-		referrerAddr,
+		destinationAddress32,
+		referrerAddress32,
 		referrerBps,
 		mayanBps,
 		auctionMode,

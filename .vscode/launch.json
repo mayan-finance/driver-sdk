@@ -1,18 +1,53 @@
 {
-    "version": "1.0.0",
-    "configurations": [
-      {
-        "name": "TS-Node",
-        "type": "node",
-        "request": "launch",
-        "runtimeExecutable": "ts-node",
-        "runtimeArgs": [
-            "."
-        ],
-        "outputCapture": "std",
-        "cwd": "${workspaceRoot}",
-        "internalConsoleOptions": "openOnSessionStart",
-        "skipFiles": ["<node_internals>/**", "node_modules/**"]
-      }
-    ]
-  }
+  "version": "1.0.0",
+  "configurations": [
+    {
+      "name": "Run Driver-sdk",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "ts-node",
+      "runtimeArgs": [
+        "."
+      ],
+      "outputCapture": "std",
+      "cwd": "${workspaceRoot}",
+      "internalConsoleOptions": "openOnSessionStart",
+      "skipFiles": [
+        "<node_internals>/**",
+        "node_modules/**"
+      ]
+    },
+    {
+      "name": "zoomzoom",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "ts-node",
+      "runtimeArgs": [
+        "zoomzoom.ts"
+      ],
+      "outputCapture": "std",
+      "cwd": "${workspaceRoot}",
+      "internalConsoleOptions": "openOnSessionStart",
+      "skipFiles": [
+        "<node_internals>/**",
+        "node_modules/**"
+      ]
+    },
+    {
+      "name": "zoominit",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "ts-node",
+      "runtimeArgs": [
+        "zoominitsolana.ts"
+      ],
+      "outputCapture": "std",
+      "cwd": "${workspaceRoot}",
+      "internalConsoleOptions": "openOnSessionStart",
+      "skipFiles": [
+        "<node_internals>/**",
+        "node_modules/**"
+      ]
+    }
+  ]
+}

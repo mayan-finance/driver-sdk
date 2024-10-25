@@ -1,3 +1,4 @@
+import { SuiClient } from '@mysten/sui/client';
 import { Connection } from '@solana/web3.js';
 import { ethers } from 'ethers6';
 import {
@@ -9,9 +10,9 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
+	isEVMChainId,
 } from '../config/chains';
-import { ContractsConfig } from '../config/contracts';
-import { RpcConfig } from '../config/rpc';
 import { EvmProviders } from './evm-providers';
 import logger from './logger';
 import { delay } from './util';
@@ -39,8 +40,7 @@ export class ChainFinality {
 
 	constructor(
 		private readonly solanaConnection: Connection,
-		private readonly contracts: ContractsConfig,
-		private readonly rpcConfig: RpcConfig,
+		private readonly suiClient: SuiClient,
 		private readonly evmProviders: EvmProviders,
 		private readonly secondaryEvmProviders: EvmProviders,
 	) {
@@ -113,11 +113,21 @@ export class ChainFinality {
 	async waitForFinality(sourceChain: number, sourceTxHash: string, swapValueUsd: number): Promise<void> {
 		if (sourceChain === CHAIN_ID_SOLANA) {
 			await this.solanaConnection.getTransaction(sourceTxHash, {
-				commitment: 'finalized',
+				commitment: 'confirmed',
 				maxSupportedTransactionVersion: 2,
 			});
-		} else {
+		} else if (sourceChain === CHAIN_ID_SUI) {
+			const res = await this.suiClient.getTransactionBlock({
+				digest: sourceTxHash,
+			});
+			if (!res) {
+				throw new Error('Transaction not found in waiting for finality');
+			}
+			// TODO add parser
+		} else if (isEVMChainId(sourceChain)) {
 			await this.waitForEvm(sourceChain, sourceTxHash, swapValueUsd);
+		} else {
+			throw new Error(`Chain ${sourceChain} is not supported`);
 		}
 	}
 

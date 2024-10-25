@@ -9,16 +9,15 @@ import {
 	VersionedTransaction,
 } from '@solana/web3.js';
 import axios from 'axios';
-import { CHAIN_ID_SOLANA, supportedChainIds } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEVMChainId } from '../config/chains';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { Swap } from '../swap.dto';
-import { tryNativeToUint8Array } from '../utils/buffer';
+import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
 import logger from '../utils/logger';
 import { LookupTableOptimizer } from '../utils/lut';
 import { NewSolanaIxHelper } from './solana-ix';
-import { WalletsHelper } from './wallet-helper';
 
 type WalletAss = {
 	mint: string;
@@ -34,15 +33,12 @@ type WalletInfo = {
 export class SolanaFulfiller {
 	private wallets: WalletAss[] = [];
 
-	private readonly unlockWallets: Map<number, string> = new Map();
-
 	constructor(
 		private readonly solanaConnection: Connection,
 		private readonly rpcConfig: RpcConfig,
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaIxHelper: NewSolanaIxHelper,
 		private readonly lutOptimizer: LookupTableOptimizer,
-		walletHelper: WalletsHelper,
 		tokenList: TokenList,
 	) {
 		for (let token of [tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!, tokenList.getWethSol()]) {
@@ -51,13 +47,6 @@ export class SolanaFulfiller {
 				mint: token.contract,
 				token: token,
 			});
-		}
-
-		for (let chainId of supportedChainIds) {
-			if (chainId === CHAIN_ID_SOLANA) {
-				continue;
-			}
-			this.unlockWallets.set(chainId, walletHelper.getDriverWallet(chainId).address);
 		}
 	}
 
@@ -322,24 +311,17 @@ export class SolanaFulfiller {
 			lookupTables: optimizedLuts,
 			signers: signers,
 		};
-
-		// const { blockhash } = await this.solanaConnection.getLatestBlockhash();
-		// const messageV0 = new TransactionMessage({
-		// 	payerKey: this.walletConfig.solana.publicKey,
-		// 	recentBlockhash: blockhash,
-		// 	instructions: instructions,
-		// }).compileToV0Message(optimizedLuts);
-		// const transaction = new VersionedTransaction(messageV0);
-		// transaction.sign([this.walletConfig.solana]);
-
-		// return transaction;
 	}
 
 	getUnlockAddress(sourceChainId: number): Uint8Array {
 		if (sourceChainId === CHAIN_ID_SOLANA) {
 			return tryNativeToUint8Array(this.walletConfig.solana.publicKey.toString(), CHAIN_ID_SOLANA);
-		} else {
+		} else if (sourceChainId === CHAIN_ID_SUI) {
+			return hexToUint8Array(this.walletConfig.sui.getPublicKey().toSuiAddress());
+		} else if (isEVMChainId(sourceChainId)) {
 			return tryNativeToUint8Array(this.walletConfig.evm.address, sourceChainId);
+		} else {
+			throw new Error(`unsupported chain id ${sourceChainId}`);
 		}
 	}
 }

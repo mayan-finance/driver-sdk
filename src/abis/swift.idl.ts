@@ -930,7 +930,7 @@ export type Swift = {
 		},
 		{
 			code: 6001;
-			name: 'ChainIdNotEvmSupported';
+			name: 'ChainIdNotMayanSupported';
 			msg: 'Chain id is not Evm supported chain';
 		},
 		{
@@ -2117,7 +2117,7 @@ export const IDL: Swift = {
 		},
 		{
 			code: 6001,
-			name: 'ChainIdNotEvmSupported',
+			name: 'ChainIdNotMayanSupported',
 			msg: 'Chain id is not Evm supported chain',
 		},
 		{
