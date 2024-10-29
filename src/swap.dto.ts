@@ -53,6 +53,7 @@ export type Swap = {
 	retries: number;
 
 	bidAmount?: number;
+	lastloss?: number;
 };
 
 export const SWAP_STATUS = {
