@@ -3,12 +3,13 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA, CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { SwapRouters } from './driver/routers';
+import { appendLoss, maxLossPerSwapUSD, removeLoss } from './loss-tracker';
 import { Swap } from './swap.dto';
 import { getErc20Balance } from './utils/erc20';
 import { EvmProviders } from './utils/evm-providers';
@@ -211,11 +212,23 @@ export class AuctionFulfillerConfig {
 
 		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
 
-		if (mappedMinAmountIn > effectiveAmountIn) {
-			logger.warn(
-				`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
-			);
-			throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+		if (mappedMinAmountIn > effectiveAmountIn - mappedBpsAmountIn) {
+			if (swap.lastloss && swap.lastloss > 0) {
+				removeLoss(swap.lastloss);
+			}
+			const lossAmountUsd = costs.fromTokenPrice * (mappedMinAmountIn - (effectiveAmountIn - mappedBpsAmountIn));
+
+			if (lossAmountUsd > maxLossPerSwapUSD) {
+				logger.warn(
+					`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
+				);
+				throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+			}
+
+			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);
+			appendLoss(lossAmountUsd);
+			swap.lastloss = lossAmountUsd;
+			effectiveAmountIn = mappedBpsAmountIn * 1.0001 + mappedMinAmountIn;
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
