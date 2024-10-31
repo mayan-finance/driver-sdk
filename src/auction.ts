@@ -1,10 +1,17 @@
+import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
+import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
+import { ethers } from 'ethers6';
 import { CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
+import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { get1InchQuote } from './driver/routers';
 import { Swap } from './swap.dto';
+import { getErc20Balance } from './utils/erc20';
+import { EvmProviders } from './utils/evm-providers';
 import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
 
@@ -13,7 +20,12 @@ export class AuctionFulfillerConfig {
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
 	private readonly forceBid = true;
 
-	constructor(private readonly rpcConfig: RpcConfig) {}
+	constructor(
+		private readonly rpcConfig: RpcConfig,
+		private readonly connection: Connection,
+		private readonly evmProviders: EvmProviders,
+		private readonly walletConfig: WalletConfig,
+	) {}
 
 	async normalizedBidAmount(
 		driverToken: Token,
@@ -21,6 +33,13 @@ export class AuctionFulfillerConfig {
 		swap: Swap,
 		costs: SwiftCosts,
 	): Promise<bigint> {
+		const balance = await this.getTokenBalance(driverToken);
+		if (balance < effectiveAmountIn) {
+			throw new Error(`Insufficient balance for ${swap.sourceTxHash}. Dropping bid`);
+		} else {
+			logger.info(`Balance is ${balance} for ${swap.sourceTxHash}`);
+		}
+
 		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
 			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping bid`);
 		}
@@ -258,6 +277,38 @@ export class AuctionFulfillerConfig {
 			return BigInt(referrerBps * 2);
 		} else {
 			return BigInt(3 + referrerBps);
+		}
+	}
+
+	private async getTokenBalance(token: Token): Promise<number> {
+		if (token.wChainId === CHAIN_ID_SOLANA) {
+			if (token.contract === ethers.ZeroAddress) {
+				const balance = await this.connection.getBalance(this.walletConfig.solana.publicKey);
+				return balance / 10 ** 9;
+			} else {
+				const ataKey = getAssociatedTokenAddressSync(
+					new PublicKey(token.contract),
+					this.walletConfig.solana.publicKey,
+					false,
+					token.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+				);
+				const balance = await this.connection.getTokenAccountBalance(ataKey);
+				return balance?.value?.uiAmount || 0;
+			}
+		} else if (isEVMChain(token.wChainId as ChainId)) {
+			if (token.contract === ethers.ZeroAddress) {
+				const balance = await this.evmProviders[token.wChainId!].getBalance(this.walletConfig.evm.address);
+				return Number(balance) / 10 ** 18;
+			} else {
+				const balance64 = await getErc20Balance(
+					this.evmProviders[token.wChainId!],
+					token.contract,
+					this.walletConfig.evm.address,
+				);
+				return Number(balance64) / 10 ** token.decimals;
+			}
+		} else {
+			throw new Error(`Unsupported chain ${token.wChainId}`);
 		}
 	}
 }
