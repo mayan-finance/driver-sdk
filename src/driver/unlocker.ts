@@ -378,6 +378,10 @@ export class Unlocker {
 
 		await this.vaaPoster.postSignedVAA(signedVaa, 'batch_unlcock');
 
+		const foundStates = orders.map((ord) =>
+			getSwiftStateAddrSrc(new PublicKey(SolanaProgram), Buffer.from(ord.orderHash.replace('0x', ''), 'hex')).toString(),
+		);
+
 		const parsedPayload = this.parseBatchUnlockVaaPayload(parseVaa(signedVaa).payload);
 		for (let ord of parsedPayload.orders) {
 			i++;
@@ -398,6 +402,10 @@ export class Unlocker {
 				new PublicKey(SolanaProgram),
 				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
 			);
+			if (!foundStates.includes(state.toString())) {
+				logger.warn(`Ignoring unlock for ${ord.orderHash} as state is not found in the orders`);
+				continue;
+			}
 			const stateAss = getAssociatedTokenAddressSync(fromMint, state, true);
 			const vaaAddr = findVaaAddress(signedVaa);
 			const ix = await this.solanaIx.getUnlockBatchIx(driver, driverAss, state, stateAss, i, fromMint, vaaAddr);
