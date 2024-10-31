@@ -3,7 +3,7 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm, WORMHOLE_DECIMALS } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
@@ -47,7 +47,6 @@ export class AuctionFulfillerConfig {
 		}
 
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
-		return normalizedMinAmountOut;
 
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
@@ -91,9 +90,14 @@ export class AuctionFulfillerConfig {
 
 		const profitMargin = effectiveAmountIn - mappedBpsAmountIn;
 
-		const finalAmountIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
+		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
+		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
-		const mappedAmountOut = (finalAmountIn * Number(output)) / effectiveAmountIn;
+		const finalFullAmountIn = 0.98 * (effectiveAmountIn - mappedBpsAmountIn);
+		const fullMappedAmountOut = (finalFullAmountIn * Number(output)) / effectiveAmountIn; // 20 bps test for now
+
+		const mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
+		swap.bidAmountIn = Math.max(marginFinalBidIn, finalFullAmountIn) + mappedBpsAmountIn;
 		let normalizedAmountOut;
 		if (swap.toToken.decimals > 8) {
 			normalizedAmountOut = BigInt(Math.floor(mappedAmountOut * 10 ** 8));
@@ -104,6 +108,7 @@ export class AuctionFulfillerConfig {
 		if (normalizedAmountOut < normalizedMinAmountOut && this.forceBid) {
 			logger.warn(`normalizedBidAmount is less than minAmountOut`);
 			normalizedAmountOut = normalizedMinAmountOut;
+			swap.bidAmountIn = mappedMinAmountIn;
 		}
 
 		return normalizedAmountOut;
@@ -212,15 +217,23 @@ export class AuctionFulfillerConfig {
 
 		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
 
-		if (mappedMinAmountIn > effectiveAmountIn - mappedBpsAmountIn) {
+		if (!swap.bidAmountIn) {
+			if (swap.bidAmount64) {
+				const bidOut = Number(swap.bidAmount64) / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
+				swap.bidAmountIn = 1.000001 * bidOut * (effectiveAmountIn / output);
+			}
+		}
+
+		const minFulfillAmount = Math.max(mappedMinAmountIn, swap.bidAmountIn || 0);
+		if (minFulfillAmount > effectiveAmountIn) {
 			if (swap.lastloss && swap.lastloss > 0) {
 				removeLoss(swap.lastloss);
 			}
-			const lossAmountUsd = costs.fromTokenPrice * (mappedMinAmountIn - (effectiveAmountIn - mappedBpsAmountIn));
+			const lossAmountUsd = costs.fromTokenPrice * (minFulfillAmount - effectiveAmountIn);
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(
-					`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
+					`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${minFulfillAmount} > ${effectiveAmountIn}`,
 				);
 				throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
 			}
@@ -228,7 +241,7 @@ export class AuctionFulfillerConfig {
 			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);
 			appendLoss(lossAmountUsd);
 			swap.lastloss = lossAmountUsd;
-			effectiveAmountIn = mappedBpsAmountIn * 1.0001 + mappedMinAmountIn;
+			effectiveAmountIn = minFulfillAmount * 1.0001;
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
