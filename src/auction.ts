@@ -202,9 +202,8 @@ export class AuctionFulfillerConfig {
 		const minAmountNeededForFulfill = Number(minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
 
 		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
-		const mappedBpsAmountIn = (swap.fromAmount.toNumber() * Number(bpsFees)) / 10000; // upper estimate
 
-		if (mappedMinAmountIn > effectiveAmountIn - mappedBpsAmountIn) {
+		if (mappedMinAmountIn > effectiveAmountIn) {
 			logger.warn(
 				`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
 			);
@@ -213,7 +212,7 @@ export class AuctionFulfillerConfig {
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
 
-		const profitMargin = effectiveAmountIn - mappedMinAmountIn - mappedBpsAmountIn;
+		const profitMargin = effectiveAmountIn - mappedMinAmountIn;
 
 		const finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
 
