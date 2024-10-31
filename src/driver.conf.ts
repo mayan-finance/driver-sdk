@@ -10,7 +10,7 @@ import {
 } from './config/chains';
 
 export const driverConfig = {
-	bidAggressionPercent: 1, // 1% above minamout out
+	bidAggressionPercent: 0, // 1% above minamout out
 	fulfillAggressionPercent: 100, // take 1% of approximated available profit
 	volumeLimitUsd: 20_000, // 20k USD
 	acceptedInputChains: new Set([
