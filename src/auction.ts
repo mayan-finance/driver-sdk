@@ -86,9 +86,9 @@ export class AuctionFulfillerConfig {
 
 		const bidAggressionPercent = this.bidAggressionPercent; // 0 - 100
 
-		const profitMargin = effectiveAmountIn - mappedMinAmountIn - mappedBpsAmountIn;
+		const profitMargin = effectiveAmountIn - mappedBpsAmountIn;
 
-		const finalAmountIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100;
+		const finalAmountIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
 
 		const mappedAmountOut = (finalAmountIn * Number(output)) / effectiveAmountIn;
 		let normalizedAmountOut;
