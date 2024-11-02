@@ -69,20 +69,13 @@ export class Relayer {
 				}
 
 				if (swap.destChain === CHAIN_ID_SOLANA) {
-					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-						await this.waitForFinalizeOnSource(swap);
-						await this.simpleFulfillAndSettle(swap, destState);
-					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+					if (swap.auctionMode === AUCTION_MODES.ENGLISH || swap.auctionMode === AUCTION_MODES.DONT_CARE) {
 						await this.bidAndFulfillSolana(swap, destState!, sourceState, sourceEvmOrder);
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
 				} else {
-					if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-						// await this.submitGaslessOrderIfRequired(swap, sourceState, sourceEvmOrder);
-						await this.waitForFinalizeOnSource(swap);
-						await this.simpleFulfillEvm(swap, destEvmOrder!);
-					} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+					if (swap.auctionMode === AUCTION_MODES.ENGLISH || swap.auctionMode === AUCTION_MODES.DONT_CARE) {
 						await this.bidAndFulfillEvm(swap, sourceState, sourceEvmOrder, destEvmOrder!);
 					} else {
 						throw new Error('Unrecognized Auction mode');
@@ -259,76 +252,71 @@ export class Relayer {
 			return;
 		}
 
-		const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-		// swap.auctionStateAddr = PublicKey.findProgramAddressSync(
-		// 	[Buffer.from('AUCTION'), hexToUint8Array(swap.orderHash)],
-		// 	new PublicKey(this.contractsConfig.auctionAddr),
-		// )[0].toString();
-		let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-		if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
-			const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
-			if (!openToBid) {
-				logger.warn(
-					`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
-				);
-				await delay(5000);
-				return;
+		let auctionSignedVaa: Uint8Array | undefined;
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+			const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
+			// swap.auctionStateAddr = PublicKey.findProgramAddressSync(
+			// 	[Buffer.from('AUCTION'), hexToUint8Array(swap.orderHash)],
+			// 	new PublicKey(this.contractsConfig.auctionAddr),
+			// )[0].toString();
+			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
+				const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
+				if (!openToBid) {
+					logger.warn(
+						`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
+					);
+					await delay(5000);
+					return;
+				}
 			}
-		}
 
-		if (!auctionState) {
-			logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-			await this.driverService.bid(swap, false);
-			logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
-			await delay(this.gConf.auctionTimeSeconds * 1000);
-			logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
-		}
-
-		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-
-		let sequence: bigint | undefined = auctionState?.sequence;
-		try {
-			// because validators fall behind, we will always send postBid regardless to avoid
-			// wasting afew seconds on waiting for auction state update...
-			if (!sequence || sequence < 1n) {
-				sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
-			} else {
-				sequence = sequence - 1n;
+			if (!auctionState) {
+				logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
+				await this.driverService.bid(swap, false);
+				logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
+				await delay(this.gConf.auctionTimeSeconds * 1000);
+				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
 			}
-		} catch (err) {
+
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-			if (!!auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
-				logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
-				return;
+
+			let sequence: bigint | undefined = auctionState?.sequence;
+			try {
+				// because validators fall behind, we will always send postBid regardless to avoid
+				// wasting afew seconds on waiting for auction state update...
+				if (!sequence || sequence < 1n) {
+					sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
+				} else {
+					sequence = sequence - 1n;
+				}
+			} catch (err) {
+				auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+				if (!!auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
+					logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
+					return;
+				}
 			}
+
+			// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
+			await this.waitForFinalizeOnSource(swap);
+
+			logger.info(`Got sequence ${sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
+			auctionSignedVaa = await getSignedVaa(
+				this.rpcConfig.wormholeGuardianRpcs,
+				CHAIN_ID_SOLANA,
+				this.contractsConfig.auctionAddr,
+				sequence!.toString(),
+				500,
+			);
+			logger.info(`Got auction signed VAA for ${swap.sourceTxHash}. Fulfilling...`);
+		} else {
+			logger.info(`Simple mode evm fulfilling ${swap.sourceTxHash}...`);
 		}
 
-		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
-		await this.waitForFinalizeOnSource(swap);
-
-		logger.info(`Got sequence ${sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
-		const signedVaa = await getSignedVaa(
-			this.rpcConfig.wormholeGuardianRpcs,
-			CHAIN_ID_SOLANA,
-			this.contractsConfig.auctionAddr,
-			sequence!.toString(),
-			500,
-		);
-		logger.info(`Got auction signed VAA for ${swap.sourceTxHash}. Fulfilling...`);
-
-		await this.driverService.fulfill(swap, signedVaa);
+		await this.driverService.fulfill(swap, auctionSignedVaa);
 
 		logger.info(`In bid-and-fullfilll-evm fulfilled ${swap.sourceTxHash}.`);
-	}
-
-	async simpleFulfillEvm(swap: Swap, destEvmOrder: EvmStoredOrder) {
-		if (await this.checkAlreadyFulfilledOrCanceledOnEvm(swap, destEvmOrder)) {
-			return;
-		}
-
-		logger.info(`In simpleFulfillEvm for ${swap.sourceTxHash}`);
-		await this.driverService.simpleFulFillEvm(swap);
-		logger.info(`Finished simpleFulfillEvm for ${swap.sourceTxHash}`);
 	}
 
 	async bidAndFulfillSolana(
@@ -341,35 +329,41 @@ export class Relayer {
 			return;
 		}
 
-		let [solanaTime, auctionState] = await Promise.all([
-			getCurrentSolanaTimeMS(this.solanaConnection),
-			getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr)),
-		]);
-		if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-			const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
-			if (!openToBid) {
-				logger.info(
-					`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
-				);
-				await delay(5000);
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+			let [solanaTime, auctionState] = await Promise.all([
+				getCurrentSolanaTimeMS(this.solanaConnection),
+				getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr)),
+			]);
+			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
+				const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
+				if (!openToBid) {
+					logger.info(
+						`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
+					);
+					await delay(5000);
+					return;
+				}
+			}
+
+			if (!auctionState) {
+				logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
+				let shouldRegisterOrder = !destState;
+				await this.driverService.bid(swap, shouldRegisterOrder);
+				logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
+				await delay(this.gConf.auctionTimeSeconds * 1000);
+				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
+			}
+
+			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+
+			if (auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
+				logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
 				return;
 			}
-		}
-
-		if (!auctionState) {
-			logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
-			let shouldRegisterOrder = !destState;
-			await this.driverService.bid(swap, shouldRegisterOrder);
-			logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
-			await delay(this.gConf.auctionTimeSeconds * 1000);
-			logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
-		}
-
-		auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-
-		if (auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
-			logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
-			return;
+		} else {
+			logger.info(`Registering order for simple-fulfill`);
+			await this.driverService.registerOrder(swap);
+			logger.info(`Order registered for ${swap.sourceTxHash}`);
 		}
 
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
@@ -377,14 +371,14 @@ export class Relayer {
 		let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
 		if (driverToken.contract === swap.toToken.contract) {
 			await this.waitForFinalizeOnSource(swap);
-			await this.driverService.auctionFulfillAndSettlePackage(swap);
+			await this.driverService.solanaFulfillAndSettlePackage(swap);
 			swap.status = SWAP_STATUS.ORDER_SETTLED;
 		} else {
 			await this.waitForFinalizeOnSource(swap);
 			if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
 				try {
 					// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
-					await this.driverService.auctionFulfillAndSettleJitoBundle(swap);
+					await this.driverService.solanaFulfillAndSettleJitoBundle(swap);
 					swap.status = SWAP_STATUS.ORDER_SETTLED;
 					return;
 				} catch (e: any) {
@@ -415,15 +409,6 @@ export class Relayer {
 			logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
 			swap.status = SWAP_STATUS.ORDER_FULFILLED;
 		}
-	}
-
-	async simpleFulfillAndSettle(swap: Swap, state: SwiftDestState | null) {
-		if (await this.checkAlreadyFulfilledOrCanceledSolana(swap, state)) {
-			return;
-		}
-		await this.driverService.auctionLessFulfillAndSettleSolana(swap);
-
-		swap.status = SWAP_STATUS.ORDER_SETTLED;
 	}
 
 	private async settle(swap: Swap) {

@@ -185,7 +185,7 @@ export class DriverService {
 
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
 			isGasless: swap.gasless,
-			auctionMode: AUCTION_MODES.ENGLISH,
+			auctionMode: swap.auctionMode,
 			exactCalculation: false,
 			fromChainId: srcChain,
 			fromToken: fromToken,
@@ -248,6 +248,24 @@ export class DriverService {
 		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
 	}
 
+	async registerOrder(swap: Swap) {
+		let instructions = [];
+		instructions.unshift(await this.getRegisterOrderFromSwap(swap));
+		let signers = [this.walletConfig.solana];
+
+		logger.info(`Sending register-order transaction for ${swap.sourceTxHash}`);
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+			instructions,
+			signers,
+			[],
+			this.rpcConfig.solana.sendCount,
+			true,
+			undefined,
+			50_000,
+		);
+		logger.info(`Sent  register-order for ${swap.sourceTxHash} with ${hash}`);
+	}
+
 	async postBid(
 		swap: Swap,
 		createStateAss: boolean,
@@ -266,9 +284,9 @@ export class DriverService {
 
 		let instructions: TransactionInstruction[] = [];
 		let newMessageAccount: Keypair | null = null;
-		if (!postAuction) {
+		if (!postAuction && swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			instructions.push(await this.getRegisterWinnerIx(swap));
-		} else {
+		} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			const auctionEmitter = PublicKey.findProgramAddressSync(
 				[Buffer.from('emitter')],
 				this.swiftAuctionProgram,
@@ -359,97 +377,6 @@ export class DriverService {
 		return registerWinnerIx;
 	}
 
-	async simpleFulFillEvm(swap: Swap) {
-		const fromTokenAddr = swap.fromTokenAddress;
-		const srcChain = swap.sourceChain;
-		const toTokenAddr = swap.toTokenAddress;
-		const dstChain = swap.destChain;
-
-		const fromToken = swap.fromToken;
-		const toToken = swap.toToken;
-
-		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
-			isGasless: swap.gasless,
-			auctionMode: AUCTION_MODES.DONT_CARE,
-			exactCalculation: false,
-			fromChainId: srcChain,
-			fromToken: fromToken,
-			toChainId: dstChain,
-			toToken: toToken,
-			gasDrop: swap.gasDrop.toNumber(),
-		});
-		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
-
-		if (effectiveAmountIn < swap.minAmountOut.toNumber()) {
-			await delay(2000);
-			throw new Error(`Can not fulfill ${swap.sourceTxHash} on evm. min amount out issue`);
-		}
-
-		const fulfillAmount = await this.simpleFulfillerCfg.fulfillAmount(swap, effectiveAmountIn, expenses);
-
-		await this.evmFulFiller.simpleFulfill(swap, fulfillAmount, toToken);
-	}
-
-	async getSimpleFulfillIxsPackage(swap: Swap): Promise<TransactionInstruction[]> {
-		const stateAddr = this.getStateAddr(swap);
-
-		const fromTokenAddr = swap.fromTokenAddress;
-		const srcChain = swap.sourceChain;
-		const toTokenAddr = swap.toTokenAddress;
-		const dstChain = swap.destChain;
-
-		const fromToken = swap.fromToken;
-		const toToken = swap.toToken;
-
-		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
-			isGasless: swap.gasless,
-			auctionMode: AUCTION_MODES.DONT_CARE,
-			exactCalculation: false,
-			fromChainId: srcChain,
-			fromToken: fromToken,
-			toChainId: dstChain,
-			toToken: toToken,
-			gasDrop: swap.gasDrop.toNumber(),
-		});
-		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
-
-		if (effectiveAmountIn < swap.minAmountOut.toNumber()) {
-			await delay(2000);
-			throw new Error(`Can not fulfill ${swap.sourceTxHash} on solana. min amount out issue`);
-		}
-
-		const fulfillAmount = await this.simpleFulfillerCfg.fulfillAmount(swap, effectiveAmountIn, expenses);
-
-		const stateToAss = getAssociatedTokenAddressSync(
-			new PublicKey(toToken.mint),
-			stateAddr,
-			true,
-			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-		);
-
-		let result: TransactionInstruction[] = [];
-		result.push(
-			createAssociatedTokenAccountIdempotentInstruction(
-				this.walletConfig.solana.publicKey,
-				stateToAss,
-				stateAddr,
-				new PublicKey(toToken.mint),
-				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-			),
-		);
-		const fulfillIxs = await this.solanaFulfiller.getSimpleFulfillIxPackage(
-			this.swiftProgram,
-			stateAddr,
-			stateToAss,
-			toToken,
-			fulfillAmount,
-			swap,
-		);
-		result.push(...fulfillIxs);
-
-		return result;
-	}
-
 	async fulfill(
 		swap: Swap,
 		postAuctionSignedVaa?: Uint8Array,
@@ -471,7 +398,7 @@ export class DriverService {
 
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
 			isGasless: swap.gasless,
-			auctionMode: AUCTION_MODES.ENGLISH,
+			auctionMode: swap.auctionMode,
 			exactCalculation: false,
 			fromChainId: srcChain,
 			fromToken: fromToken,
@@ -541,106 +468,16 @@ export class DriverService {
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
 
-			await this.evmFulFiller.fulfillAuction(
+			await this.evmFulFiller.fulfillAuctionOrSimple(
 				swap,
 				fulfillAmount,
 				toToken,
 				dstChain,
 				driverToken,
-				postAuctionSignedVaa!,
 				realMinAmountOut,
+				postAuctionSignedVaa,
 			);
 		}
-	}
-
-	async auctionLessFulfillAndSettleSolana(swap: Swap): Promise<string> {
-		const registerOrderIx = await this.getRegisterOrderFromSwap(swap);
-		const fulfillIxs = await this.getSimpleFulfillIxsPackage(swap);
-		const settleIxs = await this.getSettleIxsPackage(swap);
-
-		let instructions = [registerOrderIx, ...fulfillIxs, ...settleIxs];
-
-		logger.info(`Sending noacution settle transaction for ${swap.sourceTxHash}`);
-		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
-			instructions,
-			[this.walletConfig.solana],
-			[],
-			this.rpcConfig.solana.sendCount,
-			true,
-		);
-		logger.info(`Sent noauction settle transaction for ${swap.sourceTxHash} with ${hash}`);
-		return hash;
-	}
-
-	async getSettleIxsPackage(swap: Swap): Promise<TransactionInstruction[]> {
-		const stateAddr = this.getStateAddr(swap);
-		const to = new PublicKey(swap.destAddress);
-
-		const toToken = swap.toToken;
-		const toMint = new PublicKey(toToken.mint);
-
-		let instructions: TransactionInstruction[] = [];
-
-		const stateToAss = getAssociatedTokenAddressSync(
-			toMint,
-			stateAddr,
-			true,
-			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-		);
-		instructions.push(
-			createAssociatedTokenAccountIdempotentInstruction(
-				this.walletConfig.solana.publicKey,
-				stateToAss,
-				stateAddr,
-				new PublicKey(toToken.mint),
-				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-			),
-		);
-
-		const mayanAndReferrerAssInfo = this.getMayanAndReferrerFeeAssesInstructions(
-			swap.mayanBps,
-			swap.referrerBps,
-			swap.referrerAddress,
-			swap.destChain,
-			toMint,
-			toToken.standard === 'spl2022',
-		);
-		for (let ix of mayanAndReferrerAssInfo.ixs) {
-			instructions.push(ix);
-		}
-
-		const toAss = getAssociatedTokenAddressSync(
-			toMint,
-			to,
-			true,
-			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-		);
-		instructions.push(
-			createAssociatedTokenAccountIdempotentInstruction(
-				this.walletConfig.solana.publicKey,
-				toAss,
-				to,
-				new PublicKey(toMint),
-				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-			),
-		);
-
-		const settleIx = await this.solanaIxService.getSettleIx(
-			this.walletConfig.solana.publicKey,
-			stateAddr,
-			stateToAss,
-			to,
-			toAss,
-			mayanAndReferrerAssInfo.mayan,
-			mayanAndReferrerAssInfo.mayanAss,
-			toMint,
-			new PublicKey(swap.referrerAddress),
-			mayanAndReferrerAssInfo.referrerAss,
-			toToken.standard === 'spl2022',
-			!toToken.hasTransferFee,
-		);
-
-		return [...instructions, settleIx];
 	}
 
 	async settle(swap: Swap, onlyTxData?: boolean): Promise<{ instructions: TransactionInstruction[] } | void> {
@@ -727,8 +564,8 @@ export class DriverService {
 		logger.info(`Sent settle transaction for ${swap.sourceTxHash} with ${hash}`);
 	}
 
-	async auctionFulfillAndSettlePackage(swap: Swap) {
-		logger.info(`Getting swapless fulfill-settle package for ${swap.sourceTxHash}`);
+	async solanaFulfillAndSettlePackage(swap: Swap) {
+		logger.info(`Getting simple-mode fulfill-settle package for ${swap.sourceTxHash}`);
 		const [postBidData, fulfillData, settleData] = await Promise.all([
 			this.postBid(swap, true, false, true),
 			this.fulfill(swap, undefined, true),
@@ -752,7 +589,7 @@ export class DriverService {
 		logger.info(`Sent fulfill-settle package for ${swap.sourceTxHash} with ${hash}`);
 	}
 
-	async auctionFulfillAndSettleJitoBundle(swap: Swap) {
+	async solanaFulfillAndSettleJitoBundle(swap: Swap) {
 		logger.info(`Getting jito fulfill-settle package for ${swap.sourceTxHash}`);
 		const [postBidData, fulfillData, settleData] = await Promise.all([
 			this.postBid(swap, true, false, true),

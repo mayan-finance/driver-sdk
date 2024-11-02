@@ -9,6 +9,7 @@
 # misc
 /logs
 .DS_Store
+.idea
 .env
 .env.test
 .nyc_output
