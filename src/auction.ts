@@ -236,6 +236,9 @@ export class AuctionFulfillerConfig {
 					maxAccounts: 64 - 7, // 7 accounts reserved for other instructions
 					amount: amountIn,
 				};
+				if (!!this.rpcConfig.jupExcludedDexes) {
+					params['excludeDexes'] = this.rpcConfig.jupExcludedDexes;
+				}
 				if (!!this.rpcConfig.jupApiKey) {
 					params['token'] = this.rpcConfig.jupApiKey;
 				}

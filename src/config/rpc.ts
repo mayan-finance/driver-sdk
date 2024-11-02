@@ -29,6 +29,7 @@ export type RpcConfig = {
 	jupV6Endpoint: string;
 	oneInchApiKey: string;
 	jupApiKey: string;
+	jupExcludedDexes: string;
 	wormholeGuardianRpcs: string[];
 };
 
@@ -66,5 +67,6 @@ export const rpcConfig: RpcConfig = {
 	jupV6Endpoint: process.env.JUP_V6_ENDPOINT || 'https://quote-api.jup.ag/v6',
 	oneInchApiKey: process.env.ONE_INCH_API_KEY || '',
 	jupApiKey: process.env.JUP_API_KEY || '',
+	jupExcludedDexes: process.env.JUP_EXCLUDED_DEXES || '',
 	wormholeGuardianRpcs: process.env.WORMHOLE_GUARDIAN_RPCS!.split(','),
 };
