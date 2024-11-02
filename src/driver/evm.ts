@@ -21,6 +21,7 @@ import { EvmProviders } from '../utils/evm-providers';
 import { getSuggestedOverrides, getTypicalBlocksToConfirm } from '../utils/evm-trx';
 import logger from '../utils/logger';
 import { deserializePermitFromHex } from '../utils/permit';
+import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { get1InchQuote, get1InchSwap } from './routers';
 import { WalletsHelper } from './wallet-helper';
@@ -129,6 +130,64 @@ export class EvmFulfiller {
 		return this.unlockWallets32.get(sourceChainId)!;
 	}
 
+	private generateSimpleFulfillCall(fulfillAmount: number, swap: Swap, chosenDriverToken: Token, batch: boolean) {
+		const fromToken = swap.fromToken;
+		const fromNormalizedDecimals = Math.min(WORMHOLE_DECIMALS, fromToken.decimals);
+
+		let orderHashHex = swap.orderHash;
+		let trader32Hex = tryNativeToHexString(swap.trader, swap.sourceChain);
+		let srcChain = swap.sourceChain;
+		let tokenIn32Hex = tryNativeToHexString(swap.fromTokenAddress, swap.sourceChain);
+		let tokenOut32Hex = tryNativeToHexString(swap.toTokenAddress, swap.destChain);
+		let minAmountOut64 = swap.minAmountOut64;
+		let gasDrop64 = swap.gasDrop64;
+		let protocolBps = swap.mayanBps;
+		let referrerBps = swap.referrerBps;
+		let destRefundFee64 = ethers.parseUnits(
+			swap.redeemRelayerFee.toFixed(fromNormalizedDecimals, Decimal.ROUND_DOWN),
+			fromNormalizedDecimals,
+		);
+		let sourceRefundFee64 = ethers.parseUnits(
+			swap.refundRelayerFee.toFixed(fromNormalizedDecimals, Decimal.ROUND_DOWN),
+			fromNormalizedDecimals,
+		);
+		let deadline64 = BigInt(Math.floor(swap.deadline.getTime() / 1000));
+
+		let destAddr32Hex = tryNativeToHexString(swap.destAddress, swap.destChain);
+		let destChain = swap.destChain;
+
+		let referrerAddr32Hex = tryNativeToHexString(swap.referrerAddress, swap.destChain);
+
+		let random32Hex = swap.randomKey;
+
+		const unlockAddress32 = this.getUnlockAddress32(swap.sourceChain);
+
+		return this.swiftInterface.encodeFunctionData('fulfillSimple', [
+			ethers.parseUnits(fulfillAmount.toFixed(chosenDriverToken.decimals), chosenDriverToken.decimals),
+			orderHashHex,
+			srcChain,
+			tokenIn32Hex,
+			protocolBps,
+			{
+				trader: trader32Hex,
+				tokenOut: tokenOut32Hex,
+				minAmountOut: minAmountOut64,
+				gasDrop: gasDrop64,
+				cancelFee: destRefundFee64,
+				refundFee: sourceRefundFee64,
+				deadline: deadline64,
+				destAddr: destAddr32Hex,
+				destChainId: destChain,
+				referrerAddr: referrerAddr32Hex,
+				referrerBps: referrerBps,
+				auctionMode: swap.auctionMode,
+				random: random32Hex,
+			},
+			unlockAddress32,
+			batch,
+		]);
+	}
+
 	private generateAuctionFulfillCalldata(
 		fulfillAmount: bigint,
 		signedVaa: Buffer,
@@ -143,14 +202,14 @@ export class EvmFulfiller {
 		]);
 	}
 
-	async fulfillAuction(
+	async fulfillAuctionOrSimple(
 		swap: Swap,
 		availableAmountIn: number,
 		toToken: Token,
 		targetChain: number,
 		driverToken: Token,
-		postAuctionSignedVaa: Uint8Array,
 		realMinAmountOut: bigint,
+		postAuctionSignedVaa?: Uint8Array,
 	) {
 		const amountIn64 = ethers.parseUnits(availableAmountIn.toFixed(driverToken.decimals), driverToken.decimals);
 		const networkFeeData: ethers.FeeData = await this.evmProviders[targetChain].getFeeData();
@@ -168,21 +227,31 @@ export class EvmFulfiller {
 		const batch = this.gConf.singleBatchChainIds.includes(+swap.destChain) ? false : true; // batch-post except for eth and expensive chains
 
 		let fulfillTx: ethers.TransactionResponse;
-		const swiftCallData = this.generateAuctionFulfillCalldata(
-			0n, // this param doesn't matter and is overridden by swap amount in fulfill helper
-			Buffer.from(postAuctionSignedVaa),
-			unlockAddress32,
-			batch,
-		);
+		let swiftCallData: string;
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+			swiftCallData = this.generateAuctionFulfillCalldata(
+				0n, // this param doesn't matter and is overridden by swap amount in fulfill helper
+				Buffer.from(postAuctionSignedVaa!),
+				unlockAddress32,
+				batch,
+			);
+		} else {
+			swiftCallData = this.generateSimpleFulfillCall(availableAmountIn, swap, driverToken, batch);
+		}
 		if (driverToken.contract === toToken.contract) {
 			// no swap involved
 			logger.info(`Sending no-swap auction fulfill with fulfillOrder for tx=${swap.sourceTxHash}`);
 			if (driverToken.contract === ethers.ZeroAddress) {
 				overrides['value'] = overrides['value'] + amountIn64;
 			}
-			fulfillTx = await this.walletHelper
-				.getWriteContract(swap.destChain, false)
-				.fulfillOrder(amountIn64, Buffer.from(postAuctionSignedVaa), unlockAddress32, batch, overrides);
+
+			if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+				fulfillTx = await this.walletHelper
+					.getWriteContract(swap.destChain, false)
+					.fulfillOrder(amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides);
+			} else {
+				return await this.simpleFulfill(swap, availableAmountIn, toToken!);
+			}
 		} else {
 			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);
 			if (swapParams.expectedAmountOut < realMinAmountOut) {
@@ -229,7 +298,7 @@ export class EvmFulfiller {
 			}
 		}
 
-		logger.info(`Waiting for auction-fulfill on EVM for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
+		logger.info(`Waiting for fulfill on EVM for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
 		const tx = await this.evmProviders[targetChain].waitForTransaction(
 			fulfillTx.hash,
 			getTypicalBlocksToConfirm(targetChain),
@@ -237,7 +306,7 @@ export class EvmFulfiller {
 		);
 
 		if (!tx || tx.status !== 1) {
-			throw new Error(`Fulfill auction on evm reverted for ${swap.sourceTxHash} via: ${tx?.hash}`);
+			throw new Error(`Fulfill on evm reverted for ${swap.sourceTxHash} via: ${tx?.hash}`);
 		} else {
 			swap.status = SWAP_STATUS.ORDER_SETTLED;
 		}
