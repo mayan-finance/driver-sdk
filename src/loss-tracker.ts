@@ -1,8 +1,8 @@
 import * as fs from 'fs';
 
 const filePath = './loss.json';
-export const maxLossPerSwapUSD = 10;
-export const maxTotalLossUSDPerDay = 300;
+export const maxLossPerSwapUSD = 20;
+export const maxTotalLossUSDPerDay = 500;
 
 export function readTodayLoss() {
 	let data = {

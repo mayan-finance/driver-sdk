@@ -93,7 +93,11 @@ export class AuctionFulfillerConfig {
 		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
 		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
-		const finalFullAmountIn = 0.98 * (effectiveAmountIn - mappedBpsAmountIn);
+		let bidBpsMargin = 25; // 25 bps
+		if (swap.toToken.contract === driverToken.contract) {
+			bidBpsMargin = 5; // 5 bps if no swap is included
+		}
+		const finalFullAmountIn = (1 - bidBpsMargin / 10000) * (effectiveAmountIn - mappedBpsAmountIn);
 		const fullMappedAmountOut = (finalFullAmountIn * Number(output)) / effectiveAmountIn; // 20 bps test for now
 
 		const mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
@@ -220,7 +224,7 @@ export class AuctionFulfillerConfig {
 		if (!swap.bidAmountIn) {
 			if (swap.bidAmount64) {
 				const bidOut = Number(swap.bidAmount64) / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
-				swap.bidAmountIn = 1.000001 * bidOut * (effectiveAmountIn / output);
+				swap.bidAmountIn = (1.000001 * bidOut * (effectiveAmountIn / output)) / (1 - Number(bpsFees) / 10000);
 			}
 		}
 
@@ -248,9 +252,12 @@ export class AuctionFulfillerConfig {
 
 		const profitMargin = effectiveAmountIn - mappedMinAmountIn;
 
-		const finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
+		let finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
+		if (finalAmountIn * (1 - 3.1 / 10000) > minFulfillAmount) {
+			finalAmountIn = finalAmountIn * (1 - 3 / 10000);
+		}
 
-		return Math.max(finalAmountIn * (1 - 3 / 10000), mappedMinAmountIn * 1.00001);
+		return Math.max(finalAmountIn, minFulfillAmount * 1.000001);
 	}
 
 	private async getJupQuoteWithRetry(
