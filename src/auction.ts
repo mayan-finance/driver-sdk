@@ -83,7 +83,8 @@ export class AuctionFulfillerConfig {
 			logger.warn(
 				`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
 			);
-			throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+			// throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+			// continute anyway to bid min  amount out
 		}
 
 		const bidAggressionPercent = this.bidAggressionPercent; // 0 - 100
@@ -216,8 +217,8 @@ export class AuctionFulfillerConfig {
 			swap.toToken.decimals > 8
 				? normalizedMinAmountOut * BigInt(10 ** (swap.toToken.decimals - 8))
 				: normalizedMinAmountOut;
-		const minAmountNeededForFulfill64 = realMinAmountOut + (realMinAmountOut * bpsFees) / 10000n;
-		const minAmountNeededForFulfill = Number(minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
+		const minAmountNeededForFulfill64 = Number(realMinAmountOut) / (1 - Number(bpsFees) / 10000);
+		const minAmountNeededForFulfill = (1.000001 * minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
 
 		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
 
@@ -233,7 +234,11 @@ export class AuctionFulfillerConfig {
 			if (swap.lastloss && swap.lastloss > 0) {
 				removeLoss(swap.lastloss);
 			}
-			const lossAmountUsd = costs.fromTokenPrice * (minFulfillAmount - effectiveAmountIn);
+
+			let lossAmountUsd = costs.fromTokenPrice * (minFulfillAmount - effectiveAmountIn);
+			if (swap.toToken.contract !== driverToken.contract) {
+				lossAmountUsd = lossAmountUsd * 1.1;
+			}
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(
