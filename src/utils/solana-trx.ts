@@ -13,7 +13,6 @@ import {
 	VersionedTransaction,
 } from '@solana/web3.js';
 import axios from 'axios';
-import WebSocket from 'ws';
 import { RpcConfig } from '../config/rpc';
 import { WalletConfig } from '../config/wallet';
 import { binary_to_base58 } from './base58';
@@ -60,17 +59,25 @@ export class SolanaMultiTxSender {
 		this.priorityFeeHelper = new PriorityFeeHelper(rpcConfig);
 
 		try {
-			const url = 'ws://bundles-api-rest.jito.wtf/api/v1/bundles/tip_stream';
-			const connection = new WebSocket(url);
-			connection.on('message', (message) => {
-				const newFiftyPercentileTip = Number(JSON.parse(message.toString())[0]['landed_tips_75th_percentile']);
-				this.minJitoTipAmount = Math.min(
-					this.maxJitoTipAmount,
-					Math.max(newFiftyPercentileTip, this.minJitoTipAmount),
-				);
-			});
+			setInterval(() => {
+				this.updateJitoTips();
+			}, 5000);
+			this.updateJitoTips();
 		} catch (error) {
-			logger.error(`Error initializing jito websocket: ${error}`);
+			logger.error(`Error initializing jito interval: ${error}`);
+		}
+	}
+
+	async updateJitoTips(): Promise<void> {
+		try {
+			const { data } = await axios.get('http://bundles-api-rest.jito.wtf/api/v1/bundles/tip_floor');
+			this.minJitoTipAmount = Math.min(
+				this.maxJitoTipAmount,
+				Math.max(data[0]['landed_tips_75th_percentile'], this.minJitoTipAmount),
+			);
+			console.log(`Updated jito tips: ${this.minJitoTipAmount}`);
+		} catch (error) {
+			logger.error(`Error updating jito tips: ${error}`);
 		}
 	}
 
