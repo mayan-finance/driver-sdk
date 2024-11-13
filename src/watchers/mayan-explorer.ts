@@ -167,12 +167,19 @@ export class MayanExplorerWatcher {
 					return;
 				}
 
-				const swap = await this.createSwapFromJson(s);
-
-				this.relayer.relay(swap);
+				this.backgroundRelay(s);
 			}
 		} catch (err) {
 			logger.error(`error in polling explorer ${err}`);
+		}
+	}
+
+	private async backgroundRelay(s: any) {
+		try {
+			const swap = await this.createSwapFromJson(s);
+			this.relayer.relay(swap);
+		} catch (err) {
+			logger.error(`Background relay failed ${err} ${s}`);
 		}
 	}
 
