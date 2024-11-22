@@ -19,6 +19,16 @@ import logger from './utils/logger';
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
+
+	private readonly perRetryMinAvailableLossUSD: { [x: number]: number } = {
+		0: 0.05,
+		1: 0.1,
+		2: 0.2,
+		3: 0.5,
+		4: 1,
+		5: 5,
+		6: 10,
+	};
 	private readonly forceBid = true;
 
 	constructor(
@@ -235,22 +245,20 @@ export class AuctionFulfillerConfig {
 				removeLoss(swap.lastloss);
 			}
 
-			let lossAmountUsd = costs.fromTokenPrice * (minFulfillAmount - effectiveAmountIn);
-			if (swap.toToken.contract !== driverToken.contract) {
-				lossAmountUsd = lossAmountUsd * 1.1;
-			}
+			let lossAmountUsd =
+				this.perRetryMinAvailableLossUSD[swap.retries] +
+				costs.fromTokenPrice * (minFulfillAmount - effectiveAmountIn);
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
-				logger.warn(
-					`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${minFulfillAmount} > ${effectiveAmountIn}`,
-				);
-				throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
+				throw new Error(`max per-swap loss filled for ${swap.sourceTxHash}`);
 			}
 
 			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);
 			appendLoss(lossAmountUsd);
 			swap.lastloss = lossAmountUsd;
-			effectiveAmountIn = minFulfillAmount * 1.0001;
+			effectiveAmountIn =
+				minFulfillAmount * 1.0001 + this.perRetryMinAvailableLossUSD[swap.retries] / costs.fromTokenPrice;
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100

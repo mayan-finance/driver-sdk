@@ -679,7 +679,7 @@ export class Unlocker {
 		destChain: number,
 		isBatch: boolean,
 	): Promise<string> {
-		const swiftContract = this.walletsHelper.getWriteContract(sourceChain);
+		const swiftContract = this.walletsHelper.getWriteContract(sourceChain, false);
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
 		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData);
