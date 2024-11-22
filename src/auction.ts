@@ -240,14 +240,14 @@ export class AuctionFulfillerConfig {
 		}
 
 		const minFulfillAmount = Math.max(mappedMinAmountIn, swap.bidAmountIn || 0);
-		if (minFulfillAmount > effectiveAmountIn) {
+		if (minFulfillAmount > effectiveAmountIn || swap.retries > 1) {
 			if (swap.lastloss && swap.lastloss > 0) {
 				removeLoss(swap.lastloss);
 			}
 
 			let lossAmountUsd =
 				this.perRetryMinAvailableLossUSD[swap.retries] +
-				costs.fromTokenPrice * (minFulfillAmount - effectiveAmountIn);
+				costs.fromTokenPrice * Math.max(minFulfillAmount - effectiveAmountIn, 0);
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
@@ -258,7 +258,8 @@ export class AuctionFulfillerConfig {
 			appendLoss(lossAmountUsd);
 			swap.lastloss = lossAmountUsd;
 			effectiveAmountIn =
-				minFulfillAmount * 1.0001 + this.perRetryMinAvailableLossUSD[swap.retries] / costs.fromTokenPrice;
+				Math.max(effectiveAmountIn, minFulfillAmount * 1.0001) +
+				this.perRetryMinAvailableLossUSD[swap.retries] / costs.fromTokenPrice;
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
