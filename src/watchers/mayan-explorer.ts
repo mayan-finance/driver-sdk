@@ -164,7 +164,7 @@ export class MayanExplorerWatcher {
 
 				if (this.relayer.relayingSwaps.find((x) => x.orderHash === s.orderHash)) {
 					logger.verbose(`Already progressing swap ${s.sourceTxHash}`);
-					return;
+					continue;
 				}
 
 				this.backgroundRelay(s);
