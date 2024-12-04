@@ -343,8 +343,6 @@ export class DriverService {
 			[],
 			this.rpcConfig.solana.sendCount,
 			true,
-			undefined,
-			computeUnits,
 		);
 		logger.info(`Sent post bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
