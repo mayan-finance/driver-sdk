@@ -57,3 +57,38 @@ export const tryUint8ArrayToNative = (a: Uint8Array, chainId: number): string =>
 		throw Error("Don't know how to convert address for chain " + chainId);
 	}
 };
+
+export function writeBigUint256ToBuffer(bigUint256: bigint): Buffer {
+	if (typeof bigUint256 !== 'bigint') {
+		throw new Error('Input must be a BigInt');
+	}
+
+	// 256 bits = 32 bytes
+	const byteLength = 32;
+	const buffer = Buffer.alloc(byteLength);
+
+	// Convert BigInt to hex string
+	let hex = bigUint256.toString(16);
+
+	// Ensure the hex string is padded to the correct byte length
+	if (hex.length > byteLength * 2) {
+		throw new Error('BigInt exceeds 256 bits');
+	}
+	hex = hex.padStart(byteLength * 2, '0');
+
+	// Write the hex string into the buffer
+	buffer.write(hex, 'hex');
+
+	return buffer;
+}
+
+export function writeUint24BE(buffer: Buffer, value: number, offset = 0) {
+	// Ensure the value is within the range of 24-bit unsigned integer
+	if (value < 0 || value > 0xffffff) {
+		throw new RangeError('Value out of range for 24-bit unsigned integer');
+	}
+
+	buffer[offset] = (value >> 16) & 0xff; // Write the first 8 bits (most significant byte)
+	buffer[offset + 1] = (value >> 8) & 0xff; // Write the next 8 bits
+	buffer[offset + 2] = value & 0xff; // Write the last 8 bits (least significant byte)
+}
