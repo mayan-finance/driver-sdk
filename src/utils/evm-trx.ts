@@ -16,15 +16,14 @@ export async function getSuggestedOverrides(targetChain: number, networkFeeData:
 		maxPriorityFeePerGas?: bigint;
 		maxFeePerGas?: bigint;
 		gasPrice?: bigint;
+		gasLimit?: string;
 	} = {};
 	if (targetChain === CHAIN_ID_POLYGON) {
 		try {
 			const { data } = await axios.get('https://gasstation.polygon.technology/v2');
-			overrides['maxFeePerGas'] = ethers.parseUnits(Math.ceil(data.fast.maxFee).toString(), 'gwei');
-			overrides['maxPriorityFeePerGas'] = ethers.parseUnits(
-				Math.ceil(data.fast.maxPriorityFee).toString(),
-				'gwei',
-			);
+			overrides['maxFeePerGas'] = ethers.parseUnits(Math.ceil(data.fast.maxFee).toString(), 'gwei') * 2n;
+			overrides['maxPriorityFeePerGas'] =
+				ethers.parseUnits(Math.ceil(data.fast.maxPriorityFee).toString(), 'gwei') * 2n;
 		} catch (err) {
 			logger.warn('failed to get gas price from polygon gas station', err);
 		}
@@ -33,7 +32,7 @@ export async function getSuggestedOverrides(targetChain: number, networkFeeData:
 	} else if (targetChain === CHAIN_ID_OPTIMISM) {
 		overrides['gasPrice'] = networkFeeData.gasPrice!;
 	} else if (targetChain === CHAIN_ID_BASE) {
-		overrides['gasPrice'] = networkFeeData.gasPrice!;
+		overrides['gasPrice'] = networkFeeData.gasPrice! * 2n;
 	}
 
 	return overrides;
