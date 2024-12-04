@@ -110,11 +110,11 @@ export class SwapRouters {
 		toAmount: string;
 	}> {
 		try {
-			return await this.get1InchSwap(swapParams, includeGas, retries);
+			return await this.getOkxSwap(swapParams, retries);
 		} catch (err) {
-			console.error(`Error using 1inch as swap ${err}. trying okx`);
+			console.error(`Error using okx as swap ${err}. trying 1inch`);
 			try {
-				return await this.getOkxSwap(swapParams, retries);
+				return await this.get1InchSwap(swapParams, includeGas, retries);
 			} catch (errrr) {
 				throw errrr;
 			}
@@ -222,6 +222,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
+				excludedProtocols: 'BASE_MAVERICK',
 				amount: swapParams.amountIn,
 				includeGas: includeGas,
 			},
@@ -285,6 +286,7 @@ export class SwapRouters {
 				Authorization: `Bearer ${this.rpcConfig.oneInchApiKey}`,
 			},
 			params: {
+				excludedProtocols: 'BASE_MAVERICK',
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
 				amount: swapParams.amountIn,

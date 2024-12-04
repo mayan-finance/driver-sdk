@@ -104,7 +104,7 @@ export class AuctionFulfillerConfig {
 		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
 		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
-		let bidBpsMargin = 25; // 25 bps
+		let bidBpsMargin = 14; // 11 bps
 		if (swap.toToken.contract === driverToken.contract) {
 			bidBpsMargin = 5; // 5 bps if no swap is included
 		}
@@ -251,7 +251,7 @@ export class AuctionFulfillerConfig {
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
-				throw new Error(`max per-swap loss filled for ${swap.sourceTxHash}`);
+				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
 			}
 
 			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);

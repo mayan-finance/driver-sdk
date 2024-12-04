@@ -350,7 +350,9 @@ export class Unlocker {
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			logger.error(
+				`getPendingBatchUnlockAndRefund  Solana failed for ${sourceChainId} to ${destChainId} - sequence: ${sequence} - postTX: ${postTxHash} - ${err}`,
+			);
 			delete this.locks[lockKey];
 		}
 	}
@@ -418,7 +420,10 @@ export class Unlocker {
 		await this.vaaPoster.postSignedVAA(signedVaa, 'batch_unlcock');
 
 		const foundStates = orders.map((ord) =>
-			getSwiftStateAddrSrc(new PublicKey(SolanaProgram), Buffer.from(ord.orderHash.replace('0x', ''), 'hex')).toString(),
+			getSwiftStateAddrSrc(
+				new PublicKey(SolanaProgram),
+				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
+			).toString(),
 		);
 
 		const parsedPayload = this.parseBatchUnlockVaaPayload(parseVaa(signedVaa).payload);
@@ -514,7 +519,9 @@ export class Unlocker {
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			logger.error(
+				`getPendingBatchUnlockAndRefund EVM failed for ${sourceChainId} to ${destChainId} - sequence: ${sequence} - postTX: ${postTxHash} - ${err}`,
+			);
 			delete this.locks[lockKey];
 		}
 	}

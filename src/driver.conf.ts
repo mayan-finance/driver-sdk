@@ -12,7 +12,7 @@ import {
 export const driverConfig = {
 	bidAggressionPercent: 0, // 1% above minamout out
 	fulfillAggressionPercent: 100, // take 1% of approximated available profit
-	volumeLimitUsd: 20_000, // 20k USD
+	volumeLimitUsd: 30_000, // 20k USD
 	acceptedInputChains: new Set([
 		CHAIN_ID_BSC,
 		CHAIN_ID_AVAX,
