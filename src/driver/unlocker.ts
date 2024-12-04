@@ -350,7 +350,9 @@ export class Unlocker {
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			logger.error(
+				`getPendingBatchUnlockAndRefund  Solana failed for ${sourceChainId} to ${destChainId} - sequence: ${sequence} - postTX: ${postTxHash} - ${err}`,
+			);
 			delete this.locks[lockKey];
 		}
 	}
@@ -480,7 +482,9 @@ export class Unlocker {
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			logger.error(
+				`getPendingBatchUnlockAndRefund EVM failed for ${sourceChainId} to ${destChainId} - sequence: ${sequence} - postTX: ${postTxHash} - ${err}`,
+			);
 			delete this.locks[lockKey];
 		}
 	}
