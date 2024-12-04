@@ -37,6 +37,7 @@ export async function get1InchQuote(
 		params: {
 			src: swapParams.srcToken,
 			dst: swapParams.destToken,
+			excludedProtocols: 'BASE_MAVERICK',
 			amount: swapParams.amountIn,
 			includeGas: includeGas,
 		},
@@ -102,6 +103,7 @@ export async function get1InchSwap(
 			Authorization: `Bearer ${apiKey}`,
 		},
 		params: {
+			excludedProtocols: 'BASE_MAVERICK',
 			src: swapParams.srcToken,
 			dst: swapParams.destToken,
 			amount: swapParams.amountIn,

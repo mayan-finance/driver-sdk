@@ -246,6 +246,21 @@ export class EvmFulfiller {
 			}
 
 			if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+				const estimatedGas = await this.walletHelper
+					.getWriteContract(swap.destChain, false)
+					.fulfillOrder.estimateGas(
+						amountIn64,
+						Buffer.from(postAuctionSignedVaa!),
+						unlockAddress32,
+						batch,
+						overrides,
+					);
+				if (!overrides['gasLimit']) {
+					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+				} else {
+					logger.info(`gasLimit already been set for fulfill ${swap.sourceTxHash}`);
+				}
 				fulfillTx = await this.walletHelper
 					.getWriteContract(swap.destChain, false)
 					.fulfillOrder(amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides);
@@ -264,6 +279,24 @@ export class EvmFulfiller {
 				logger.info(`Sending swap fulfill with fulfillWithEth for tx=${swap.sourceTxHash}`);
 				overrides['value'] = overrides['value'] + amountIn64;
 
+				const estimatedGas = await this.walletHelper
+					.getFulfillHelperWriteContract(swap.destChain)
+					.fulfillWithEth.estimateGas(
+						amountIn64,
+						toToken.contract,
+						swapParams.evmRouterAddress,
+						swapParams.evmRouterCalldata,
+						this.contractsConfig.contracts[targetChain],
+						swiftCallData,
+						overrides,
+					);
+				if (!overrides['gasLimit']) {
+					overrides['gasLimit'] = (estimatedGas * BigInt(120)) / BigInt(100);
+					logger.info(`gasLimit increased 20% for fulfill ${swap.sourceTxHash}`);
+				} else {
+					logger.info(`gasLimit already been set for fulfill ${swap.sourceTxHash}`);
+				}
+
 				fulfillTx = await this.walletHelper
 					.getFulfillHelperWriteContract(swap.destChain)
 					.fulfillWithEth(
@@ -277,6 +310,32 @@ export class EvmFulfiller {
 					);
 			} else {
 				logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
+
+				const estimatedGas = await this.walletHelper
+					.getFulfillHelperWriteContract(swap.destChain)
+					.fulfillWithERC20.estimateGas(
+						driverToken.contract,
+						amountIn64,
+						toToken.contract,
+						swapParams.evmRouterAddress,
+						swapParams.evmRouterCalldata,
+						this.contractsConfig.contracts[targetChain],
+						swiftCallData,
+						{
+							value: 12313131313n,
+							deadline: 12313131313n,
+							v: 12,
+							r: Buffer.alloc(32),
+							s: Buffer.alloc(32),
+						}, // permit. doesnt matter because we already gave allowance
+						overrides,
+					);
+				if (!overrides['gasLimit']) {
+					overrides['gasLimit'] = (estimatedGas * BigInt(120)) / BigInt(100);
+					logger.info(`gasLimit increased 20% for fulfill ${swap.sourceTxHash}`);
+				} else {
+					logger.info(`gasLimit already been set for fulfill ${swap.sourceTxHash}`);
+				}
 
 				fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
 					driverToken.contract,
