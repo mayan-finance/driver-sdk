@@ -75,7 +75,7 @@ export class SolanaFulfiller {
 					inputMint: fromMint,
 					outputMint: toMint,
 					slippageBps: slippage * 10000,
-					maxAccounts: 64 - 7, // 7 accounts reserved for other instructions
+					maxAccounts: 64 - 9, // 9 accounts reserved for other instructions
 					amount: amountIn,
 				};
 				if (!!this.rpcConfig.jupExcludedDexes) {
