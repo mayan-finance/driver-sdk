@@ -12,12 +12,14 @@ import {
 import { mayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
 import { fetchDynamicSdkParams, refershAndPatchConfigs } from './config/init';
+import { routersConfig } from './config/routers';
 import { rpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { getWalletConfig } from './config/wallet';
 import { DriverService } from './driver/driver';
 import { EvmFulfiller } from './driver/evm';
 import { RegisterService } from './driver/register';
+import { SwapRouters } from './driver/routers';
 import { SolanaFulfiller } from './driver/solana';
 import { NewSolanaIxHelper } from './driver/solana-ix';
 import { StateCloser } from './driver/state-closer';
@@ -99,6 +101,8 @@ export async function main() {
 		solanaConnection,
 	);
 
+	const swapRouters = new SwapRouters(contracts, rpcConfig, routersConfig, evmProviders);
+
 	const registerSvc = new RegisterService(globalConfig, walletConf, mayanEndpoints);
 	await registerSvc.register();
 	registerSvc.scheduleRegister();
@@ -147,11 +151,12 @@ export async function main() {
 		walletHelper,
 		evmProviders,
 		tokenList,
+		swapRouters,
 	);
 	await evmFulFiller.init();
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf),
+		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters),
 		solanaConnection,
 		walletConf,
 		rpcConfig,

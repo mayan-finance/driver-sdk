@@ -1,14 +1,7 @@
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers6';
 import { abi as SwiftAbi } from '../abis/swift.abi';
-import {
-	CHAIN_ID_BSC,
-	CHAIN_ID_SOLANA,
-	ETH_CHAINS,
-	WORMHOLE_DECIMALS,
-	WhChainIdToEvm,
-	supportedChainIds,
-} from '../config/chains';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, ETH_CHAINS, WORMHOLE_DECIMALS, supportedChainIds } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
@@ -23,7 +16,7 @@ import logger from '../utils/logger';
 import { deserializePermitFromHex } from '../utils/permit';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
-import { get1InchQuote, get1InchSwap } from './routers';
+import { SwapRouters } from './routers';
 import { WalletsHelper } from './wallet-helper';
 
 export class EvmFulfiller {
@@ -38,6 +31,7 @@ export class EvmFulfiller {
 		private readonly walletHelper: WalletsHelper,
 		private readonly evmProviders: EvmProviders,
 		private readonly tokenList: TokenList,
+		private readonly swapRouters: SwapRouters,
 	) {
 		const evmWalletAddr = this.walletConfig.evm.address;
 		for (let chainId of supportedChainIds) {
@@ -322,17 +316,15 @@ export class EvmFulfiller {
 		evmRouterCalldata: string;
 		expectedAmountOut: bigint;
 	}> {
-		const oneInchSwap = await get1InchSwap(
+		const oneInchSwap = await this.swapRouters.getSwap(
 			{
 				amountIn: realAmountIn.toString(),
 				destToken: toToken.contract,
-				from: this.contractsConfig.evmFulfillHelpers[destChain],
-				realChainId: WhChainIdToEvm[destChain],
+				whChainId: destChain,
 				slippagePercent: 50,
 				srcToken: driverToken.contract,
 				timeout: 3000,
 			},
-			this.rpcConfig.oneInchApiKey,
 			true,
 			4,
 		);
@@ -355,15 +347,14 @@ export class EvmFulfiller {
 		if (driverToken.contract === toToken.contract) {
 			bidAmount = BigInt(Math.floor(effectiveAmountInDriverToken * 0.9999 * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await get1InchQuote(
+			const quoteRes = await this.swapRouters.getQuote(
 				{
-					realChainId: WhChainIdToEvm[destChain],
+					whChainId: destChain,
 					srcToken: driverToken.contract,
 					destToken: toToken.contract,
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				this.rpcConfig.oneInchApiKey,
 				true,
 				3,
 			);

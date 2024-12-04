@@ -3,12 +3,12 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA, WhChainIdToEvm } from './config/chains';
+import { CHAIN_ID_SOLANA } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
-import { get1InchQuote } from './driver/routers';
+import { SwapRouters } from './driver/routers';
 import { Swap } from './swap.dto';
 import { getErc20Balance } from './utils/erc20';
 import { EvmProviders } from './utils/evm-providers';
@@ -25,6 +25,7 @@ export class AuctionFulfillerConfig {
 		private readonly connection: Connection,
 		private readonly evmProviders: EvmProviders,
 		private readonly walletConfig: WalletConfig,
+		private readonly swapRouters: SwapRouters,
 	) {}
 
 	async normalizedBidAmount(
@@ -117,15 +118,14 @@ export class AuctionFulfillerConfig {
 		if (driverToken.contract === toToken.contract) {
 			output = BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await get1InchQuote(
+			const quoteRes = await this.swapRouters.getQuote(
 				{
-					realChainId: WhChainIdToEvm[destChain],
+					whChainId: destChain,
 					srcToken: driverToken.contract,
 					destToken: toToken.contract,
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				this.rpcConfig.oneInchApiKey,
 				true,
 				3,
 			);
