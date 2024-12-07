@@ -96,6 +96,7 @@ export async function getAuctionState(
 		winner: data.winner.toString(),
 		validFrom: data.validFrom.toNumber(),
 		sequence: data.seqMsg ? BigInt(data.seqMsg.toString()) : BigInt(0),
+		amountPromised: BigInt(data.amountPromised.toString()),
 	};
 }
 
@@ -120,6 +121,7 @@ export type AuctionState = {
 	winner: string;
 	validFrom: number;
 	sequence: bigint;
+	amountPromised: bigint;
 };
 
 export const SOLANA_DEST_STATUSES = {

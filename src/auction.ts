@@ -3,12 +3,13 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA } from './config/chains';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm, WORMHOLE_DECIMALS } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { SwapRouters } from './driver/routers';
+import { appendLoss, maxLossPerSwapUSD, removeLoss } from './loss-tracker';
 import { Swap } from './swap.dto';
 import { getErc20Balance } from './utils/erc20';
 import { EvmProviders } from './utils/evm-providers';
@@ -18,6 +19,16 @@ import logger from './utils/logger';
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
+
+	private readonly perRetryMinAvailableLossUSD: { [x: number]: number } = {
+		0: 0.05,
+		1: 0.1,
+		2: 0.2,
+		3: 0.5,
+		4: 1,
+		5: 5,
+		6: 10,
+	};
 	private readonly forceBid = true;
 
 	constructor(
@@ -82,16 +93,26 @@ export class AuctionFulfillerConfig {
 			logger.warn(
 				`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
 			);
-			throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+			// throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+			// continute anyway to bid min  amount out
 		}
 
 		const bidAggressionPercent = this.bidAggressionPercent; // 0 - 100
 
 		const profitMargin = effectiveAmountIn - mappedBpsAmountIn;
 
-		const finalAmountIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
+		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
+		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
-		const mappedAmountOut = (finalAmountIn * Number(output)) / effectiveAmountIn;
+		let bidBpsMargin = 14; // 11 bps
+		if (swap.toToken.contract === driverToken.contract) {
+			bidBpsMargin = 5; // 5 bps if no swap is included
+		}
+		const finalFullAmountIn = (1 - bidBpsMargin / 10000) * (effectiveAmountIn - mappedBpsAmountIn);
+		const fullMappedAmountOut = (finalFullAmountIn * Number(output)) / effectiveAmountIn; // 20 bps test for now
+
+		const mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
+		swap.bidAmountIn = Math.max(marginFinalBidIn, finalFullAmountIn) + mappedBpsAmountIn;
 		let normalizedAmountOut;
 		if (swap.toToken.decimals > 8) {
 			normalizedAmountOut = BigInt(Math.floor(mappedAmountOut * 10 ** 8));
@@ -102,6 +123,7 @@ export class AuctionFulfillerConfig {
 		if (normalizedAmountOut < normalizedMinAmountOut && this.forceBid) {
 			logger.warn(`normalizedBidAmount is less than minAmountOut`);
 			normalizedAmountOut = normalizedMinAmountOut;
+			swap.bidAmountIn = mappedMinAmountIn;
 		}
 
 		return normalizedAmountOut;
@@ -171,6 +193,13 @@ export class AuctionFulfillerConfig {
 			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping fulfill`);
 		}
 
+		if (
+			swap.sourceChain === CHAIN_ID_BSC &&
+			swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955'
+		) {
+			effectiveAmountIn = effectiveAmountIn / 1.0019;
+		}
+
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
 		let output64: bigint;
@@ -198,25 +227,51 @@ export class AuctionFulfillerConfig {
 			swap.toToken.decimals > 8
 				? normalizedMinAmountOut * BigInt(10 ** (swap.toToken.decimals - 8))
 				: normalizedMinAmountOut;
-		const minAmountNeededForFulfill64 = realMinAmountOut + (realMinAmountOut * bpsFees) / 10000n;
-		const minAmountNeededForFulfill = Number(minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
+		const minAmountNeededForFulfill64 = Number(realMinAmountOut) / (1 - Number(bpsFees) / 10000);
+		const minAmountNeededForFulfill = (1.000001 * minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
 
 		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
 
-		if (mappedMinAmountIn > effectiveAmountIn) {
-			logger.warn(
-				`AuctionFulfillerConfig.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${mappedMinAmountIn} > ${effectiveAmountIn}`,
-			);
-			throw new Error(`mappedMinAmountIn > effectiveAmountIn for ${swap.sourceTxHash}`);
+		if (!swap.bidAmountIn) {
+			if (swap.bidAmount64) {
+				const bidOut = Number(swap.bidAmount64) / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
+				swap.bidAmountIn = (1.000001 * bidOut * (effectiveAmountIn / output)) / (1 - Number(bpsFees) / 10000);
+			}
+		}
+
+		const minFulfillAmount = Math.max(mappedMinAmountIn, swap.bidAmountIn || 0);
+		if (minFulfillAmount > effectiveAmountIn || swap.retries > 1) {
+			if (swap.lastloss && swap.lastloss > 0) {
+				removeLoss(swap.lastloss);
+			}
+
+			let lossAmountUsd =
+				this.perRetryMinAvailableLossUSD[swap.retries] +
+				costs.fromTokenPrice * Math.max(minFulfillAmount - effectiveAmountIn, 0);
+
+			if (lossAmountUsd > maxLossPerSwapUSD) {
+				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
+				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
+			}
+
+			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);
+			appendLoss(lossAmountUsd);
+			swap.lastloss = lossAmountUsd;
+			effectiveAmountIn =
+				Math.max(effectiveAmountIn, minFulfillAmount * 1.0001) +
+				this.perRetryMinAvailableLossUSD[swap.retries] / costs.fromTokenPrice;
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
 
 		const profitMargin = effectiveAmountIn - mappedMinAmountIn;
 
-		const finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
+		let finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
+		if (finalAmountIn * (1 - 3.1 / 10000) > minFulfillAmount) {
+			finalAmountIn = finalAmountIn * (1 - 3 / 10000);
+		}
 
-		return finalAmountIn;
+		return Math.max(finalAmountIn, minFulfillAmount * 1.000001);
 	}
 
 	private async getJupQuoteWithRetry(

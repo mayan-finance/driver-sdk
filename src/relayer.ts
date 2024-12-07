@@ -280,7 +280,7 @@ export class Relayer {
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-
+			swap.bidAmount64 = auctionState?.amountPromised;
 			let sequence: bigint | undefined = auctionState?.sequence;
 			try {
 				// because validators fall behind, we will always send postBid regardless to avoid
@@ -355,7 +355,7 @@ export class Relayer {
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-
+			swap.bidAmount64 = auctionState?.amountPromised;
 			if (auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
 				logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
 				return;

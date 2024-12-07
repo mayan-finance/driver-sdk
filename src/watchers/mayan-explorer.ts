@@ -152,6 +152,7 @@ export class MayanExplorerWatcher {
 			});
 
 			const swaps = result.data.data;
+			logger.info(`jiri-log-wathcher ${swaps.length}`);
 
 			for (let s of swaps) {
 				if (!s.orderHash || !['SWIFT_SWAP'].includes(s.service)) {
