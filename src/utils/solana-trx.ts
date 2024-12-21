@@ -179,6 +179,10 @@ export class SolanaMultiTxSender {
 		addPriorityFeeIns: boolean = true,
 		feePayer?: Signer,
 		manualComputeUnits?: number,
+		confirmationLevel: 'confirmed' | 'finalized' = 'confirmed',
+		timeoutSeconds: number = 59,
+		maxTotalSendCount: number = 150,
+		skipPreflightFirst: boolean = true,
 	): Promise<string> {
 		const { trx } = await this.createOptimizedVersionedTransaction(
 			instructions,
@@ -189,7 +193,14 @@ export class SolanaMultiTxSender {
 			manualComputeUnits,
 		);
 		const rawTrx = trx.serialize();
-		const trxHash = await this.sendAndConfirmTransaction(rawTrx, sendCounts);
+		const trxHash = await this.sendAndConfirmTransaction(
+			rawTrx,
+			sendCounts,
+			confirmationLevel,
+			timeoutSeconds,
+			maxTotalSendCount,
+			skipPreflightFirst,
+		);
 
 		return trxHash;
 	}

@@ -351,6 +351,10 @@ export class DriverService {
 			true,
 			undefined,
 			computeUnits,
+			undefined, // confirmationsLevel
+			undefined, // timeoutSeconds
+			undefined, // maxTotalSendCount
+			false, // skipPreflight
 		);
 		logger.info(`Sent post bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
