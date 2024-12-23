@@ -1,6 +1,6 @@
 import { ChainId, getSignedVAAWithRetry, parseVaa } from '@certusone/wormhole-sdk';
 import { getAssociatedTokenAddressSync } from '@solana/spl-token';
-import { Connection, Keypair, MessageV0, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
 import { abi as WormholeAbi } from '../abis/wormhole.abi';
@@ -344,29 +344,12 @@ export class Unlocker {
 			fromMint,
 			vaaAddr,
 		);
-		const priorityFeeIx = await this.priorityFeeService.getPriorityFeeInstruction([
-			ix.programId.toString(),
-			...ix.keys.map((accMeta) => accMeta.pubkey.toString()),
-		]);
-
-		let instructions = [priorityFeeIx, ix];
-		const { blockhash } = await this.solanaConnection.getLatestBlockhash();
-		const msg = MessageV0.compile({
-			payerKey: this.walletConfig.solana.publicKey,
-			instructions,
-			recentBlockhash: blockhash,
-		});
-		const trx = new VersionedTransaction(msg);
-		trx.sign([this.walletConfig.solana]);
-		const serializedTrx = trx.serialize();
-
-		const txHash = await this.solanaSender.sendAndConfirmTransaction(
-			serializedTrx,
-			this.rpcConfig.solana.sendCount,
-			'confirmed',
+		const txHash = await this.solanaSender.createAndSendOptimizedTransaction(
+			[ix],
+			[this.walletConfig.solana],
+			[],
 			30,
-			100,
-			false,
+			true,
 		);
 
 		return txHash;
@@ -379,7 +362,10 @@ export class Unlocker {
 		await this.vaaPoster.postSignedVAA(signedVaa, 'batch_unlcock');
 
 		const foundStates = orders.map((ord) =>
-			getSwiftStateAddrSrc(new PublicKey(SolanaProgram), Buffer.from(ord.orderHash.replace('0x', ''), 'hex')).toString(),
+			getSwiftStateAddrSrc(
+				new PublicKey(SolanaProgram),
+				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
+			).toString(),
 		);
 
 		const parsedPayload = this.parseBatchUnlockVaaPayload(parseVaa(signedVaa).payload);
@@ -417,34 +403,14 @@ export class Unlocker {
 			return;
 		}
 
-		let keys = [];
-		for (let ix of instructions) {
-			keys.push(ix.programId.toString());
-			keys.push(...ix.keys.map((accMeta) => accMeta.pubkey.toString()));
-		}
-		const priorityFeeIx = await this.priorityFeeService.getPriorityFeeInstruction(keys);
-
-		instructions = [priorityFeeIx, ...instructions];
-
 		const sharedLut = await this.solanaConnection.getAddressLookupTable(this.mayanSharedLookupTableAddress);
-		const { blockhash } = await this.solanaConnection.getLatestBlockhash();
-		const msg = MessageV0.compile({
-			payerKey: this.walletConfig.solana.publicKey,
-			instructions,
-			recentBlockhash: blockhash,
-			addressLookupTableAccounts: [sharedLut.value!], // tx should fit with this lut
-		});
-		const trx = new VersionedTransaction(msg);
-		trx.sign([this.walletConfig.solana]);
-		const serializedTrx = trx.serialize();
 
-		const txHash = await this.solanaSender.sendAndConfirmTransaction(
-			serializedTrx,
-			this.rpcConfig.solana.sendCount,
-			'confirmed',
-			60,
-			100,
-			false,
+		const txHash = await this.solanaSender.createAndSendOptimizedTransaction(
+			instructions,
+			[this.walletConfig.solana],
+			[sharedLut.value!],
+			30,
+			true,
 		);
 
 		return txHash;
@@ -591,30 +557,14 @@ export class Unlocker {
 			wormholeAccs.fee_collector,
 			states,
 		);
-		const priorityFeeIx = await this.priorityFeeService.getPriorityFeeInstruction(
-			batchPostIx.keys.map((accMeta) => accMeta.pubkey.toString()),
-		);
-		let instructions = [priorityFeeIx, batchPostIx];
-
-		const { blockhash, lastValidBlockHeight } = await this.solanaConnection.getLatestBlockhash();
-		const msg = MessageV0.compile({
-			payerKey: this.walletConfig.solana.publicKey,
-			instructions,
-			recentBlockhash: blockhash,
-		});
-
-		const trx = new VersionedTransaction(msg);
-		trx.sign([this.walletConfig.solana, newMessageAccount]);
-		const serializedTrx = trx.serialize();
 
 		logger.verbose(`Sending batch post Solana for unlock`);
-		const txHash = await this.solanaSender.sendAndConfirmTransaction(
-			serializedTrx,
-			this.rpcConfig.solana.sendCount,
-			'confirmed',
+		const txHash = await this.solanaSender.createAndSendOptimizedTransaction(
+			[batchPostIx],
+			[this.walletConfig.solana],
+			[],
 			30,
-			100,
-			false,
+			true,
 		);
 		logger.verbose(`Batch posted Successfully Solana, getting batch sequence`);
 

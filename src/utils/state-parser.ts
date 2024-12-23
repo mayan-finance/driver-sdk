@@ -26,6 +26,7 @@ export async function getSwiftStateDest(connection: Connection, stateAddr: Publi
 	if (data.status.created) {
 		return {
 			status: SOLANA_DEST_STATUSES.CREATED,
+			winner: data?.fulfill?.winner?.toString(),
 		};
 	} else if (data.status.fulfilled) {
 		return {
