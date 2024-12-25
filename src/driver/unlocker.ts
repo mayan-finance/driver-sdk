@@ -561,7 +561,7 @@ export class Unlocker {
 		logger.verbose(`Sending batch post Solana for unlock`);
 		const txHash = await this.solanaSender.createAndSendOptimizedTransaction(
 			[batchPostIx],
-			[this.walletConfig.solana],
+			[this.walletConfig.solana, newMessageAccount],
 			[],
 			30,
 			true,
