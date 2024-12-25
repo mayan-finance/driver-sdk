@@ -4,15 +4,7 @@ import {
 	TOKEN_2022_PROGRAM_ID,
 	TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
-import {
-	AddressLookupTableAccount,
-	Connection,
-	Keypair,
-	MessageV0,
-	PublicKey,
-	TransactionInstruction,
-	VersionedTransaction,
-} from '@solana/web3.js';
+import { AddressLookupTableAccount, Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { AuctionFulfillerConfig } from '../auction';
 import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
@@ -271,6 +263,7 @@ export class DriverService {
 		createStateAss: boolean,
 		postAuction: boolean,
 		onlyTxData?: boolean,
+		alreadyRegisteredWinner?: boolean,
 	): Promise<{
 		sequence?: bigint;
 		instructions?: TransactionInstruction[];
@@ -284,7 +277,7 @@ export class DriverService {
 
 		let instructions: TransactionInstruction[] = [];
 		let newMessageAccount: Keypair | null = null;
-		if (!postAuction && swap.auctionMode === AUCTION_MODES.ENGLISH) {
+		if (!postAuction && swap.auctionMode === AUCTION_MODES.ENGLISH && !alreadyRegisteredWinner) {
 			instructions.push(await this.getRegisterWinnerIx(swap));
 		} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			const auctionEmitter = PublicKey.findProgramAddressSync(
@@ -623,61 +616,5 @@ export class DriverService {
 
 	async submitGaslessOrder(swap: Swap) {
 		await this.evmFulFiller.submitGaslessOrder(swap);
-	}
-
-	async doTransaction(
-		payerKey?: PublicKey,
-		instructions?: TransactionInstruction[],
-		signers?: Keypair[],
-		context?: string,
-		rawTrx?: Buffer | Uint8Array,
-		retry: number = 0,
-	): Promise<string> {
-		let trxHash;
-		try {
-			let serializedTrx: Buffer | Uint8Array;
-			if (!!rawTrx) {
-				serializedTrx = rawTrx;
-			} else {
-				const { blockhash } = await this.solanaConnection.getLatestBlockhash();
-				const msg = MessageV0.compile({
-					payerKey: payerKey!,
-					instructions: instructions!,
-					recentBlockhash: blockhash,
-				});
-
-				const trx = new VersionedTransaction(msg);
-				trx.sign(signers!);
-				serializedTrx = trx.serialize();
-			}
-
-			logger.info(`Sending transaction for ${context} with hash: ${trxHash}`);
-
-			const newTxHash = await this.solanaSender.sendAndConfirmTransaction(
-				serializedTrx,
-				this.rpcConfig.solana.sendCount,
-				'confirmed',
-			);
-
-			logger.info(`Sent transaction for ${context} with hash: ${newTxHash}`);
-			return newTxHash;
-		} catch (err: any) {
-			if (retry < 2 && err.message == 'CONFIRM_TIMED_OUT') {
-				logger.warn(
-					`Sending swift transaction for ${context} with
-					hash: ${trxHash} failed cause confirm timed out, retrying`,
-				);
-				return await this.doTransaction(payerKey, instructions, signers, context, rawTrx, retry + 1);
-			} else if (retry < 3 && err.name == 'TransactionExpiredBlockheightExceededError' && !rawTrx) {
-				logger.warn(
-					`Sending swift transaction for ${context} with
-					hash: ${trxHash} failed cause blockheight exceed, retrying ${err.name}`,
-				);
-				return await this.doTransaction(payerKey, instructions, signers, context, rawTrx, retry + 1);
-			} else {
-				logger.error(`Sending swift transaction failed ${err}`);
-				throw err;
-			}
-		}
 	}
 }

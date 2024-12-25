@@ -1,3 +1,4 @@
+import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import Decimal from 'decimal.js';
@@ -387,7 +388,19 @@ export class Relayer {
 					);
 				}
 			}
-			await this.driverService.postBid(swap, true, false);
+
+			let alreadyRegisteredWinner = !!destState.winner && destState.winner !== '11111111111111111111111111111111';
+			const stateToAss = getAssociatedTokenAddressSync(
+				new PublicKey(swap.toToken.mint),
+				new PublicKey(swap.stateAddr),
+				true,
+				swap.toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			);
+			let stateToAssData = await this.solanaConnection.getAccountInfo(stateToAss);
+			let createStateToAss = !stateToAssData || stateToAssData.lamports === 0;
+			if (createStateToAss || !alreadyRegisteredWinner) {
+				await this.driverService.postBid(swap, createStateToAss, false, false, alreadyRegisteredWinner);
+			}
 
 			logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
 			let fulfillRetries = 0;

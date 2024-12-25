@@ -194,7 +194,6 @@ export async function main() {
 		solanaConnection,
 		solanaIxHelper,
 		solanaTxSender,
-		priorityFeeHelper,
 	);
 	const watcher = new MayanExplorerWatcher(
 		globalConfig,

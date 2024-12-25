@@ -1,7 +1,7 @@
-import { Connection, MessageV0, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { WalletConfig } from '../config/wallet';
 import logger from '../utils/logger';
-import { PriorityFeeHelper, SolanaMultiTxSender } from '../utils/solana-trx';
+import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { NewSolanaIxHelper } from './solana-ix';
 
 export class StateCloser {
@@ -10,7 +10,6 @@ export class StateCloser {
 		private readonly connection: Connection,
 		private readonly solanaIx: NewSolanaIxHelper,
 		private readonly solanaTxSender: SolanaMultiTxSender,
-		private readonly priorityFeeHelper: PriorityFeeHelper,
 	) {}
 
 	private async closeBatchDestSolanaStates(destSolanaStates: string[]) {
@@ -22,26 +21,9 @@ export class StateCloser {
 			);
 			ixes.push(ix);
 		}
-		let accountKeys: string[] = [];
-		for (let ix of ixes) {
-			accountKeys = accountKeys.concat(ix.keys.map((k) => k.pubkey.toString()));
-			accountKeys.push(ix.programId.toString());
-		}
-		ixes.unshift(await this.priorityFeeHelper.getPriorityFeeInstruction(accountKeys));
-
-		const { blockhash } = await this.connection.getLatestBlockhash();
-		const msg = MessageV0.compile({
-			payerKey: this.walletConf.solana.publicKey,
-			instructions: ixes,
-			recentBlockhash: blockhash,
-			addressLookupTableAccounts: [],
-		});
-		const trx = new VersionedTransaction(msg);
-		trx.sign([this.walletConf.solana]);
-		const serializedTrx = trx.serialize();
 
 		logger.info(`Closing ${destSolanaStates.length} dest swap states`);
-		await this.solanaTxSender.sendAndConfirmTransaction(serializedTrx, 10, 'confirmed', 60, 100, false);
+		await this.solanaTxSender.createAndSendOptimizedTransaction(ixes, [this.walletConf.solana], [], 10, true);
 		logger.info(`Closed ${destSolanaStates.length} dest swap states`);
 	}
 
@@ -54,26 +36,9 @@ export class StateCloser {
 			);
 			ixes.push(ix);
 		}
-		let accountKeys: string[] = [];
-		for (let ix of ixes) {
-			accountKeys = accountKeys.concat(ix.keys.map((k) => k.pubkey.toString()));
-			accountKeys.push(ix.programId.toString());
-		}
-		ixes.unshift(await this.priorityFeeHelper.getPriorityFeeInstruction(accountKeys));
-
-		const { blockhash } = await this.connection.getLatestBlockhash();
-		const msg = MessageV0.compile({
-			payerKey: this.walletConf.solana.publicKey,
-			instructions: ixes,
-			recentBlockhash: blockhash,
-			addressLookupTableAccounts: [],
-		});
-		const trx = new VersionedTransaction(msg);
-		trx.sign([this.walletConf.solana]);
-		const serializedTrx = trx.serialize();
 
 		logger.info(`Closing ${auctionStates.length} auction states`);
-		await this.solanaTxSender.sendAndConfirmTransaction(serializedTrx, 10, 'confirmed', 30, 100, false);
+		await this.solanaTxSender.createAndSendOptimizedTransaction(ixes, [this.walletConf.solana], [], 10, true);
 		logger.info(`Closed ${auctionStates.length} auction states`);
 	}
 
