@@ -260,7 +260,7 @@ export class NewSolanaIxHelper {
 		state: PublicKey,
 		stateToAss: PublicKey,
 		destAddr: PublicKey,
-		destAssAddr: PublicKey,
+		destAssAddr: PublicKey | null,
 		mayanFeeCollector: PublicKey,
 		mayanFeeCollectorAss: PublicKey,
 		mintTo: PublicKey,

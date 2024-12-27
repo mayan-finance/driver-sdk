@@ -502,13 +502,14 @@ export class DriverService {
 			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 		);
 
-		const toAss = getAssociatedTokenAddressSync(
-			toMint,
-			to,
-			true,
-			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-		);
+		let toAss = null;
 		if (swap.toToken.contract !== '0x0000000000000000000000000000000000000000') {
+			toAss = getAssociatedTokenAddressSync(
+				toMint,
+				to,
+				true,
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			);
 			// pure sol doesnt require creating an ata for the user
 			instructions.push(
 				createAssociatedTokenAccountIdempotentInstruction(
