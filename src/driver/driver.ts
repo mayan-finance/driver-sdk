@@ -167,7 +167,7 @@ export class DriverService {
 		}
 	}
 
-	async bid(swap: Swap, registerOrder: boolean): Promise<void> {
+	async bid(swap: Swap): Promise<void> {
 		const srcChain = swap.sourceChain;
 		const dstChain = swap.destChain;
 
@@ -222,9 +222,6 @@ export class DriverService {
 		);
 
 		let instructions = [bidIx];
-		if (registerOrder) {
-			instructions.unshift(await this.getRegisterOrderFromSwap(swap));
-		}
 		let signers = [this.walletConfig.solana];
 
 		logger.info(`Sending bid transaction for ${swap.sourceTxHash}`);
@@ -264,6 +261,7 @@ export class DriverService {
 		postAuction: boolean,
 		onlyTxData?: boolean,
 		alreadyRegisteredWinner?: boolean,
+		alreadyRegisteredOrder?: boolean,
 	): Promise<{
 		sequence?: bigint;
 		instructions?: TransactionInstruction[];
@@ -278,6 +276,9 @@ export class DriverService {
 		let instructions: TransactionInstruction[] = [];
 		let newMessageAccount: Keypair | null = null;
 		if (!postAuction && swap.auctionMode === AUCTION_MODES.ENGLISH && !alreadyRegisteredWinner) {
+			if (!alreadyRegisteredOrder) {
+				instructions.push(await this.getRegisterOrderFromSwap(swap));
+			}
 			instructions.push(await this.getRegisterWinnerIx(swap));
 		} else if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			const auctionEmitter = PublicKey.findProgramAddressSync(
@@ -500,15 +501,6 @@ export class DriverService {
 			true,
 			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 		);
-		instructions.push(
-			createAssociatedTokenAccountIdempotentInstruction(
-				this.walletConfig.solana.publicKey,
-				stateToAss,
-				stateAddr,
-				toMint,
-				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-			),
-		);
 
 		const toAss = getAssociatedTokenAddressSync(
 			toMint,
@@ -516,15 +508,18 @@ export class DriverService {
 			true,
 			toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 		);
-		instructions.push(
-			createAssociatedTokenAccountIdempotentInstruction(
-				this.walletConfig.solana.publicKey,
-				toAss,
-				to,
-				toMint,
-				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-			),
-		);
+		if (swap.toToken.contract !== '0x0000000000000000000000000000000000000000') {
+			// pure sol doesnt require creating an ata for the user
+			instructions.push(
+				createAssociatedTokenAccountIdempotentInstruction(
+					this.walletConfig.solana.publicKey,
+					toAss,
+					to,
+					toMint,
+					toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+				),
+			);
+		}
 
 		const settleIx = await this.solanaIxService.getSettleIx(
 			this.walletConfig.solana.publicKey,
