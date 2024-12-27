@@ -274,7 +274,7 @@ export class Relayer {
 
 			if (!auctionState) {
 				logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-				await this.driverService.bid(swap, false);
+				await this.driverService.bid(swap);
 				logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 				await delay(this.gConf.auctionTimeSeconds * 1000);
 				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
@@ -348,8 +348,7 @@ export class Relayer {
 
 			if (!auctionState) {
 				logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
-				let shouldRegisterOrder = !destState;
-				await this.driverService.bid(swap, shouldRegisterOrder);
+				await this.driverService.bid(swap);
 				logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
 				await delay(this.gConf.auctionTimeSeconds * 1000);
 				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
@@ -389,7 +388,8 @@ export class Relayer {
 				}
 			}
 
-			let alreadyRegisteredWinner = !!destState.winner && destState.winner !== '11111111111111111111111111111111';
+			let alreadyRegisteredWinner =
+				!!destState.winner && destState?.winner !== '11111111111111111111111111111111';
 			const stateToAss = getAssociatedTokenAddressSync(
 				new PublicKey(swap.toToken.mint),
 				new PublicKey(swap.stateAddr),
@@ -398,8 +398,16 @@ export class Relayer {
 			);
 			let stateToAssData = await this.solanaConnection.getAccountInfo(stateToAss);
 			let createStateToAss = !stateToAssData || stateToAssData.lamports === 0;
+			let alreadyRegisteredOrder = !!destState;
 			if (createStateToAss || !alreadyRegisteredWinner) {
-				await this.driverService.postBid(swap, createStateToAss, false, false, alreadyRegisteredWinner);
+				await this.driverService.postBid(
+					swap,
+					createStateToAss,
+					false,
+					false,
+					alreadyRegisteredWinner,
+					alreadyRegisteredOrder,
+				);
 			}
 
 			logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
