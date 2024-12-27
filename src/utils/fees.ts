@@ -1,3 +1,4 @@
+import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
 import axios from 'axios';
 import * as mathjs from 'mathjs';
 import {
@@ -238,10 +239,29 @@ export class FeeService {
 			unlockFee = unlock + batchPostCost;
 		}
 
+		const compensationsSol = {
+			evmToSolana: 0.0009,
+			evmToEvm: 0.0031,
+			solanaToEvm: 0.004,
+		};
+
+		let compensation = 0.0;
+		if (isEVMChain(qr.fromChainId as ChainId) && qr.toChainId === CHAIN_ID_SOLANA) {
+			compensation = compensationsSol.evmToSolana;
+		} else if (isEVMChain(qr.fromChainId as ChainId) && isEVMChain(qr.toChainId as ChainId)) {
+			compensation = compensationsSol.evmToEvm;
+		} else if (qr.fromChainId === CHAIN_ID_SOLANA && isEVMChain(qr.toChainId as ChainId)) {
+			compensation = compensationsSol.solanaToEvm;
+		}
+
+		let totalCost = fulfillCost + unlockFee;
+		totalCost = totalCost - (compensation * solPrice) / fromTokenPrice;
+		totalCost = Math.max(0.0, totalCost);
+
 		return {
 			fulfillCost: fulfillCost, //fulfillCost,
 			unlockSource: unlockFee, //unlockFee,
-			fulfillAndUnlock: fulfillCost + unlockFee,
+			fulfillAndUnlock: totalCost,
 			fromTokenPrice: fromTokenPrice,
 		};
 	}
