@@ -14,8 +14,8 @@ import {
 import { ContractsConfig, okxSwapHelpers } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { hmac256base64 } from '../utils/hmac';
+import { delay } from '../utils/util';
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const okxWebsite = 'https://www.okx.com';
 const apiBasePath = '/api/v5/dex/aggregator';
 
@@ -184,29 +184,14 @@ export class SwapRouters {
 			quoteParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
 
-		const timeout = quoteParams.timeout || 1500;
-		const timestamp = new Date().toISOString();
-
 		const queryParams: any = {
 			chainId: WhChainIdToEvm[quoteParams.whChainId],
 			fromTokenAddress: quoteParams.srcToken,
 			toTokenAddress: quoteParams.destToken,
 			amount: quoteParams.amountIn,
 		};
-
-		const config: AxiosRequestConfig = {
-			timeout: timeout,
-			headers: {
-				'OK-ACCESS-KEY': process.env.OKX_API_KEY,
-				'OK-ACCESS-SIGN': hmac256base64(
-					`${timestamp}GET${apiBasePath}/quote?${new URLSearchParams(queryParams).toString()}`,
-					process.env.OKX_SECRET_KEY!,
-				),
-				'OK-ACCESS-PASSPHRASE': process.env.OKX_PASSPHRASE,
-				'OK-ACCESS-TIMESTAMP': timestamp,
-			},
-			params: queryParams,
-		};
+		const config = this.genOkxReqConf(`${apiBasePath}/quote`, queryParams);
+		config.timeout = quoteParams.timeout || 1500;
 
 		try {
 			const response = await axios.get(apiUrl, config);
@@ -222,7 +207,7 @@ export class SwapRouters {
 			}
 			if (isRateLimited) {
 				console.log(
-					`# Throttled okx for ${timeout}ms ${quoteParams.srcToken} -> ${quoteParams.destToken} ${quoteParams.amountIn}`,
+					`# Throttled okx for ${config.timeout}ms ${quoteParams.srcToken} -> ${quoteParams.destToken} ${quoteParams.amountIn}`,
 				);
 			}
 			if (isRateLimited && retries > 0) {
@@ -248,9 +233,6 @@ export class SwapRouters {
 			swapParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
 
-		const timeout = swapParams.timeout || 1500;
-		const timestamp = new Date().toISOString();
-
 		const queryParams: any = {
 			chainId: WhChainIdToEvm[swapParams.whChainId],
 			fromTokenAddress: swapParams.srcToken,
@@ -260,20 +242,8 @@ export class SwapRouters {
 			userWalletAddress: swapSource,
 			swapReceiverAddress: swapDest,
 		};
-
-		const config: AxiosRequestConfig = {
-			timeout: timeout,
-			headers: {
-				'OK-ACCESS-KEY': process.env.OKX_API_KEY,
-				'OK-ACCESS-SIGN': hmac256base64(
-					`${timestamp}GET${apiBasePath}/swap?${new URLSearchParams(queryParams).toString()}`,
-					process.env.OKX_SECRET_KEY!,
-				),
-				'OK-ACCESS-PASSPHRASE': process.env.OKX_PASSPHRASE,
-				'OK-ACCESS-TIMESTAMP': timestamp,
-			},
-			params: queryParams,
-		};
+		const config = this.genOkxReqConf(`${apiBasePath}/swap`, queryParams);
+		config.timeout = swapParams.timeout || 1500;
 
 		try {
 			const response = await axios.get(apiUrl, config);
@@ -308,6 +278,22 @@ export class SwapRouters {
 			}
 			throw new Error(`Failed to get swap from okx: ${err}`);
 		}
+	}
+
+	private genOkxReqConf(path: string, queryParams: any): AxiosRequestConfig {
+		const timestamp = new Date().toISOString();
+		return {
+			headers: {
+				'OK-ACCESS-KEY': this.rpcConfig.okxApiKey,
+				'OK-ACCESS-SIGN': hmac256base64(
+					`${timestamp}GET${path}?${new URLSearchParams(queryParams).toString()}`,
+					this.rpcConfig.okxSecretKey!,
+				),
+				'OK-ACCESS-PASSPHRASE': this.rpcConfig.okxPassPhrase,
+				'OK-ACCESS-TIMESTAMP': timestamp,
+			},
+			params: queryParams,
+		};
 	}
 }
 
