@@ -13,11 +13,17 @@ import {
 } from '../config/chains';
 import { ContractsConfig, okxSwapHelpers } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
-import { hmac256base64 } from '../utils/hmac';
-import { delay } from '../utils/util';
-
-const okxWebsite = 'https://www.okx.com';
-const apiBasePath = '/api/v5/dex/aggregator';
+import { delay, isNativeToken } from '../utils/util';
+import logger from '../utils/logger';
+import {
+	AddressLookupTableAccount,
+	Connection,
+	TransactionMessage,
+	VersionedMessage,
+	VersionedTransaction,
+} from '@solana/web3.js';
+import { base58_to_binary } from '../utils/base58';
+import { getOkxQuote, getOkxSwap } from '../utils/okx';
 
 type EVMQuoteParams = {
 	whChainId: number;
@@ -46,6 +52,44 @@ type EVMSwapResponse = EVMQuoteResponse & {
 	};
 };
 
+type SolQuoteParams = {
+	inputMint: string;
+	outputMint: string;
+	slippageBps: number;
+	amount: number | string;
+	maxAccounts: number;
+	dexes?: string[];
+	excludeDexes?: string[];
+	timeout?: number;
+};
+
+type SolQuoteResponse = {
+	inputMint: string;
+	inAmount: string;
+	outputMint: string;
+	outAmount: string;
+	otherAmountThreshold: string;
+	priceImpactPct: string;
+	raw: any;
+};
+
+type SolSwapParams = SolQuoteParams & {
+	userPublicKey: string;
+	destinationTokenAccount: string;
+	ledger: string;
+	wrapUnwrapSol: boolean;
+	connection?: Connection;
+};
+
+type SolSwapResponse = {
+	swapTransaction: string;
+	outAmount: string;
+	otherAmountThreshold: string;
+	versionedMessage: VersionedMessage;
+	addressLookupTableAccounts?: AddressLookupTableAccount[];
+	transactionMessage?: TransactionMessage;
+};
+
 export class SwapRouters {
 	private readonly okxIface = new ethers.Interface(OkxHelperAbi);
 
@@ -60,20 +104,20 @@ export class SwapRouters {
 		} catch (err) {
 			console.error(`Error using 1inch as swap ${err}. trying okx`);
 			try {
-				return await this.getOkxQuote(quoteParams, retries);
+				return await this.getOkxEVMQuote(quoteParams, retries);
 			} catch (errrr) {
 				throw errrr;
 			}
 		}
 	}
 
-	async getEVMSwap(swapParams: EVMSwapParams, retries: number = 3): Promise<EVMSwapResponse> {
+	async getEVMSwap(params: EVMSwapParams, retries: number = 3): Promise<EVMSwapResponse> {
 		try {
-			return await this.get1InchSwap(swapParams, retries);
+			return await this.get1InchSwap(params, retries);
 		} catch (err) {
 			console.error(`Error using 1inch as swap ${err}. trying okx`);
 			try {
-				return await this.getOkxSwap(swapParams, retries);
+				return await this.getOkxEVMSwap(params, retries);
 			} catch (errrr) {
 				throw errrr;
 			}
@@ -125,32 +169,32 @@ export class SwapRouters {
 		}
 	}
 
-	async get1InchSwap(swapParams: EVMSwapParams, retries: number = 3): Promise<EVMSwapResponse> {
-		const apiUrl = `https://api.1inch.dev/swap/v6.0/${WhChainIdToEvm[swapParams.whChainId]}/swap`;
+	async get1InchSwap(params: EVMSwapParams, retries: number = 3): Promise<EVMSwapResponse> {
+		const apiUrl = `https://api.1inch.dev/swap/v6.0/${WhChainIdToEvm[params.whChainId]}/swap`;
 
-		if (swapParams.srcToken === ZeroAddress) {
-			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+		if (params.srcToken === ZeroAddress) {
+			params.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
-		if (swapParams.destToken === ZeroAddress) {
-			swapParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+		if (params.destToken === ZeroAddress) {
+			params.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
-		swapParams.includeGas = swapParams.includeGas ?? true;
+		params.includeGas = params.includeGas ?? true;
 
-		const timeout = swapParams.timeout || 1500;
-		const swapSourceDst = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
+		const timeout = params.timeout || 1500;
+		const swapSourceDst = this.contractsConfig.evmFulfillHelpers[params.whChainId];
 		const config: AxiosRequestConfig = {
 			timeout: timeout,
 			headers: {
 				Authorization: `Bearer ${this.rpcConfig.oneInchApiKey}`,
 			},
 			params: {
-				src: swapParams.srcToken,
-				dst: swapParams.destToken,
-				amount: swapParams.amountIn,
+				src: params.srcToken,
+				dst: params.destToken,
+				amount: params.amountIn,
 				from: swapSourceDst,
-				slippage: swapParams.slippagePercent,
+				slippage: params.slippagePercent,
 				disableEstimate: true,
-				includeGas: swapParams.includeGas!,
+				includeGas: params.includeGas!,
 			},
 		};
 
@@ -168,131 +212,261 @@ export class SwapRouters {
 				await delay(200);
 			}
 			if (isRateLimited && retries > 0) {
-				return this.get1InchSwap(swapParams, retries - 1);
+				return this.get1InchSwap(params, retries - 1);
 			}
 			throw new Error(`Failed to get swap from 1inch: ${err}`);
 		}
 	}
 
-	async getOkxQuote(quoteParams: EVMQuoteParams, retries: number = 3): Promise<EVMQuoteResponse> {
-		const apiUrl = `${okxWebsite}${apiBasePath}/quote`;
-
-		if (quoteParams.srcToken === ZeroAddress) {
-			quoteParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-		}
-		if (quoteParams.destToken === ZeroAddress) {
-			quoteParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-		}
-
-		const queryParams: any = {
-			chainId: WhChainIdToEvm[quoteParams.whChainId],
-			fromTokenAddress: quoteParams.srcToken,
-			toTokenAddress: quoteParams.destToken,
-			amount: quoteParams.amountIn,
-		};
-		const config = this.genOkxReqConf(`${apiBasePath}/quote`, queryParams);
-		config.timeout = quoteParams.timeout || 1500;
-
-		try {
-			const response = await axios.get(apiUrl, config);
-			return {
-				toAmount: response.data.data[0].toTokenAmount,
-				gas: Number(response.data.data[0].estimateGasFee),
-			};
-		} catch (err: any) {
-			let isRateLimited = false;
-			if (err.response && err.response.status === 429) {
-				isRateLimited = true;
-				await delay(200);
-			}
-			if (isRateLimited) {
-				console.log(
-					`# Throttled okx for ${config.timeout}ms ${quoteParams.srcToken} -> ${quoteParams.destToken} ${quoteParams.amountIn}`,
-				);
-			}
-			if (isRateLimited && retries > 0) {
-				return this.getOkxQuote(quoteParams, retries - 1);
-			}
-			throw new Error(`Failed to get quote from okx: ${err}`);
-		}
-	}
-
-	async getOkxSwap(swapParams: EVMSwapParams, retries: number = 7): Promise<EVMSwapResponse> {
-		const apiUrl = `${okxWebsite}${apiBasePath}/swap`;
-
-		let swapDest = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
-		let swapSource = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
-		if (swapParams.srcToken !== ethers.ZeroAddress) {
-			swapSource = okxSwapHelpers[swapParams.whChainId];
-		}
-
-		if (swapParams.srcToken === ZeroAddress) {
-			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-		}
-		if (swapParams.destToken === ZeroAddress) {
-			swapParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
-		}
-
-		const queryParams: any = {
-			chainId: WhChainIdToEvm[swapParams.whChainId],
-			fromTokenAddress: swapParams.srcToken,
-			toTokenAddress: swapParams.destToken,
-			amount: swapParams.amountIn,
-			slippage: swapParams.slippagePercent / 100,
-			userWalletAddress: swapSource,
-			swapReceiverAddress: swapDest,
-		};
-		const config = this.genOkxReqConf(`${apiBasePath}/swap`, queryParams);
-		config.timeout = swapParams.timeout || 1500;
-
-		try {
-			const response = await axios.get(apiUrl, config);
-			const tx = response.data.data[0].tx;
-
-			if (swapParams.srcToken !== '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
-				// erc 20
-				const data = this.okxIface.encodeFunctionData('approveAndForward', [
-					swapParams.srcToken,
-					swapParams.amountIn,
-					tokenApprovalContracts[swapParams.whChainId],
-					tx.to,
-					tx.data,
-				]);
-				tx.data = this.okxIface.getFunction('approveAndForward')?.selector + data.slice(10);
-				tx.to = okxSwapHelpers[swapParams.whChainId];
-			}
-
-			return {
-				tx: tx,
-				gas: Number(tx.gas),
-				toAmount: response.data.data[0].routerResult.toTokenAmount.toString(),
-			};
-		} catch (err: any) {
-			let isRateLimited = false;
-			if (err.response && err.response.status === 429) {
-				isRateLimited = true;
-				await delay(200);
-			}
-			if (isRateLimited && retries > 0) {
-				return this.getOkxSwap(swapParams, retries - 1);
-			}
-			throw new Error(`Failed to get swap from okx: ${err}`);
-		}
-	}
-
-	private genOkxReqConf(path: string, queryParams: any): AxiosRequestConfig {
-		const timestamp = new Date().toISOString();
-		return {
-			headers: {
-				'OK-ACCESS-KEY': this.rpcConfig.okxApiKey,
-				'OK-ACCESS-SIGN': hmac256base64(
-					`${timestamp}GET${path}?${new URLSearchParams(queryParams).toString()}`,
-					this.rpcConfig.okxSecretKey!,
-				),
-				'OK-ACCESS-PASSPHRASE': this.rpcConfig.okxPassPhrase,
-				'OK-ACCESS-TIMESTAMP': timestamp,
+	async getOkxEVMQuote(params: EVMQuoteParams, retries: number = 3): Promise<EVMQuoteResponse> {
+		const res = await getOkxQuote(
+			{
+				amountIn: params.amountIn,
+				destToken: params.destToken,
+				realChainId: WhChainIdToEvm[params.whChainId],
+				srcToken: params.srcToken,
+				timeout: params.timeout,
 			},
-			params: queryParams,
+			this.rpcConfig.okxApiKey,
+			this.rpcConfig.okxPassPhrase,
+			this.rpcConfig.okxSecretKey,
+			retries,
+		);
+		return {
+			toAmount: res.toTokenAmount,
+			gas: Number(res.estimateGasFee),
+		};
+	}
+
+	async getOkxEVMSwap(params: EVMSwapParams, retries: number = 7): Promise<EVMSwapResponse> {
+		let swapDest = this.contractsConfig.evmFulfillHelpers[params.whChainId];
+		let swapSource = this.contractsConfig.evmFulfillHelpers[params.whChainId];
+		if (!isNativeToken(params.srcToken)) {
+			swapSource = okxSwapHelpers[params.whChainId];
+		}
+
+		const res = await getOkxSwap(
+			{
+				amountIn: params.amountIn,
+				destToken: params.destToken,
+				realChainId: WhChainIdToEvm[params.whChainId],
+				srcToken: params.srcToken,
+				slippagePercent: params.slippagePercent / 100,
+				userWalletAddress: swapSource,
+				swapReceiverAddress: swapDest,
+				timeout: params.timeout,
+			},
+			this.rpcConfig.okxApiKey,
+			this.rpcConfig.okxPassPhrase,
+			this.rpcConfig.okxSecretKey,
+			retries || 3,
+		);
+
+		if (!isNativeToken(params.srcToken)) {
+			// erc 20
+			const data = this.okxIface.encodeFunctionData('approveAndForward', [
+				params.srcToken,
+				params.amountIn,
+				tokenApprovalContracts[params.whChainId],
+				res.tx.to,
+				res.tx.data,
+			]);
+			res.tx.data = this.okxIface.getFunction('approveAndForward')?.selector + data.slice(10);
+			res.tx.to = okxSwapHelpers[params.whChainId];
+		}
+
+		return {
+			tx: res.tx,
+			gas: Number(res.tx.gas),
+			toAmount: res.routerResult.toTokenAmount,
+		};
+	}
+
+	async getSolQuote(quoteParams: SolQuoteParams, retries: number = 3): Promise<SolQuoteResponse | null> {
+		try {
+			return await this.fetchJupQuote(quoteParams, retries);
+		} catch (err) {
+			console.error(`Error using jup as swap ${err}. trying okx`);
+			try {
+				return await this.getOkxSolQuote(quoteParams, retries);
+			} catch (errrr) {
+				throw errrr;
+			}
+		}
+	}
+
+	async getSolSwap(params: SolSwapParams, retries: number = 3): Promise<SolSwapResponse> {
+		try {
+			return await this.fetchJupSwap(params, retries);
+		} catch (err) {
+			console.error(`Error using jup as swap ${err}. trying okx`);
+			try {
+				return await this.getOkxSolSwap(params, retries);
+			} catch (errrr) {
+				throw errrr;
+			}
+		}
+	}
+
+	async fetchJupQuote(quoteParams: SolQuoteParams, retries: number = 10): Promise<SolQuoteResponse | null> {
+		let res;
+		do {
+			try {
+				let params: any = {
+					inputMint: quoteParams.inputMint,
+					outputMint: quoteParams.outputMint,
+					slippageBps: quoteParams.slippageBps,
+					maxAccounts: quoteParams.maxAccounts,
+					amount: quoteParams.amount,
+					token: this.rpcConfig.jupApiKey,
+				};
+				if (!!this.rpcConfig.jupExcludedDexes) {
+					params['excludeDexes'] = this.rpcConfig.jupExcludedDexes;
+				}
+
+				const { data } = await axios.get(`${this.rpcConfig.jupV6Endpoint}/quote`, {
+					params,
+				});
+				res = data;
+			} catch (err) {
+				logger.warn(`error in fetch jupiter ${err} try ${retries}`);
+			} finally {
+				retries--;
+			}
+		} while ((!res || !res.outAmount) && retries > 0);
+
+		if (!res) {
+			logger.error(
+				`juptier quote failed ${quoteParams.inputMint} ${quoteParams.outputMint} ${quoteParams.amount}`,
+			);
+			return null;
+		}
+
+		return {
+			inputMint: res.inputMint,
+			inAmount: res.inAmount,
+			outputMint: res.outputMint,
+			outAmount: res.outAmount,
+			otherAmountThreshold: res.otherAmountThreshold,
+			priceImpactPct: res.priceImpactPct,
+			raw: res,
+		};
+	}
+
+	async fetchJupSwap(params: SolSwapParams, retries?: number): Promise<SolSwapResponse> {
+		try {
+			const quoteRes = await this.fetchJupQuote(params, retries);
+			const { data } = await axios.post(`${this.rpcConfig.jupV6Endpoint}/swap`, {
+				quoteResponse: quoteRes!.raw,
+				userPublicKey: params.userPublicKey,
+				destinationTokenAccount: params.destinationTokenAccount,
+				wrapAndUnwrapSol: params.wrapUnwrapSol,
+				dynamicComputeUnitLimit: false, // 14m
+				prioritizationFeeLamports: 'auto',
+			});
+
+			const vm = VersionedTransaction.deserialize(Buffer.from(data.swapTransaction, 'base64')).message;
+
+			let jupLookupTables: AddressLookupTableAccount[] | undefined, decompiledMsg: TransactionMessage | undefined;
+			if (params.connection) {
+				const lt = await Promise.all(
+					vm.addressTableLookups.map((a) => params.connection!.getAddressLookupTable(a.accountKey)),
+				);
+				jupLookupTables = lt.map((l) => l.value!);
+
+				decompiledMsg = TransactionMessage.decompile(vm, {
+					addressLookupTableAccounts: jupLookupTables,
+				});
+			}
+
+			return {
+				swapTransaction: data.swapTransaction,
+				otherAmountThreshold: quoteRes!.otherAmountThreshold,
+				outAmount: quoteRes!.outAmount,
+				versionedMessage: vm,
+				addressLookupTableAccounts: jupLookupTables,
+				transactionMessage: decompiledMsg,
+			};
+		} catch (error) {
+			logger.warn(`Failed to fetch Jup swap instructions: ${params} ${error}`);
+			if (retries && retries > 0) {
+				return this.fetchJupSwap(params, retries - 1);
+			}
+			throw error;
+		}
+	}
+
+	async getOkxSolQuote(params: SolQuoteParams, retries?: number): Promise<SolQuoteResponse | null> {
+		// On sol quote we need otherAmountThreshold in response so we have to use OKX
+		// swap API.
+		const res = await getOkxSwap(
+			{
+				amountIn: params.amount.toString(),
+				destToken: params.outputMint,
+				realChainId: 501,
+				srcToken: params.inputMint,
+				slippagePercent: params.slippageBps / 100,
+				// For OKX swap API we need user wallet which we dont use for quote, So
+				// we just give a valid arbitrary address.
+				userWalletAddress: '4ZgCP2idpqrxuQNfsjakJEm9nFyZ2xnT4CrDPKPULJPk',
+				swapReceiverAddress: '4ZgCP2idpqrxuQNfsjakJEm9nFyZ2xnT4CrDPKPULJPk',
+				timeout: params.timeout,
+			},
+			this.rpcConfig.okxApiKey,
+			this.rpcConfig.okxPassPhrase,
+			this.rpcConfig.okxSecretKey,
+			retries || 3,
+		);
+
+		return {
+			inputMint: res.routerResult.fromToken.tokenContractAddress,
+			inAmount: res.routerResult.fromTokenAmount,
+			outputMint: res.routerResult.toToken.tokenContractAddress,
+			outAmount: res.routerResult.toTokenAmount,
+			otherAmountThreshold: res.tx.minReceiveAmount,
+			priceImpactPct: res.routerResult.priceImpactPercentage,
+			raw: res,
+		};
+	}
+
+	async getOkxSolSwap(params: SolSwapParams, retries?: number): Promise<SolSwapResponse> {
+		const res = await getOkxSwap(
+			{
+				amountIn: params.amount.toString(),
+				destToken: params.outputMint,
+				realChainId: 501,
+				srcToken: params.inputMint,
+				slippagePercent: params.slippageBps / 100,
+				userWalletAddress: params.userPublicKey,
+				swapReceiverAddress: params.ledger,
+				timeout: params.timeout,
+			},
+			this.rpcConfig.okxApiKey,
+			this.rpcConfig.okxPassPhrase,
+			this.rpcConfig.okxSecretKey,
+			retries || 3,
+		);
+		const vm = VersionedTransaction.deserialize(base58_to_binary(res.tx.data)).message;
+
+		let addressLookupTableAccounts: AddressLookupTableAccount[] | undefined,
+			transactionMessage: TransactionMessage | undefined;
+		if (params.connection) {
+			const lt = await Promise.all(
+				vm.addressTableLookups.map((a) => params.connection!.getAddressLookupTable(a.accountKey)),
+			);
+			addressLookupTableAccounts = lt.map((l) => l.value!).filter((v) => v !== null);
+			transactionMessage = TransactionMessage.decompile(vm, {
+				addressLookupTableAccounts,
+			});
+		}
+
+		return {
+			swapTransaction: res.tx.data,
+			outAmount: res.routerResult.toTokenAmount,
+			otherAmountThreshold: res.tx.minReceiveAmount,
+			versionedMessage: vm,
+			addressLookupTableAccounts,
+			transactionMessage,
 		};
 	}
 }

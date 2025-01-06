@@ -1,16 +1,6 @@
 import { Account, createTransferInstruction, getAccount, getAssociatedTokenAddressSync } from '@solana/spl-token';
-import {
-	AddressLookupTableAccount,
-	Connection,
-	Keypair,
-	PublicKey,
-	TransactionInstruction,
-	TransactionMessage,
-	VersionedTransaction,
-} from '@solana/web3.js';
-import axios from 'axios';
+import { AddressLookupTableAccount, Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import { CHAIN_ID_SOLANA, supportedChainIds } from '../config/chains';
-import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { Swap } from '../swap.dto';
@@ -19,6 +9,7 @@ import logger from '../utils/logger';
 import { LookupTableOptimizer } from '../utils/lut';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
+import { SwapRouters } from './routers';
 
 type WalletAss = {
 	mint: string;
@@ -38,10 +29,10 @@ export class SolanaFulfiller {
 
 	constructor(
 		private readonly solanaConnection: Connection,
-		private readonly rpcConfig: RpcConfig,
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaIxHelper: NewSolanaIxHelper,
 		private readonly lutOptimizer: LookupTableOptimizer,
+		private readonly swapRouters: SwapRouters,
 		walletHelper: WalletsHelper,
 		tokenList: TokenList,
 	) {
@@ -59,55 +50,6 @@ export class SolanaFulfiller {
 			}
 			this.unlockWallets.set(chainId, walletHelper.getDriverWallet(chainId).address);
 		}
-	}
-
-	private async getQuoteWithRetry(
-		amountIn: bigint,
-		fromMint: string,
-		toMint: string,
-		slippage: number,
-		retry: number = 10,
-	): Promise<any> {
-		let res;
-		do {
-			try {
-				let params: any = {
-					inputMint: fromMint,
-					outputMint: toMint,
-					slippageBps: slippage * 10000,
-					maxAccounts: 64 - 7, // 7 accounts reserved for other instructions
-					amount: amountIn,
-				};
-				if (!!this.rpcConfig.jupExcludedDexes) {
-					params['excludeDexes'] = this.rpcConfig.jupExcludedDexes;
-				}
-				if (!!this.rpcConfig.jupApiKey) {
-					params['token'] = this.rpcConfig.jupApiKey;
-				}
-				const { data } = await axios.get(`${this.rpcConfig.jupV6Endpoint}/quote`, {
-					params: params,
-				});
-				res = data;
-			} catch (err) {
-				logger.warn(`error in fetch jupiter ${err} try ${retry}`);
-			} finally {
-				retry--;
-			}
-		} while ((!res || !res.outAmount) && retry > 0);
-
-		if (!res) {
-			logger.error(`juptier quote failed ${fromMint} ${toMint} ${amountIn}`);
-			return null;
-		}
-
-		return {
-			effectiveAmountIn: res.inAmount,
-			expectedAmountOut: res.outAmount,
-			priceImpact: res.priceImpactPct,
-			minAmountOut: res.otherAmountThreshold,
-			route: [],
-			raw: res,
-		};
 	}
 
 	private async getWalletInfo(): Promise<WalletInfo[]> {
@@ -135,18 +77,19 @@ export class SolanaFulfiller {
 		if (driverToken.contract === toToken.contract) {
 			bidAmount = BigInt(Math.floor(effectiveAmountInDriverToken * 0.99 * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await this.getQuoteWithRetry(
-				BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
-				driverToken.mint,
-				toToken.mint,
-				0.1, // 10%
-			);
+			const quoteRes = await this.swapRouters.getSolQuote({
+				inputMint: driverToken.mint,
+				outputMint: toToken.mint,
+				slippageBps: 1000,
+				amount: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
+				maxAccounts: 64 - 7,
+			});
 
 			if (!quoteRes || !quoteRes.raw) {
 				throw new Error('jupiter quote for bid in swift failed');
 			}
 
-			bidAmount = BigInt(Math.floor(Number(quoteRes.expectedAmountOut) * Number(0.99)));
+			bidAmount = BigInt(Math.floor(Number(quoteRes.outputMint) * Number(0.99)));
 		}
 
 		let normalizedBidAmount = bidAmount;
@@ -248,44 +191,33 @@ export class SolanaFulfiller {
 				),
 			];
 		} else {
-			const quoteRes = await this.getQuoteWithRetry(
-				BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
-				driverToken.mint,
-				toToken.mint,
-				0.1, // 10%
-			);
+			const swapRes = await this.swapRouters.getSolSwap({
+				inputMint: driverToken.mint,
+				outputMint: toToken.mint,
+				slippageBps: 1000,
+				amount: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
+				maxAccounts: 64 - 7,
+				userPublicKey: this.walletConfig.solana.publicKey.toString(),
+				destinationTokenAccount: stateToAss.toString(),
+				ledger: stateAddress.toString(),
+				wrapUnwrapSol: false,
+			});
 
-			if (!quoteRes || !quoteRes.raw) {
+			if (!swapRes) {
 				throw new Error(`jupiter quote for fulfill in swift swap failed`);
 			}
 
-			if (quoteRes.expectedAmountOut < realMinAmountOut) {
+			if (BigInt(swapRes.outAmount) < realMinAmountOut) {
 				logger.warn(`min amount out issues on ${swap.sourceTxHash}`);
 			}
-			const { data } = await axios.post(`${this.rpcConfig.jupV6Endpoint}/swap`, {
-				quoteResponse: quoteRes.raw,
-				userPublicKey: this.walletConfig.solana.publicKey.toString(),
-				destinationTokenAccount: stateToAss,
-				wrapAndUnwrapSol: false,
-				dynamicComputeUnitLimit: false, // 14m
-				prioritizationFeeLamports: 'auto',
-			});
 			logger.verbose(`got jupiter swap data for fulfill ${swap.sourceTxHash}`);
-
-			const vt = VersionedTransaction.deserialize(Buffer.from(data.swapTransaction, 'base64')).message;
-			const lt = await Promise.all(
-				vt.addressTableLookups.map((a) => this.solanaConnection.getAddressLookupTable(a.accountKey)),
-			);
-			const jupLookupTables: AddressLookupTableAccount[] = lt.map((l) => l.value!);
-
-			let decompiledMsg = TransactionMessage.decompile(vt, { addressLookupTableAccounts: jupLookupTables });
 
 			const driverWalletAss = getAssociatedTokenAddressSync(
 				new PublicKey(driverToken.mint),
 				this.walletConfig.solana.publicKey,
 			);
 
-			const jupInstructions = decompiledMsg.instructions.filter(
+			const instructions = swapRes.transactionMessage!.instructions.filter(
 				(ix) =>
 					!this.solanaIxHelper.isBadAggIns(
 						ix,
@@ -295,16 +227,16 @@ export class SolanaFulfiller {
 					),
 			);
 
-			let jupAccountsSet = new Set<string>();
-			for (let ins of jupInstructions) {
-				jupAccountsSet.add(ins.programId.toBase58());
+			let accountsSet = new Set<string>();
+			for (let ins of instructions) {
+				accountsSet.add(ins.programId.toBase58());
 				for (let key of ins.keys) {
-					jupAccountsSet.add(key.pubkey.toBase58());
+					accountsSet.add(key.pubkey.toBase58());
 				}
 			}
 
-			fulfillAmountIxs = jupInstructions;
-			fulfillLookupTables = jupLookupTables;
+			fulfillAmountIxs = instructions;
+			fulfillLookupTables = swapRes.addressLookupTableAccounts!;
 		}
 
 		let signers: Array<Keypair> = [];

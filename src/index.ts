@@ -12,7 +12,6 @@ import {
 import { mayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
 import { fetchDynamicSdkParams, refershAndPatchConfigs } from './config/init';
-import { routersConfig } from './config/routers';
 import { rpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { getWalletConfig } from './config/wallet';
@@ -136,10 +135,10 @@ export async function main() {
 	await lutOptimizer.initAndScheduleLutClose();
 	const solanaFulfiller = new SolanaFulfiller(
 		solanaConnection,
-		rpcConfig,
 		walletConf,
 		solanaIxHelper,
 		lutOptimizer,
+		swapRouters,
 		walletHelper,
 		tokenList,
 	);
