@@ -316,7 +316,7 @@ export class EvmFulfiller {
 		evmRouterCalldata: string;
 		expectedAmountOut: bigint;
 	}> {
-		const oneInchSwap = await this.swapRouters.getSwap(
+		const oneInchSwap = await this.swapRouters.getEVMSwap(
 			{
 				amountIn: realAmountIn.toString(),
 				destToken: toToken.contract,
@@ -325,7 +325,6 @@ export class EvmFulfiller {
 				srcToken: driverToken.contract,
 				timeout: 3000,
 			},
-			true,
 			4,
 		);
 
@@ -347,7 +346,7 @@ export class EvmFulfiller {
 		if (driverToken.contract === toToken.contract) {
 			bidAmount = BigInt(Math.floor(effectiveAmountInDriverToken * 0.9999 * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await this.swapRouters.getQuote(
+			const quoteRes = await this.swapRouters.getEVMQuote(
 				{
 					whChainId: destChain,
 					srcToken: driverToken.contract,
@@ -355,7 +354,6 @@ export class EvmFulfiller {
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				true,
 				3,
 			);
 

@@ -118,7 +118,7 @@ export class AuctionFulfillerConfig {
 		if (driverToken.contract === toToken.contract) {
 			output = BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await this.swapRouters.getQuote(
+			const quoteRes = await this.swapRouters.getEVMQuote(
 				{
 					whChainId: destChain,
 					srcToken: driverToken.contract,
@@ -126,7 +126,6 @@ export class AuctionFulfillerConfig {
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				true,
 				3,
 			);
 

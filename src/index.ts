@@ -101,7 +101,7 @@ export async function main() {
 		solanaConnection,
 	);
 
-	const swapRouters = new SwapRouters(contracts, rpcConfig, routersConfig, evmProviders);
+	const swapRouters = new SwapRouters(contracts, rpcConfig);
 
 	const registerSvc = new RegisterService(globalConfig, walletConf, mayanEndpoints);
 	await registerSvc.register();
@@ -189,12 +189,7 @@ export async function main() {
 		chainFinalitySvc,
 	);
 
-	const stateCloser = new StateCloser(
-		walletConf,
-		solanaConnection,
-		solanaIxHelper,
-		solanaTxSender,
-	);
+	const stateCloser = new StateCloser(walletConf, solanaConnection, solanaIxHelper, solanaTxSender);
 	const watcher = new MayanExplorerWatcher(
 		globalConfig,
 		mayanEndpoints,

@@ -54,7 +54,7 @@ export class SwapRouters {
 		private readonly rpcConfig: RpcConfig,
 	) {}
 
-	async getQuote(quoteParams: EVMQuoteParams, retries: number = 3): Promise<EVMQuoteResponse> {
+	async getEVMQuote(quoteParams: EVMQuoteParams, retries: number = 3): Promise<EVMQuoteResponse> {
 		try {
 			return await this.get1InchQuote(quoteParams, retries);
 		} catch (err) {
@@ -67,7 +67,7 @@ export class SwapRouters {
 		}
 	}
 
-	async getSwap(swapParams: EVMSwapParams, retries: number = 3): Promise<EVMSwapResponse> {
+	async getEVMSwap(swapParams: EVMSwapParams, retries: number = 3): Promise<EVMSwapResponse> {
 		try {
 			return await this.get1InchSwap(swapParams, retries);
 		} catch (err) {
