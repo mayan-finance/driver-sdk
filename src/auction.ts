@@ -9,7 +9,7 @@ import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { SwapRouters } from './driver/routers';
-import { appendLoss, maxLossPerSwapUSD, removeLoss } from './loss-tracker';
+import { appendLoss, checkPaidLossWithinRange, maxLossPerSwapUSD, removeLoss } from './loss-tracker';
 import { Swap } from './swap.dto';
 import { getErc20Balance } from './utils/erc20';
 import { EvmProviders } from './utils/evm-providers';
@@ -189,6 +189,8 @@ export class AuctionFulfillerConfig {
 	}
 
 	async fulfillAmount(driverToken: Token, effectiveAmountIn: number, swap: Swap, costs: SwiftCosts): Promise<number> {
+		checkPaidLossWithinRange(swap.sourceTxHash);
+
 		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
 			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping fulfill`);
 		}
@@ -254,7 +256,7 @@ export class AuctionFulfillerConfig {
 				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
 			}
 
-			if (lossAmountUsd > costs.fromTokenPrice * effectiveAmountIn * 0.1) {
+			if (lossAmountUsd > costs.fromTokenPrice * effectiveAmountIn * 0.2) {
 				logger.info(
 					`MAX10 capped for ${swap.sourceTxHash},  ${lossAmountUsd} loss reduced to ${costs.fromTokenPrice * effectiveAmountIn * 0.1}`,
 				);

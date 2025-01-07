@@ -6,8 +6,8 @@ import {
 	AuctionAddressSolana,
 	ContractsConfig,
 	FeeCollectorSolana,
-	SolanaProgram,
 	fulfillHelpers,
+	SolanaProgram,
 } from './config/contracts';
 import { mayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
@@ -33,10 +33,13 @@ import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
 import { LookupTableOptimizer } from './utils/lut';
 import { PriorityFeeHelper, SolanaMultiTxSender } from './utils/solana-trx';
+import { createDatabase, DB_PATH } from './utils/sqlite3';
 import { VaaPoster } from './utils/vaa-poster';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
 
 export async function main() {
+	createDatabase(DB_PATH);
+
 	const walletConf = getWalletConfig();
 	logger.info(
 		`Solana Wallet is ${walletConf.solana.publicKey.toString()} and Ethereum Wallet is ${walletConf.evm.address}`,
@@ -189,12 +192,7 @@ export async function main() {
 		chainFinalitySvc,
 	);
 
-	const stateCloser = new StateCloser(
-		walletConf,
-		solanaConnection,
-		solanaIxHelper,
-		solanaTxSender,
-	);
+	const stateCloser = new StateCloser(walletConf, solanaConnection, solanaIxHelper, solanaTxSender);
 	const watcher = new MayanExplorerWatcher(
 		globalConfig,
 		mayanEndpoints,

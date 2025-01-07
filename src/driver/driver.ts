@@ -17,6 +17,7 @@ import { tryNativeToUint8Array } from '../utils/buffer';
 import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
 import { SolanaMultiTxSender } from '../utils/solana-trx';
+import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from '../utils/wormhole';
@@ -420,6 +421,16 @@ export class DriverService {
 			effectiveAmntIn,
 			swap,
 			expenses,
+		);
+
+		insertTransactionLog(
+			DB_PATH,
+			swap.sourceTxHash,
+			swap.sourceChain.toString(),
+			swap.destChain.toString(),
+			fulfillAmount * expenses.fromTokenPrice,
+			effectiveAmntIn * expenses.fromTokenPrice,
+			(fulfillAmount - effectiveAmntIn) * expenses.fromTokenPrice,
 		);
 
 		if (swap.destChain === CHAIN_ID_SOLANA) {
