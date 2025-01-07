@@ -1,8 +1,40 @@
 import * as fs from 'fs';
+import { DB_PATH, getTotalDiffAmount } from './utils/sqlite3';
 
 const filePath = './loss.json';
 export const maxLossPerSwapUSD = 25;
 export const maxTotalLossUSDPerDay = 2000;
+
+const maxPerTenMins = 500;
+const maxPerHour = 1000;
+const maxPerDay = 10000;
+
+export const paidLosses = {
+	TEN_MINS: 0,
+	HOUR: 0,
+	DAY: 0,
+};
+
+export function checkPaidLossWithinRange(txHash: string) {
+	if (paidLosses.TEN_MINS > maxPerTenMins || paidLosses.HOUR > maxPerHour || paidLosses.DAY > maxPerDay) {
+		throw new Error(`Paid loss exceeded the limit ${txHash}`);
+	}
+}
+
+function refreshPaidLosses() {
+	const dayLoss = getTotalDiffAmount(DB_PATH, '-1 day');
+	paidLosses.DAY = dayLoss;
+
+	const hourLoss = getTotalDiffAmount(DB_PATH, '-1 hours');
+	paidLosses.HOUR = hourLoss;
+
+	const tenMinsLoss = getTotalDiffAmount(DB_PATH, '-10 minutes');
+	paidLosses.TEN_MINS = tenMinsLoss;
+
+	console.log('Paid losses:', paidLosses);
+}
+
+setInterval(refreshPaidLosses, 1000 * 5);
 
 export function readTodayLoss() {
 	let data = {
