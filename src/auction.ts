@@ -3,7 +3,7 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WhChainIdToEvm, WORMHOLE_DECIMALS } from './config/chains';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
@@ -29,7 +29,7 @@ export class AuctionFulfillerConfig {
 		5: 5,
 		6: 10,
 	};
-	private readonly forceBid = true;
+	private readonly forceBid = false;
 
 	constructor(
 		private readonly rpcConfig: RpcConfig,
@@ -104,9 +104,9 @@ export class AuctionFulfillerConfig {
 		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
 		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
-		let bidBpsMargin = 13; // 11 bps
+		let bidBpsMargin = 14; // 11 bps
 		if (swap.toToken.contract === driverToken.contract) {
-			bidBpsMargin = 5; // 5 bps if no swap is included
+			bidBpsMargin = 3; // 5 bps if no swap is included
 		}
 		const finalFullAmountIn = (1 - bidBpsMargin / 10000) * (effectiveAmountIn - mappedBpsAmountIn);
 		const fullMappedAmountOut = (finalFullAmountIn * Number(output)) / effectiveAmountIn; // 20 bps test for now
@@ -252,6 +252,13 @@ export class AuctionFulfillerConfig {
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
 				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
+			}
+
+			if (lossAmountUsd > costs.fromTokenPrice * effectiveAmountIn * 0.1) {
+				logger.info(
+					`MAX10 capped for ${swap.sourceTxHash},  ${lossAmountUsd} loss reduced to ${costs.fromTokenPrice * effectiveAmountIn * 0.1}`,
+				);
+				throw Error(`Would not fulfill because capped loss ${swap.sourceTxHash}`);
 			}
 
 			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);
