@@ -41,3 +41,5 @@ export function getTotalDiffAmount(dbFile: string, interval: '-1 day' | '-1 hour
 	const res = execSync(`sqlite3 ${dbFile} "${query}"`, { encoding: 'utf8' });
 	return Number(res.trim());
 }
+
+export const DB_PATH = 'transactions.db';
