@@ -209,8 +209,7 @@ export class DriverService {
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
 			logger.error(
-				`Shall not bid on tx: ${swap.sourceTxHash} because 
-				${normalizedBidAmount} is less than min amount out ${normalizedMinAmountOut}`,
+				`Shall not bid on tx: ${swap.sourceTxHash} because ${normalizedBidAmount} is less than min amount out ${normalizedMinAmountOut}. ${expenses.unlockSource}:${expenses.fulfillCost}:${expenses.fulfillAndUnlock}`,
 			);
 			throw new Error('`Shall not bid on tx because bid amount is less than min amount out`');
 		}
