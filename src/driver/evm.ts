@@ -1,7 +1,14 @@
 import Decimal from 'decimal.js';
 import { ethers } from 'ethers6';
 import { abi as SwiftAbi } from '../abis/swift.abi';
-import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, ETH_CHAINS, WORMHOLE_DECIMALS, supportedChainIds } from '../config/chains';
+import {
+	CHAIN_ID_BSC,
+	CHAIN_ID_SOLANA,
+	ETH_CHAINS,
+	WORMHOLE_DECIMALS,
+	WhChainIdToEvm,
+	supportedChainIds,
+} from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
@@ -13,7 +20,7 @@ import { getErc20Allowance, getErc20Balance, getEthBalance, giveErc20Allowance }
 import { EvmProviders } from '../utils/evm-providers';
 import { getSuggestedOverrides, getTypicalBlocksToConfirm } from '../utils/evm-trx';
 import logger from '../utils/logger';
-import { deserializePermitFromHex } from '../utils/permit';
+import { Erc20Permit, deserializePermitFromHex, generateErc20Permit } from '../utils/permit';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { SwapRouters } from './routers';
@@ -62,6 +69,9 @@ export class EvmFulfiller {
 				if (!driverToken) {
 					continue;
 				}
+				if (driverToken.supportsPermit) {
+					continue;
+				}
 				let getAndSet = async () => {
 					const current = await getErc20Allowance(
 						this.walletHelper.getDriverWallet(chainId),
@@ -89,6 +99,9 @@ export class EvmFulfiller {
 			await Promise.allSettled(promises);
 			for (let driverToken of driverERC20Tokens) {
 				if (!driverToken) {
+					continue;
+				}
+				if (driverToken.supportsPermit) {
 					continue;
 				}
 				let getAndSetHelper = async () => {
@@ -124,7 +137,7 @@ export class EvmFulfiller {
 		return this.unlockWallets32.get(sourceChainId)!;
 	}
 
-	private generateSimpleFulfillCall(fulfillAmount: number, swap: Swap, chosenDriverToken: Token, batch: boolean) {
+	private generateSimpleFulfillCall(amountIn64: bigint, swap: Swap, chosenDriverToken: Token, batch: boolean) {
 		const fromToken = swap.fromToken;
 		const fromNormalizedDecimals = Math.min(WORMHOLE_DECIMALS, fromToken.decimals);
 
@@ -157,7 +170,7 @@ export class EvmFulfiller {
 		const unlockAddress32 = this.getUnlockAddress32(swap.sourceChain);
 
 		return this.swiftInterface.encodeFunctionData('fulfillSimple', [
-			ethers.parseUnits(fulfillAmount.toFixed(chosenDriverToken.decimals), chosenDriverToken.decimals),
+			amountIn64,
 			orderHashHex,
 			srcChain,
 			tokenIn32Hex,
@@ -224,13 +237,38 @@ export class EvmFulfiller {
 		let swiftCallData: string;
 		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			swiftCallData = this.generateAuctionFulfillCalldata(
-				0n, // this param doesn't matter and is overridden by swap amount in fulfill helper
+				amountIn64, // overridden by swap amount in fulfill helper if it is swap. it is usde used for direct fulfill
 				Buffer.from(postAuctionSignedVaa!),
 				unlockAddress32,
 				batch,
 			);
 		} else {
-			swiftCallData = this.generateSimpleFulfillCall(availableAmountIn, swap, driverToken, batch);
+			swiftCallData = this.generateSimpleFulfillCall(amountIn64, swap, driverToken, batch);
+		}
+		let permit: Erc20Permit = {
+			owner: driverToken.contract,
+			spender: this.contractsConfig.evmFulfillHelpers[swap.destChain],
+			value: amountIn64,
+			nonce: 0,
+			deadline: 0,
+			chainId: WhChainIdToEvm[+swap.destChain],
+			name: '',
+			verifyingContract: '',
+			version: '',
+			v: 0,
+			r: '',
+			s: '',
+		};
+		if (driverToken.supportsPermit) {
+			permit = await generateErc20Permit(
+				this.walletHelper.getDriverWallet(swap.destChain).address,
+				this.contractsConfig.evmFulfillHelpers[swap.destChain],
+				driverToken.contract,
+				WhChainIdToEvm[+swap.destChain],
+				amountIn64,
+				this.walletHelper.getDriverWallet(swap.destChain),
+				this.evmProviders[swap.destChain],
+			);
 		}
 		if (driverToken.contract === toToken.contract) {
 			// no swap involved
@@ -240,9 +278,30 @@ export class EvmFulfiller {
 			}
 
 			if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+				const args = [
+					driverToken.contract,
+					amountIn64,
+					this.contractsConfig.contracts[swap.destChain],
+					swiftCallData,
+					{
+						value: permit.value,
+						deadline: permit.deadline,
+						r: permit.r,
+						s: permit.s,
+						v: permit.v,
+					},
+					overrides,
+				];
+				if (!overrides['gasLimit']) {
+					const estimatedGas = await this.walletHelper
+						.getFulfillHelperWriteContract(swap.destChain)
+						.directFulfill.estimateGas(...args);
+					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+				}
 				fulfillTx = await this.walletHelper
-					.getWriteContract(swap.destChain, false)
-					.fulfillOrder(amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides);
+					.getFulfillHelperWriteContract(swap.destChain)
+					.directFulfill(...args);
 			} else {
 				return await this.simpleFulfill(swap, availableAmountIn, toToken!);
 			}
@@ -258,21 +317,28 @@ export class EvmFulfiller {
 				logger.info(`Sending swap fulfill with fulfillWithEth for tx=${swap.sourceTxHash}`);
 				overrides['value'] = overrides['value'] + amountIn64;
 
+				const args = [
+					amountIn64,
+					toToken.contract,
+					swapParams.evmRouterAddress,
+					swapParams.evmRouterCalldata,
+					this.contractsConfig.contracts[targetChain],
+					swiftCallData,
+					overrides,
+				];
+				if (!overrides['gasLimit']) {
+					const estimatedGas = await this.walletHelper
+						.getFulfillHelperWriteContract(swap.destChain)
+						.fulfillWithEth.estimateGas(...args);
+					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+				}
 				fulfillTx = await this.walletHelper
 					.getFulfillHelperWriteContract(swap.destChain)
-					.fulfillWithEth(
-						amountIn64,
-						toToken.contract,
-						swapParams.evmRouterAddress,
-						swapParams.evmRouterCalldata,
-						this.contractsConfig.contracts[targetChain],
-						swiftCallData,
-						overrides,
-					);
+					.fulfillWithEth(...args);
 			} else {
 				logger.info(`Sending swap fulfill with fulfillWithERC20 for tx=${swap.sourceTxHash}`);
-
-				fulfillTx = await this.walletHelper.getFulfillHelperWriteContract(swap.destChain).fulfillWithERC20(
+				const args = [
 					driverToken.contract,
 					amountIn64,
 					toToken.contract,
@@ -281,14 +347,25 @@ export class EvmFulfiller {
 					this.contractsConfig.contracts[targetChain],
 					swiftCallData,
 					{
-						value: 12313131313n,
-						deadline: 12313131313n,
-						v: 12,
-						r: Buffer.alloc(32),
-						s: Buffer.alloc(32),
-					}, // permit. doesnt matter because we already gave allowance
+						value: permit.value,
+						deadline: permit.deadline,
+						v: permit.v,
+						r: permit.r,
+						s: permit.s,
+					}, // permit if token allows permit
 					overrides,
-				);
+				];
+
+				if (!overrides['gasLimit']) {
+					const estimatedGas = await this.walletHelper
+						.getFulfillHelperWriteContract(swap.destChain)
+						.fulfillWithERC20.estimateGas(...args);
+					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+				}
+				fulfillTx = await this.walletHelper
+					.getFulfillHelperWriteContract(swap.destChain)
+					.fulfillWithERC20(...args);
 			}
 		}
 
@@ -534,33 +611,85 @@ export class EvmFulfiller {
 
 		const batch = this.gConf.singleBatchChainIds.includes(+swap.destChain) ? false : true; // batch-post except for eth and expensive chains
 
-		const fulfillTx: ethers.TransactionResponse = await this.walletHelper
-			.getWriteContract(swap.destChain)
-			.fulfillSimple(
-				ethers.parseUnits(availableAmountIn.toFixed(chosenDriverToken.decimals), chosenDriverToken.decimals),
-				orderHashHex,
-				srcChain,
-				tokenIn32Hex,
-				protocolBps,
-				{
-					trader: trader32Hex,
-					tokenOut: tokenOut32Hex,
-					minAmountOut: minAmountOut64,
-					gasDrop: gasDrop64,
-					cancelFee: destRefundFee64,
-					refundFee: sourceRefundFee64,
-					deadline: deadline64,
-					destAddr: destAddr32Hex,
-					destChainId: destChain,
-					referrerAddr: referrerAddr32Hex,
-					referrerBps: referrerBps,
-					auctionMode: swap.auctionMode,
-					random: random32Hex,
-				},
-				unlockAddress32,
-				batch,
-				overrides,
+		const amountIn64 = ethers.parseUnits(
+			availableAmountIn.toFixed(chosenDriverToken.decimals),
+			chosenDriverToken.decimals,
+		);
+		const callData = await this.swiftInterface.encodeFunctionData('fulfillSimple', [
+			amountIn64,
+			orderHashHex,
+			srcChain,
+			tokenIn32Hex,
+			protocolBps,
+			{
+				trader: trader32Hex,
+				tokenOut: tokenOut32Hex,
+				minAmountOut: minAmountOut64,
+				gasDrop: gasDrop64,
+				cancelFee: destRefundFee64,
+				refundFee: sourceRefundFee64,
+				deadline: deadline64,
+				destAddr: destAddr32Hex,
+				destChainId: destChain,
+				referrerAddr: referrerAddr32Hex,
+				referrerBps: referrerBps,
+				auctionMode: swap.auctionMode,
+				random: random32Hex,
+			},
+			unlockAddress32,
+			batch,
+		]);
+		const driverToken = chosenDriverToken;
+		let permit: Erc20Permit = {
+			owner: driverToken.contract,
+			spender: this.contractsConfig.evmFulfillHelpers[swap.destChain],
+			value: amountIn64,
+			nonce: 0,
+			deadline: 0,
+			chainId: WhChainIdToEvm[+swap.destChain],
+			name: '',
+			verifyingContract: '',
+			version: '',
+			v: 0,
+			r: '',
+			s: '',
+		};
+		if (driverToken.supportsPermit) {
+			permit = await generateErc20Permit(
+				this.walletHelper.getDriverWallet(swap.destChain).address,
+				this.contractsConfig.evmFulfillHelpers[swap.destChain],
+				driverToken.contract,
+				WhChainIdToEvm[+swap.destChain],
+				amountIn64,
+				this.walletHelper.getDriverWallet(swap.destChain),
+				this.evmProviders[swap.destChain],
 			);
+		}
+
+		const args = [
+			driverToken.contract,
+			amountIn64,
+			this.contractsConfig.contracts[swap.destChain],
+			callData,
+			{
+				value: permit.value,
+				deadline: permit.deadline,
+				r: permit.r,
+				s: permit.s,
+				v: permit.v,
+			},
+			overrides,
+		];
+		if (!overrides['gasLimit']) {
+			const estimatedGas = await this.walletHelper
+				.getFulfillHelperWriteContract(swap.destChain)
+				.directFulfill.estimateGas(...args);
+			overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+			logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+		}
+		const fulfillTx: ethers.TransactionResponse = await this.walletHelper
+			.getFulfillHelperWriteContract(swap.destChain)
+			.directFulfill(...args);
 
 		logger.info(`Wait simple-fulfill on evm confirm for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
 		const tx = await this.evmProviders[targetChain].waitForTransaction(

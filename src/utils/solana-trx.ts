@@ -70,7 +70,7 @@ export class SolanaMultiTxSender {
 
 	async updateJitoTips(): Promise<void> {
 		try {
-			const { data } = await axios.get('http://bundles-api-rest.jito.wtf/api/v1/bundles/tip_floor');
+			const { data } = await axios.get('http://bundles.jito.wtf/api/v1/bundles/tip_floor');
 			this.minJitoTipAmount = Math.min(
 				this.maxJitoTipAmount,
 				Math.max(data[0]['landed_tips_75th_percentile'], this.minJitoTipAmount),
