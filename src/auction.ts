@@ -101,7 +101,7 @@ export class AuctionFulfillerConfig {
 
 		const profitMargin = effectiveAmountIn - mappedBpsAmountIn;
 
-		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100 - mappedBpsAmountIn;
+		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100;
 		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
 		let bidBpsMargin = 14; // 11 bps
