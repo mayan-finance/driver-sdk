@@ -110,10 +110,6 @@ export class SwapRouters {
 		toAmount: string;
 	}> {
 		try {
-			if (swapParams.whChainId == 23) {
-				return await this.getOkxSwap(swapParams, retries);
-			}
-
 			return await this.get1InchSwap(swapParams, includeGas, retries);
 		} catch (err) {
 			console.error(`Error using okx as swap ${err}. trying 1inch`);

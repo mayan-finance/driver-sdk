@@ -79,6 +79,7 @@ export class EvmFulfiller {
 						this.walletHelper.getDriverWallet(chainId).address,
 						this.contractsConfig.contracts[chainId],
 					);
+					console.log(`Current allowance for ${driverToken.contract} on chain ${chainId}: ${current}`);
 
 					if (current < ethers.MaxUint256 - 1_000_000_000_000_000_000_000_000_000n) {
 						logger.info(`Setting allowance for ${driverToken.contract} on chain ${chainId}`);
@@ -110,6 +111,9 @@ export class EvmFulfiller {
 						driverToken.contract,
 						this.walletHelper.getDriverWallet(chainId).address,
 						this.contractsConfig.evmFulfillHelpers[chainId],
+					);
+					console.log(
+						`current helper allowance for ${driverToken.contract} on chain ${chainId} is ${current}`,
 					);
 
 					if (current < ethers.MaxUint256 - 1_000_000_000_000_000_000_000_000_000n) {
