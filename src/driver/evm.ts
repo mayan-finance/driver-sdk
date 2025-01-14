@@ -278,7 +278,7 @@ export class EvmFulfiller {
 				return await this.simpleFulfill(swap, availableAmountIn, toToken!);
 			} else if (driverToken.contract === ethers.ZeroAddress) {
 				overrides['value'] = overrides['value'] + amountIn64;
-				const args = [amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch];
+				const args = [amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides];
 				if (!overrides['gasLimit']) {
 					const estimatedGas = await this.walletHelper
 						.getWriteContract(swap.destChain, false)
@@ -286,7 +286,7 @@ export class EvmFulfiller {
 					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
 					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
 				}
-				fulfillTx = await this.walletHelper.getWriteContract(swap.destChain, false).getWriteContract(...args);
+				fulfillTx = await this.walletHelper.getWriteContract(swap.destChain, false).fulfillOrder(...args);
 			} else {
 				const args = [
 					driverToken.contract,
