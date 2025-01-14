@@ -12,7 +12,6 @@ import {
 import { mayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
 import { fetchDynamicSdkParams, refershAndPatchConfigs } from './config/init';
-import { routersConfig } from './config/routers';
 import { rpcConfig } from './config/rpc';
 import { TokenList } from './config/tokens';
 import { getWalletConfig } from './config/wallet';
@@ -101,7 +100,7 @@ export async function main() {
 		solanaConnection,
 	);
 
-	const swapRouters = new SwapRouters(contracts, rpcConfig, routersConfig, evmProviders);
+	const swapRouters = new SwapRouters(contracts, rpcConfig);
 
 	const registerSvc = new RegisterService(globalConfig, walletConf, mayanEndpoints);
 	await registerSvc.register();
@@ -136,10 +135,10 @@ export async function main() {
 	await lutOptimizer.initAndScheduleLutClose();
 	const solanaFulfiller = new SolanaFulfiller(
 		solanaConnection,
-		rpcConfig,
 		walletConf,
 		solanaIxHelper,
 		lutOptimizer,
+		swapRouters,
 		walletHelper,
 		tokenList,
 	);
@@ -189,12 +188,7 @@ export async function main() {
 		chainFinalitySvc,
 	);
 
-	const stateCloser = new StateCloser(
-		walletConf,
-		solanaConnection,
-		solanaIxHelper,
-		solanaTxSender,
-	);
+	const stateCloser = new StateCloser(walletConf, solanaConnection, solanaIxHelper, solanaTxSender);
 	const watcher = new MayanExplorerWatcher(
 		globalConfig,
 		mayanEndpoints,

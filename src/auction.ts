@@ -1,10 +1,8 @@
 import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
 import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Connection, PublicKey } from '@solana/web3.js';
-import axios from 'axios';
 import { ethers } from 'ethers6';
 import { CHAIN_ID_SOLANA } from './config/chains';
-import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
@@ -21,7 +19,6 @@ export class AuctionFulfillerConfig {
 	private readonly forceBid = true;
 
 	constructor(
-		private readonly rpcConfig: RpcConfig,
 		private readonly connection: Connection,
 		private readonly evmProviders: EvmProviders,
 		private readonly walletConfig: WalletConfig,
@@ -118,7 +115,7 @@ export class AuctionFulfillerConfig {
 		if (driverToken.contract === toToken.contract) {
 			output = BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await this.swapRouters.getQuote(
+			const quoteRes = await this.swapRouters.getEVMQuote(
 				{
 					whChainId: destChain,
 					srcToken: driverToken.contract,
@@ -126,7 +123,6 @@ export class AuctionFulfillerConfig {
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				true,
 				3,
 			);
 
@@ -149,18 +145,18 @@ export class AuctionFulfillerConfig {
 		if (driverToken.contract === toToken.contract) {
 			output = BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals));
 		} else {
-			const quoteRes = await this.getJupQuoteWithRetry(
-				BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
-				driverToken.mint,
-				toToken.mint,
-				0.1, // 10%
-			);
-
+			const quoteRes = await this.swapRouters.getSolQuote({
+				inputMint: driverToken.mint,
+				outputMint: toToken.mint,
+				slippageBps: 1000,
+				amount: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
+				maxAccounts: 64 - 7,
+			});
 			if (!quoteRes || !quoteRes.raw) {
 				throw new Error('jupiter quote for bid in swift failed');
 			}
 
-			output = BigInt(Math.floor(Number(quoteRes.expectedAmountOut)));
+			output = BigInt(Math.floor(Number(quoteRes.outAmount)));
 		}
 
 		return output;
@@ -217,55 +213,6 @@ export class AuctionFulfillerConfig {
 		const finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
 
 		return finalAmountIn;
-	}
-
-	private async getJupQuoteWithRetry(
-		amountIn: bigint,
-		fromMint: string,
-		toMint: string,
-		slippage: number,
-		retry: number = 10,
-	): Promise<any> {
-		let res;
-		do {
-			try {
-				let params: any = {
-					inputMint: fromMint,
-					outputMint: toMint,
-					slippageBps: slippage * 10000,
-					maxAccounts: 64 - 7, // 7 accounts reserved for other instructions
-					amount: amountIn,
-				};
-				if (!!this.rpcConfig.jupExcludedDexes) {
-					params['excludeDexes'] = this.rpcConfig.jupExcludedDexes;
-				}
-				if (!!this.rpcConfig.jupApiKey) {
-					params['token'] = this.rpcConfig.jupApiKey;
-				}
-				const { data } = await axios.get(`${this.rpcConfig.jupV6Endpoint}/quote`, {
-					params: params,
-				});
-				res = data;
-			} catch (err) {
-				logger.warn(`error in fetch jupiter ${err} try ${retry}`);
-			} finally {
-				retry--;
-			}
-		} while ((!res || !res.outAmount) && retry > 0);
-
-		if (!res) {
-			logger.error(`juptier quote failed ${fromMint} ${toMint} ${amountIn}`);
-			return null;
-		}
-
-		return {
-			effectiveAmountIn: res.inAmount,
-			expectedAmountOut: res.outAmount,
-			priceImpact: res.priceImpactPct,
-			minAmountOut: res.otherAmountThreshold,
-			route: [],
-			raw: res,
-		};
 	}
 
 	private async calcProtocolAndRefBps(
