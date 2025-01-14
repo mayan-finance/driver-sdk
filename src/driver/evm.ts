@@ -256,8 +256,8 @@ export class EvmFulfiller {
 			verifyingContract: '',
 			version: '',
 			v: 0,
-			r: '',
-			s: '',
+			r: '0x' + Buffer.alloc(32).toString('hex'),
+			s: '0x' + Buffer.alloc(32).toString('hex'),
 		};
 		if (driverToken.supportsPermit) {
 			permit = await generateErc20Permit(
@@ -273,11 +273,21 @@ export class EvmFulfiller {
 		if (driverToken.contract === toToken.contract) {
 			// no swap involved
 			logger.info(`Sending no-swap auction fulfill with fulfillOrder for tx=${swap.sourceTxHash}`);
-			if (driverToken.contract === ethers.ZeroAddress) {
-				overrides['value'] = overrides['value'] + amountIn64;
-			}
 
-			if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+			if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
+				return await this.simpleFulfill(swap, availableAmountIn, toToken!);
+			} else if (driverToken.contract === ethers.ZeroAddress) {
+				overrides['value'] = overrides['value'] + amountIn64;
+				const args = [amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch];
+				if (!overrides['gasLimit']) {
+					const estimatedGas = await this.walletHelper
+						.getWriteContract(swap.destChain, false)
+						.fulfillOrder.estimateGas(...args);
+					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+				}
+				fulfillTx = await this.walletHelper.getWriteContract(swap.destChain, false).getWriteContract(...args);
+			} else {
 				const args = [
 					driverToken.contract,
 					amountIn64,
@@ -302,8 +312,6 @@ export class EvmFulfiller {
 				fulfillTx = await this.walletHelper
 					.getFulfillHelperWriteContract(swap.destChain)
 					.directFulfill(...args);
-			} else {
-				return await this.simpleFulfill(swap, availableAmountIn, toToken!);
 			}
 		} else {
 			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);
@@ -651,8 +659,8 @@ export class EvmFulfiller {
 			verifyingContract: '',
 			version: '',
 			v: 0,
-			r: '',
-			s: '',
+			r: '0x' + Buffer.alloc(32).toString('hex'),
+			s: '0x' + Buffer.alloc(32).toString('hex'),
 		};
 		if (driverToken.supportsPermit) {
 			permit = await generateErc20Permit(
