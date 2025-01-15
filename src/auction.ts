@@ -46,8 +46,8 @@ export class AuctionFulfillerConfig {
 		costs: SwiftCosts,
 	): Promise<bigint> {
 		const balance = await this.getTokenBalance(driverToken);
-		if (balance < 3 * effectiveAmountIn) {
-			throw new Error(`Insufficient 3x balance for ${swap.sourceTxHash}. Dropping bid`);
+		if (balance < effectiveAmountIn) {
+			throw new Error(`Insufficient 1x balance for ${swap.sourceTxHash}. Dropping bid`);
 		} else {
 			logger.info(`Balance is ${balance} for ${swap.sourceTxHash}`);
 		}
