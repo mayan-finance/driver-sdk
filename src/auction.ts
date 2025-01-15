@@ -266,9 +266,26 @@ export class AuctionFulfillerConfig {
 			logger.info(`Loss of ${lossAmountUsd} USD is going to be appended for ${swap.sourceTxHash}`);
 			appendLoss(lossAmountUsd);
 			swap.lastloss = lossAmountUsd;
+
+			// we need a safeguard to prevent divison by small values in case we get wrong prices from server, ...
+			const minPrices = {
+				usdc: 0.9,
+				eth: 2500,
+			};
+			let safeFromTokenPriceForAddedLoss = costs.fromTokenPrice;
+			if (
+				driverToken.contract === ethers.ZeroAddress ||
+				driverToken.contract === '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs' // weth sol
+			) {
+				// eth
+				safeFromTokenPriceForAddedLoss = Math.max(minPrices.eth, costs.fromTokenPrice);
+			} else {
+				safeFromTokenPriceForAddedLoss = Math.max(minPrices.usdc, costs.fromTokenPrice);
+			}
+
 			effectiveAmountIn =
 				Math.max(effectiveAmountIn, minFulfillAmount * 1.0001) +
-				this.perRetryMinAvailableLossUSD[swap.retries] / costs.fromTokenPrice;
+				this.perRetryMinAvailableLossUSD[swap.retries] / safeFromTokenPriceForAddedLoss;
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
