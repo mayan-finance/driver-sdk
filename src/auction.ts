@@ -9,7 +9,7 @@ import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { SwapRouters } from './driver/routers';
-import { appendLoss, checkPaidLossWithinRange, maxLossPerSwapUSD, removeLoss } from './loss-tracker';
+import { alertForLossReach, appendLoss, checkPaidLossWithinRange, maxLossPerSwapUSD, removeLoss } from './loss-tracker';
 import { Swap } from './swap.dto';
 import { getErc20Balance } from './utils/erc20';
 import { EvmProviders } from './utils/evm-providers';
@@ -253,6 +253,7 @@ export class AuctionFulfillerConfig {
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
+				alertForLossReach('perSwapLoss', 'Max loss filled for one swap pls check');
 				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
 			}
 

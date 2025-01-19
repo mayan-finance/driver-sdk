@@ -1,3 +1,4 @@
+import axios from 'axios';
 import * as fs from 'fs';
 import { DB_PATH, getTotalDiffAmount } from './utils/sqlite3';
 
@@ -16,8 +17,15 @@ export const paidLosses = {
 };
 
 export function checkPaidLossWithinRange(txHash: string) {
-	if (paidLosses.TEN_MINS > maxPerTenMins || paidLosses.HOUR > maxPerHour || paidLosses.DAY > maxPerDay) {
-		throw new Error(`Paid loss exceeded the limit ${txHash}`);
+	if (paidLosses.TEN_MINS > maxPerTenMins) {
+		alertForLossReach('rangeLoss', 'Paid loss exceeded the limit withing 10 minute range');
+		throw new Error(`Paid loss exceeded the limit 10 minute ${txHash}`);
+	} else if (paidLosses.HOUR > maxPerHour) {
+		alertForLossReach('rangeLoss', 'Paid loss exceeded the limit withing 1 hour range');
+		throw new Error(`Paid loss exceeded the limit 1 hour ${txHash}`);
+	} else if (paidLosses.DAY > maxPerDay) {
+		alertForLossReach('rangeLoss', 'Paid loss exceeded the limit withing 24 hour range');
+		throw new Error(`Paid loss exceeded the limit 24 hour ${txHash}`);
 	}
 }
 
@@ -58,10 +66,21 @@ export function appendLoss(loss: number) {
 	const data = readTodayLoss();
 	data.loss += loss;
 	if (data.loss > maxTotalLossUSDPerDay) {
+		alertForLossReach('modifyLossJson', 'Daily loss limit reached Modify json');
 		throw new Error('Daily loss limit reached');
 	}
 
 	fs.writeFileSync(filePath, JSON.stringify(data));
+}
+
+export async function alertForLossReach(code: string, msg: string) {
+	try {
+		await axios.get(
+			`${process.env.ALERT_FULL_URL}?pwd=${process.env.ALERT_PWD}&code=${code}&message=Bamshad ${msg}`,
+		);
+	} catch (err) {
+		console.warn('Failed to send alert for loss reach', err);
+	}
 }
 
 export function removeLoss(loss: number) {
