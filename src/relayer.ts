@@ -392,7 +392,8 @@ export class Relayer {
 			}
 
 			let alreadyRegisteredWinner =
-				!!destState?.winner && destState?.winner !== '11111111111111111111111111111111';
+				swap.auctionMode === AUCTION_MODES.DONT_CARE ||
+				(!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
 			const stateToAss = getAssociatedTokenAddressSync(
 				new PublicKey(swap.toToken.mint),
 				new PublicKey(swap.stateAddr),
