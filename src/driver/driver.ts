@@ -572,8 +572,6 @@ export class DriverService {
 			fulfillData!.lookupTables,
 			this.rpcConfig.solana.sendCount,
 			true,
-			undefined,
-			220_000,
 		);
 		logger.info(`Sent fulfill-settle package for ${swap.sourceTxHash} with ${hash}`);
 	}
