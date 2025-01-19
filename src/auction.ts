@@ -253,7 +253,7 @@ export class AuctionFulfillerConfig {
 
 			if (lossAmountUsd > maxLossPerSwapUSD) {
 				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
-				alertForLossReach('perSwapLoss', 'Max loss filled for one swap pls check');
+				alertForLossReach('perSwapLoss', `Max loss filled for one swap pls check ${swap.sourceTxHash}`);
 				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
 			}
 
