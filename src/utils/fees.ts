@@ -33,6 +33,7 @@ export class FeeService {
 			params: {
 				ids: [
 					qr.fromToken.coingeckoId,
+					qr.toToken.coingeckoId,
 					this.tokenList.nativeTokens[qr.fromChainId].coingeckoId,
 					this.tokenList.nativeTokens[qr.toChainId].coingeckoId,
 					this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId,
@@ -42,6 +43,7 @@ export class FeeService {
 
 		const solPrice = prices.data[this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId];
 		const fromTokenPrice = prices.data[qr.fromToken.coingeckoId];
+		const toTokenPrice = prices.data[qr.toToken.coingeckoId];
 		const nativeFromPrice = prices.data[this.tokenList.nativeTokens[qr.fromChainId].coingeckoId];
 		const nativeToPrice = prices.data[this.tokenList.nativeTokens[qr.toChainId].coingeckoId];
 
@@ -263,6 +265,7 @@ export class FeeService {
 			unlockSource: unlockFee, //unlockFee,
 			fulfillAndUnlock: totalCost,
 			fromTokenPrice: fromTokenPrice,
+			toTokenPrice: toTokenPrice,
 		};
 	}
 
@@ -425,6 +428,7 @@ export type SwiftCosts = {
 	unlockSource: number;
 	fulfillAndUnlock: number;
 	fromTokenPrice: number;
+	toTokenPrice: number;
 };
 
 export type ExpenseParams = {

@@ -57,6 +57,7 @@ export class AuctionFulfillerConfig {
 		}
 
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
+		let minAmountOutNum = Number(normalizedMinAmountOut) / 10 ** Math.min(WORMHOLE_DECIMALS, swap.toToken.decimals);
 
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
@@ -71,6 +72,24 @@ export class AuctionFulfillerConfig {
 			);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
+
+		if (costs.fromTokenPrice && costs.toTokenPrice) {
+			const priceRatio = costs.fromTokenPrice / costs.toTokenPrice;
+			if (output / effectiveAmountIn > priceRatio * 1.025) {
+				const guardedOutput = priceRatio * effectiveAmountIn * 1.025;
+				output = guardedOutput;
+				logger.warn(
+					`Oracle price differs 2.5% from aggregator. limiting bid to price for ${swap.sourceTxHash}`,
+				);
+			}
+		}
+		if (output > minAmountOutNum * 1.1) {
+			const guardedOutput = minAmountOutNum * 1.1;
+			output = guardedOutput;
+			logger.warn(
+				`Output is too much more than minAmountOut. limiting bid to minAmountOut * 1.1 for ${swap.sourceTxHash}`,
+			);
+		}
 
 		const bpsFees = await this.calcProtocolAndRefBps(
 			swap.fromAmount64,
