@@ -361,9 +361,12 @@ export class Relayer {
 				return;
 			}
 		} else {
-			logger.info(`Registering order for simple-fulfill`);
-			await this.driverService.registerOrder(swap);
-			logger.info(`Order registered for ${swap.sourceTxHash}`);
+			let alreadyRegisteredOrder = !!destState;
+			if (!alreadyRegisteredOrder) {
+				logger.info(`Registering order for simple-fulfill`);
+				await this.driverService.registerOrder(swap);
+				logger.info(`Order registered for ${swap.sourceTxHash}`);
+			}
 		}
 
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
