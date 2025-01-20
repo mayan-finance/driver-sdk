@@ -140,7 +140,10 @@ export class FeeService {
 		} else {
 			let fulfillSolCost = solTxCost + additionalSolfulfillCost; // base tx fees;
 			fulfillSolCost += shrinkedStateCost;
-			fulfillSolCost += ataCreationCost; // asssumes we will always create user ata
+			if (qr.toToken.contract !== '0x0000000000000000000000000000000000000000') {
+				// pure sol doesn't require creating atas
+				fulfillSolCost += ataCreationCost; // asssumes we will always create user ata
+			}
 			fulfillCost = await this.calculateSolanaFee(
 				fulfillSolCost,
 				solPrice,
