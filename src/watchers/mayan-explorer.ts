@@ -141,33 +141,40 @@ export class MayanExplorerWatcher {
 
 	async pollPendingSwaps(): Promise<void> {
 		try {
-			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swaps', {
-				params: {
-					format: 'raw',
-					status: 'ORDER_CREATED,ORDER_FULFILLED',
-					service: 'SWIFT_SWAP',
-					// initiateContractAddresses: this.initiateAddresses.join(','),
-					limit: 100,
-				},
-			});
+			const maxPages = 8;
+			for (let page = 0; page <= maxPages; page++) {
+				const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swaps', {
+					params: {
+						format: 'raw',
+						status: 'ORDER_CREATED,ORDER_FULFILLED',
+						service: 'SWIFT_SWAP',
+						// initiateContractAddresses: this.initiateAddresses.join(','),
+						limit: 100,
+						offset: page * 100,
+					},
+				});
 
-			const swaps = result.data.data;
-
-			for (let s of swaps) {
-				if (!s.orderHash || !['SWIFT_SWAP'].includes(s.service)) {
-					continue;
+				const swaps = result.data.data;
+				if (swaps.length == 0) {
+					break;
 				}
 
-				if (s.status !== 'ORDER_CREATED' && s.status !== 'ORDER_FULFILLED') {
-					continue;
-				}
+				for (let s of swaps) {
+					if (!s.orderHash || !['SWIFT_SWAP'].includes(s.service)) {
+						continue;
+					}
 
-				if (this.relayer.relayingSwaps.find((x) => x.orderHash === s.orderHash)) {
-					logger.verbose(`Already progressing swap ${s.sourceTxHash}`);
-					continue;
-				}
+					if (s.status !== 'ORDER_CREATED' && s.status !== 'ORDER_FULFILLED') {
+						continue;
+					}
 
-				this.backgroundRelay(s);
+					if (this.relayer.relayingSwaps.find((x) => x.orderHash === s.orderHash)) {
+						logger.verbose(`Already progressing swap ${s.sourceTxHash}`);
+						continue;
+					}
+
+					this.backgroundRelay(s);
+				}
 			}
 		} catch (err) {
 			logger.error(`error in polling explorer ${err}`);
