@@ -31,6 +31,9 @@ export type RpcConfig = {
 	jupApiKey: string;
 	jupExcludedDexes: string;
 	wormholeGuardianRpcs: string[];
+	okxApiKey: string;
+	okxPassPhrase: string;
+	okxSecretKey: string;
 };
 
 export const rpcConfig: RpcConfig = {
@@ -69,4 +72,7 @@ export const rpcConfig: RpcConfig = {
 	jupApiKey: process.env.JUP_API_KEY || '',
 	jupExcludedDexes: process.env.JUP_EXCLUDED_DEXES || '',
 	wormholeGuardianRpcs: process.env.WORMHOLE_GUARDIAN_RPCS!.split(','),
+	okxApiKey: process.env.OKX_API_KEY || '',
+	okxPassPhrase: process.env.OKX_PASSPHRASE || '',
+	okxSecretKey: process.env.OKX_SECRET_KEY || '',
 };
