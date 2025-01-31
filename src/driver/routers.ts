@@ -222,6 +222,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
+				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
 				amount: swapParams.amountIn,
 				includeGas: includeGas,
 			},
@@ -287,6 +288,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
+				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
 				amount: swapParams.amountIn,
 				from: swapSourceDst,
 				slippage: swapParams.slippagePercent,

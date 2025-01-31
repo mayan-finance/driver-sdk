@@ -356,7 +356,7 @@ export class SolanaMultiTxSender {
 		});
 
 		if (rpcResponse.value.err) {
-			console.error(`Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)}`);
+			console.error(`Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)} logs: ${rpcResponse.value.logs}`);
 			return null;
 		}
 
