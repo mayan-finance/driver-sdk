@@ -150,7 +150,7 @@ export class SwapRouters {
 	}> {
 		const apiUrl = `${this.priceApiUri}/v3/quote/on-chain`;
 
-		const timeout = swapParams.timeout || 3000;
+		const timeout = 5000;
 		const config: AxiosRequestConfig = {
 			timeout: timeout,
 			params: {
@@ -202,7 +202,7 @@ export class SwapRouters {
 	}> {
 		const apiUrl = `${this.priceApiUri}/v3/quote/on-chain`;
 
-		const timeout = swapParams.timeout || 3000;
+		const timeout = 5000;
 		const swapSourceDst = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
 		const config: AxiosRequestConfig = {
 			timeout: timeout,
@@ -320,7 +320,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
-				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
+				excludedProtocols: 'BASE_MAVERICK,ARBITRUM_ONE_INCH_LIMIT_ORDER_V4,UNISWAP_V4',
 				amount: swapParams.amountIn,
 				includeGas: true,
 			},
@@ -385,7 +385,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
-				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
+				excludedProtocols: 'BASE_MAVERICK,ARBITRUM_ONE_INCH_LIMIT_ORDER_V4,UNISWAP_V4',
 				amount: swapParams.amountIn,
 				from: swapSourceDst,
 				slippage: swapParams.slippagePercent,
