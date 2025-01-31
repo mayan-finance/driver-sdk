@@ -80,7 +80,7 @@ export class FeeService {
 			baseFulfillGasWithOutBatch += this.gConf.feeParams.erc20GasOverHead;
 			baseFulfillGasWithBatch += this.gConf.feeParams.erc20GasOverHead;
 		}
-		let swapFulfillAddedGas = this.gConf.feeParams.swapFulfillAddedGas;
+		let swapFulfillAddedGas = qr.toChainId === 6 ? 800_000 : this.gConf.feeParams.swapFulfillAddedGas;
 		let baseBatchPostGas = this.gConf.feeParams.baseBatchPostGas;
 		let auctionVaaVerificationAddedGas = this.gConf.feeParams.auctionVaaVerificationAddedGas;
 
