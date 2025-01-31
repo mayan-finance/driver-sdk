@@ -252,13 +252,13 @@ export class FeeService {
 		};
 
 		let compensation = 0.0;
-		if (isEvmChainId(qr.fromChainId) && qr.toChainId === CHAIN_ID_SOLANA) {
-			compensation = compensationsSol.evmToSolana;
-		} else if (isEvmChainId(qr.fromChainId) && isEvmChainId(qr.toChainId)) {
-			compensation = compensationsSol.evmToEvm;
-		} else if (qr.fromChainId === CHAIN_ID_SOLANA && isEvmChainId(qr.toChainId)) {
-			compensation = compensationsSol.solanaToEvm;
-		}
+		// if (isEVMChain(qr.fromChainId as ChainId) && qr.toChainId === CHAIN_ID_SOLANA) {
+		// 	compensation = compensationsSol.evmToSolana;
+		// } else if (isEVMChain(qr.fromChainId as ChainId) && isEVMChain(qr.toChainId as ChainId)) {
+		// 	compensation = compensationsSol.evmToEvm;
+		// } else if (qr.fromChainId === CHAIN_ID_SOLANA && isEVMChain(qr.toChainId as ChainId)) {
+		// 	compensation = compensationsSol.solanaToEvm;
+		// }
 
 		let totalCost = fulfillCost + unlockFee;
 		totalCost = totalCost - (compensation * solPrice) / fromTokenPrice;
