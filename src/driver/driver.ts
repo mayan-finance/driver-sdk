@@ -431,7 +431,7 @@ export class DriverService {
 			swap,
 			expenses,
 		);
-		logger.info(`Fulfilling ${swap.sourceTxHash} with ${fulfillAmount}`);
+		logger.info(`Fulfilling ${swap.sourceTxHash} with ${fulfillAmount} other: effective: ${effectiveAmntIn}, fromprice: ${expenses.fromTokenPrice}`);
 
 		insertTransactionLog(
 			DB_PATH,
