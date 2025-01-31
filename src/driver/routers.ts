@@ -322,7 +322,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
-				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
+				excludedProtocols: 'BASE_MAVERICK,ARBITRUM_ONE_INCH_LIMIT_ORDER_V4',
 				amount: swapParams.amountIn,
 				includeGas: true,
 			},
@@ -387,7 +387,7 @@ export class SwapRouters {
 			params: {
 				src: swapParams.srcToken,
 				dst: swapParams.destToken,
-				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
+				excludedProtocols: 'BASE_MAVERICK,ARBITRUM_ONE_INCH_LIMIT_ORDER_V4',
 				amount: swapParams.amountIn,
 				from: swapSourceDst,
 				slippage: swapParams.slippagePercent,
