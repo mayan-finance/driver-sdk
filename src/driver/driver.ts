@@ -27,7 +27,7 @@ import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
-import { sendAlert } from '../utils/alert';
+import { sendAlert, sendLossAlert } from '../utils/alert';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;
@@ -431,7 +431,11 @@ export class DriverService {
 			swap,
 			expenses,
 		);
-		logger.info(`Fulfilling ${swap.sourceTxHash} with ${fulfillAmount}`);
+		logger.info(`Fulfilling ${swap.sourceTxHash} with ${fulfillAmount} other: effective: ${effectiveAmntIn}, fromprice: ${expenses.fromTokenPrice}`);
+
+		if (fulfillAmount > effectiveAmntIn) {
+			sendLossAlert(swap.orderId, `${(fulfillAmount - effectiveAmntIn) * expenses.fromTokenPrice}`);
+		}
 
 		insertTransactionLog(
 			DB_PATH,
