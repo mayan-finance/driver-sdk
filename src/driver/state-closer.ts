@@ -63,7 +63,7 @@ export class StateCloser {
 	}
 
 	async closeDestSolanaStates(destSolanaStates: string[]) {
-		const chunkSize = 6;
+		const chunkSize = 16;
 		for (let i = 0; i < destSolanaStates.length; i += chunkSize) {
 			const chunk = destSolanaStates.slice(i, i + chunkSize);
 			await this.closeBatchDestSolanaStates(chunk);

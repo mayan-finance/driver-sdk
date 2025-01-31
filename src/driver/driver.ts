@@ -24,6 +24,7 @@ import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
+import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;
@@ -183,6 +184,7 @@ export class DriverService {
 			fromToken: fromToken,
 			toChainId: dstChain,
 			toToken: toToken,
+			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
 		});
 		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
@@ -207,8 +209,7 @@ export class DriverService {
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
 			logger.error(
-				`Shall not bid on tx: ${swap.sourceTxHash} because 
-				${normalizedBidAmount} is less than min amount out ${normalizedMinAmountOut}`,
+				`Shall not bid on tx: ${swap.sourceTxHash} because ${normalizedBidAmount} is less than min amount out ${normalizedMinAmountOut}. ${expenses.unlockSource}:${expenses.fulfillCost}:${expenses.fulfillAndUnlock}`,
 			);
 			throw new Error('`Shall not bid on tx because bid amount is less than min amount out`');
 		}
@@ -342,8 +343,6 @@ export class DriverService {
 			[],
 			this.rpcConfig.solana.sendCount,
 			true,
-			undefined,
-			computeUnits,
 		);
 		logger.info(`Sent post bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
@@ -398,6 +397,7 @@ export class DriverService {
 			fromToken: fromToken,
 			toChainId: dstChain,
 			toToken: toToken,
+			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
 		});
 		const effectiveAmntIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
@@ -420,6 +420,16 @@ export class DriverService {
 			effectiveAmntIn,
 			swap,
 			expenses,
+		);
+
+		insertTransactionLog(
+			DB_PATH,
+			swap.sourceTxHash,
+			swap.sourceChain.toString(),
+			swap.destChain.toString(),
+			fulfillAmount * expenses.fromTokenPrice,
+			effectiveAmntIn * expenses.fromTokenPrice,
+			(fulfillAmount - effectiveAmntIn) * expenses.fromTokenPrice,
 		);
 
 		if (swap.destChain === CHAIN_ID_SOLANA) {

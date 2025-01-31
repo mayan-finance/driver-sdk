@@ -4,7 +4,16 @@ import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
 import { abi as WormholeAbi } from '../abis/wormhole.abi';
-import { CHAIN_ID_SOLANA } from '../config/chains';
+import {
+	CHAIN_ID_ARBITRUM,
+	CHAIN_ID_AVAX,
+	CHAIN_ID_BASE,
+	CHAIN_ID_BSC,
+	CHAIN_ID_ETH,
+	CHAIN_ID_OPTIMISM,
+	CHAIN_ID_POLYGON,
+	CHAIN_ID_SOLANA,
+} from '../config/chains';
 import { ContractsConfig, SolanaProgram } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
@@ -42,6 +51,7 @@ export type UnlockableSwapBatchItem = {
 	orders: {
 		fromTokenAddress: string;
 		orderHash: string;
+		volume: string;
 		unlockSequence?: string;
 	}[];
 };
@@ -179,6 +189,10 @@ export class Unlocker {
 				}
 
 				let filteredOrders = batchUnlockData.orders.filter((order) => !alreadyUnlocked.has(order.orderHash));
+				filteredOrders.sort((a, b) => {
+					// sort descending volume
+					return Number(b.volume) - Number(a.volume);
+				});
 
 				let chunkSize = MAX_BATCH_SIZE;
 				for (let i = 0; i < filteredOrders.length; i += chunkSize) {
@@ -203,6 +217,7 @@ export class Unlocker {
 		initialOrders: {
 			orderHash: string;
 			fromTokenAddress: string;
+			volume: string;
 		}[],
 	) {
 		const lockKey = `lock:selectAndPost:${sourceChainId}:${destChainId}`;
@@ -246,9 +261,33 @@ export class Unlocker {
 				throw new Error(`Too many orderHashes might not fit into block...`);
 			}
 
-			if (filteredOrders.length < this.gConf.batchUnlockThreshold) {
+			let volumeStep = 20_000;
+			let desiredUnlockValue = 13000;
+			switch (sourceChainId) {
+				case CHAIN_ID_ARBITRUM:
+				case CHAIN_ID_BASE:
+				case CHAIN_ID_OPTIMISM:
+				case CHAIN_ID_POLYGON:
+				case CHAIN_ID_BSC:
+				case CHAIN_ID_AVAX:
+					volumeStep = 2000;
+					break;
+				case CHAIN_ID_ETH:
+					volumeStep = 16000;
+					break;
+				default:
+					break;
+			}
+
+			let totalVolume = filteredOrders.reduce((acc, order) => acc + Number(order.volume), 0);
+			let volumeSteps = Math.ceil(totalVolume / volumeStep);
+
+			if (
+				filteredOrders.length < this.gConf.batchUnlockThreshold &&
+				volumeSteps < this.gConf.batchUnlockThreshold - 2
+			) {
 				logger.verbose(
-					`Not enough swaps to select and post for ${sourceChainId} to ${destChainId}. min ${this.gConf.batchUnlockThreshold}`,
+					`Not enough swaps to select and post for ${sourceChainId} to ${destChainId}. min ${filteredOrders.length} ${volumeStep} ${desiredUnlockValue}`,
 				);
 				delete this.locks[lockKey];
 				return;
@@ -311,7 +350,9 @@ export class Unlocker {
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			logger.error(
+				`getPendingBatchUnlockAndRefund  Solana failed for ${sourceChainId} to ${destChainId} - sequence: ${sequence} - postTX: ${postTxHash} - ${err}`,
+			);
 			delete this.locks[lockKey];
 		}
 	}
@@ -441,7 +482,9 @@ export class Unlocker {
 			this.sequenceStore.removeBatchSequenceAfterUnlock(postTxHash);
 			delete this.locks[lockKey];
 		} catch (err) {
-			logger.error(`getPendingBatchUnlockAndRefund failed for ${sourceChainId} to ${destChainId} ${err}`);
+			logger.error(
+				`getPendingBatchUnlockAndRefund EVM failed for ${sourceChainId} to ${destChainId} - sequence: ${sequence} - postTX: ${postTxHash} - ${err}`,
+			);
 			delete this.locks[lockKey];
 		}
 	}
@@ -590,7 +633,7 @@ export class Unlocker {
 		destChain: number,
 		isBatch: boolean,
 	): Promise<string> {
-		const swiftContract = this.walletsHelper.getWriteContract(sourceChain);
+		const swiftContract = this.walletsHelper.getWriteContract(sourceChain, false);
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
 		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData);
@@ -624,7 +667,7 @@ export class Unlocker {
 
 	private async getAlreadyUnlockedOrPendingOrderSolana(orderHashes: string[]): Promise<Set<string>> {
 		let result: Set<string> = new Set();
-		const maxFetchPerCall = 200;
+		const maxFetchPerCall = 100;
 
 		for (let orderHash of orderHashes) {
 			if (this.sequenceStore.isOrderAlreadyPosted(orderHash)) {
@@ -657,7 +700,7 @@ export class Unlocker {
 	private scheduleAlreadyPostedUnlocks(batchUnlockData: UnlockableSwapBatchItem): Set<string> {
 		let result: Set<string> = new Set();
 
-		let posts: { [key: string]: { fromTokenAddress: string; orderHash: string }[] } = {};
+		let posts: { [key: string]: { fromTokenAddress: string; orderHash: string; volume: number }[] } = {};
 		for (let item of batchUnlockData.orders) {
 			if (item.unlockSequence && item.unlockSequence !== '0') {
 				result.add(item.orderHash);
@@ -665,6 +708,7 @@ export class Unlocker {
 					posts[item.unlockSequence] = [];
 				}
 				posts[item.unlockSequence].push({
+					volume: Number(item.volume),
 					fromTokenAddress: item.fromTokenAddress,
 					orderHash: item.orderHash,
 				});
@@ -672,15 +716,13 @@ export class Unlocker {
 		}
 
 		for (let [sequence, val] of Object.entries(posts)) {
-			if (val.length >= this.gConf.batchUnlockThreshold) {
-				this.sequenceStore.addBatchPostedSequence(
-					batchUnlockData.fromChain,
-					batchUnlockData.toChain,
-					val,
-					BigInt(sequence),
-					`${batchUnlockData.fromChain}-${batchUnlockData.toChain}-${sequence}`,
-				);
-			}
+			this.sequenceStore.addBatchPostedSequence(
+				batchUnlockData.fromChain,
+				batchUnlockData.toChain,
+				val,
+				BigInt(sequence),
+				`${batchUnlockData.fromChain}-${batchUnlockData.toChain}-${sequence}`,
+			);
 		}
 
 		return result;
@@ -717,7 +759,7 @@ export class Unlocker {
 	}> {
 		const rawData = await axios.get(this.endpoints.explorerApiUrl + '/v3/unlockable-swaps', {
 			params: {
-				batchUnlockThreshold: this.gConf.batchUnlockThreshold,
+				batchUnlockThreshold: 1,
 				singleBatchChainIds: this.gConf.singleBatchChainIds.join(','),
 				driverAddresses: driverAddresses.join(','),
 			},
