@@ -3,12 +3,12 @@ import * as fs from 'fs';
 import { DB_PATH, getTotalDiffAmount } from './utils/sqlite3';
 
 const filePath = './loss.json';
-export const maxLossPerSwapUSD = 125;
-export const maxTotalLossUSDPerDay = 2000;
+export const maxLossPerSwapUSD = 35;
+export const maxTotalLossUSDPerDay = 1000;
 
 const maxPerTenMins = 1000;
 const maxPerHour = 5000;
-const maxPerDay = 50000;
+const maxPerDay = 5000;
 
 export const paidLosses = {
 	TEN_MINS: 0,
