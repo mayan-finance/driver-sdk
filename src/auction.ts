@@ -38,7 +38,7 @@ export class AuctionFulfillerConfig {
 		private readonly walletConfig: WalletConfig,
 		private readonly swapRouters: SwapRouters,
 		private readonly tokenList: TokenList,
-	) {}
+	) { }
 
 	async normalizedBidAmount(
 		driverToken: Token,
