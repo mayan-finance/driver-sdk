@@ -6,7 +6,6 @@ Drivers participate in on-chain auctions to compete for the opportunity to fulfi
 Copy `.env.sample` into `.env` and set the required values including:
 
 -   `JUP_V6_ENDPOINT` for using custom or self hosted jup endpoint
--   `JUP_API_KEY` for swapping on Solana via Jupiter [jup.ag](https://station.jup.ag/docs/apis/swap-api)
 -   `ONE_INCH_API_KEY` for swapping on EVM chains via [1inch](https://portal.1inch.dev/)
 
 -   `EVM_PRIVATE_KEY` Hex encoded private key of your EVM wallet (for all chains)
@@ -19,6 +18,7 @@ Optional `.env` overrides:
 -   `ETHEREUM_FLASHBOT_RPC` writes to ethereum are sent thorugh flashbots rpc to avoid expensive revert costs. You could provide something else
 -   `SOLANA_SEND_RPCS` solana transactions are broadcasted to multiple rpcs to decrease transacttion landing times
 
+Make sure you have sqlite3 binary available in your PATH.
 Install NodeJS (node 20 is recommended)
 
 ```bash
