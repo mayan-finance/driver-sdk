@@ -12,12 +12,7 @@ import {
 import logger from './logger';
 
 export async function getSuggestedOverrides(targetChain: number, chainGasPrice: bigint): Promise<any> {
-	let overrides: {
-		maxPriorityFeePerGas?: bigint;
-		maxFeePerGas?: bigint;
-		gasPrice?: bigint;
-		gasLimit?: string;
-	} = {};
+	let overrides: ethers.Overrides = {};
 	if (targetChain === CHAIN_ID_POLYGON) {
 		try {
 			const { data } = await axios.get('https://gasstation.polygon.technology/v2');
@@ -33,8 +28,9 @@ export async function getSuggestedOverrides(targetChain: number, chainGasPrice: 
 		overrides['gasPrice'] = chainGasPrice;
 	} else if (targetChain === CHAIN_ID_BASE) {
 		overrides['gasPrice'] = chainGasPrice * 2n;
-	} else {
-		overrides['gasPrice'] = chainGasPrice;
+	} else if (targetChain === CHAIN_ID_ETH) {
+		overrides['maxFeePerGas'] = chainGasPrice;
+		overrides['maxPriorityFeePerGas'] = chainGasPrice;
 	}
 
 	return overrides;
