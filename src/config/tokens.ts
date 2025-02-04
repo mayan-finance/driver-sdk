@@ -31,6 +31,7 @@ export type Token = {
 	coingeckoId: string;
 	realOriginChainId: number;
 	realOriginContractAddress: string;
+	pythUsdPriceId?: string;
 	supportsPermit?: boolean;
 	hasTransferFee?: boolean;
 	standard: 'native' | 'erc20' | 'spl' | 'spl2022';
@@ -40,7 +41,13 @@ export class TokenList {
 	private endpoints: MayanEndpoints;
 	private tokensPerChain: { [key: number]: Token[] } = {};
 	public nativeTokens: { [index: string]: Token } = {};
-
+	private allPythIds: string[] = [];
+	private readonly pythToCoingeckoIds: { [pythId: string]: Set<string> } = {};
+	private pythPrices: { [coingeckoId: string]: {
+		updatedAt: Date;
+		price: number;
+	} } = {};
+	private pythLock = false;
 	private initialized = false;
 
 	constructor(
@@ -59,7 +66,59 @@ export class TokenList {
 		setInterval(() => {
 			this.updateList();
 		}, this.endpoints.refreshTokenIntervalSeconds * 1000);
+		setInterval(() => {
+			this.updatePythPrices();
+		}, 3_000);
 		this.initialized = true;
+	}
+
+	async updatePythPrices() {
+		try {
+			if (this.pythLock) {
+				return;
+			}
+			this.pythLock = true;
+			const { data: result } = await axios.get('https://hermes.pyth.network/v2/updates/price/latest', {
+				params: {
+					'ids[]': this.allPythIds.map((id) => id.replace('0x', '')),
+					encoding: 'hex',
+					parsed: 'true',
+				},
+			});
+			for (let item of result.parsed) {
+				let pythId = item.id;
+				if (!pythId.startsWith('0x')) {
+					pythId = '0x' + pythId;
+				}
+				const coingeckoIds = this.pythToCoingeckoIds[pythId];
+				if (!coingeckoIds) {
+					continue;
+				}
+				const price = Number(item.price.price) * 10 ** Number(item.price.expo);
+				for (let coingeckoId of coingeckoIds) {
+					this.pythPrices[coingeckoId] = {
+						updatedAt: new Date(),
+						price: price,
+					};
+				}
+			}
+		} catch (err) {
+			logger.error(`Failed to update pyth prices: ${err}`);
+		} finally {
+			this.pythLock = false;
+		}
+	}
+
+	getLatestUsdtToUsdcPrice() {
+		if (
+			this.pythPrices['tether']?.price &&
+			this.pythPrices['usd-coin']?.price &&
+			this.pythPrices['tether']?.updatedAt > new Date(Date.now() - 60 * 1000)
+		) {
+
+			return this.pythPrices['tether'].price / this.pythPrices['usd-coin'].price;
+		}
+		return null;
 	}
 
 	async updateList() {
@@ -87,6 +146,18 @@ export class TokenList {
 				},
 				{} as { [index: string]: Token },
 			);
+
+			for (let chain of Object.keys(this.tokensPerChain)) {
+				for (let token of this.tokensPerChain[+chain]) {
+					if (token.pythUsdPriceId) {
+						if (!this.pythToCoingeckoIds[token.pythUsdPriceId]) {
+							this.pythToCoingeckoIds[token.pythUsdPriceId] = new Set();
+						}
+						this.pythToCoingeckoIds[token.pythUsdPriceId].add(token.coingeckoId);
+					}
+				}
+			}
+			this.allPythIds = Object.keys(this.pythToCoingeckoIds);
 
 			logger.info(`Token list refreshed with ${tokenCount} tokens`);
 		} catch (err) {
