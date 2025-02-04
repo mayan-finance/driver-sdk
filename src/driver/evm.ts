@@ -287,12 +287,12 @@ export class EvmFulfiller {
 				const args = [amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides];
 				if (!overrides['gasLimit']) {
 					const estimatedGas = await this.walletHelper
-						.getWriteContract(swap.destChain, false)
+						.getWriteContract(swap.destChain)
 						.fulfillOrder.estimateGas(...args);
 					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
 					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
 				}
-				fulfillTx = await this.walletHelper.getWriteContract(swap.destChain, false).fulfillOrder(...args);
+				fulfillTx = await this.walletHelper.getWriteContract(swap.destChain).fulfillOrder(...args);
 			} else {
 				const args = [
 					driverToken.contract,
