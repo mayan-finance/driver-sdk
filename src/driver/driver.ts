@@ -479,6 +479,7 @@ export class DriverService {
 				dstChain,
 				driverToken,
 				realMinAmountOut,
+				expenses.dstGasPrice,
 				postAuctionSignedVaa,
 			);
 		}
@@ -616,9 +617,5 @@ export class DriverService {
 			4,
 		);
 		logger.info(`Sent jito fulfill-settle package for ${swap.sourceTxHash}`);
-	}
-
-	async submitGaslessOrder(swap: Swap) {
-		await this.evmFulFiller.submitGaslessOrder(swap);
 	}
 }

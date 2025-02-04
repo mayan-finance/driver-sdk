@@ -20,7 +20,7 @@ import { getErc20Allowance, getErc20Balance, getEthBalance, giveErc20Allowance }
 import { EvmProviders } from '../utils/evm-providers';
 import { getSuggestedOverrides, getTypicalBlocksToConfirm } from '../utils/evm-trx';
 import logger from '../utils/logger';
-import { Erc20Permit, deserializePermitFromHex, generateErc20Permit } from '../utils/permit';
+import { Erc20Permit, generateErc20Permit } from '../utils/permit';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { SwapRouters } from './routers';
@@ -220,12 +220,14 @@ export class EvmFulfiller {
 		targetChain: number,
 		driverToken: Token,
 		realMinAmountOut: bigint,
+		dstGasPrice: bigint,
 		postAuctionSignedVaa?: Uint8Array,
 	) {
 		const amountIn64 = ethers.parseUnits(availableAmountIn.toFixed(driverToken.decimals), driverToken.decimals);
-		const networkFeeData: ethers.FeeData = await this.evmProviders[targetChain].getFeeData();
+		const freshGasPrice: bigint = (await this.evmProviders[targetChain].getFeeData()).gasPrice!;
+		const chosenGasPrice = freshGasPrice < dstGasPrice ? freshGasPrice : dstGasPrice;
 
-		const overrides = await getSuggestedOverrides(targetChain, networkFeeData);
+		const overrides = await getSuggestedOverrides(targetChain, chosenGasPrice);
 		const nativeCurrency = this.tokenList.nativeTokens[targetChain];
 
 		let gasDrop = swap.gasDrop64;
@@ -279,7 +281,7 @@ export class EvmFulfiller {
 			logger.info(`Sending no-swap auction fulfill with fulfillOrder for tx=${swap.sourceTxHash}`);
 
 			if (swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-				return await this.simpleFulfill(swap, availableAmountIn, toToken!);
+				return await this.simpleFulfill(swap, availableAmountIn, toToken!, dstGasPrice);
 			} else if (driverToken.contract === ethers.ZeroAddress) {
 				overrides['value'] = overrides['value'] + amountIn64;
 				const args = [amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides];
@@ -468,74 +470,7 @@ export class EvmFulfiller {
 		return normalizedBidAmount;
 	}
 
-	async submitGaslessOrder(swap: Swap) {
-		const fromToken = swap.fromToken;
-		const fromNormalizedDecimals = Math.min(WORMHOLE_DECIMALS, fromToken.decimals);
-		let trader32Hex = tryNativeToHexString(swap.trader, swap.sourceChain);
-		let tokenOut32Hex = tryNativeToHexString(swap.toTokenAddress, swap.destChain);
-		let minAmountOut64 = swap.minAmountOut64;
-		let gasDrop64 = swap.gasDrop64;
-		let referrerBps = swap.referrerBps;
-		let destRefundFee64 = ethers.parseUnits(
-			swap.redeemRelayerFee.toFixed(fromNormalizedDecimals, Decimal.ROUND_DOWN),
-			fromNormalizedDecimals,
-		);
-		let sourceRefundFee64 = ethers.parseUnits(
-			swap.refundRelayerFee.toFixed(fromNormalizedDecimals, Decimal.ROUND_DOWN),
-			fromNormalizedDecimals,
-		);
-		let deadline64 = BigInt(Math.floor(swap.deadline.getTime() / 1000));
-		let destAddr32Hex = tryNativeToHexString(swap.destAddress, swap.destChain);
-		let destChain = swap.destChain;
-		let referrerAddr32Hex = tryNativeToHexString(swap.referrerAddress, swap.destChain);
-		let random32Hex = swap.randomKey;
-
-		const permitParams = deserializePermitFromHex(swap.gaslessPermit);
-
-		const swiftContract = this.walletHelper.getWriteContract(swap.sourceChain);
-		const overrides = await getSuggestedOverrides(
-			swap.sourceChain,
-			await this.evmProviders[swap.sourceChain].getFeeData(),
-		);
-		if (overrides['gasLimit']) {
-			delete overrides['gasLimit'];
-		}
-
-		const submitTx = await swiftContract.createOrderWithSig(
-			swap.fromTokenAddress,
-			swap.fromAmount64,
-			{
-				trader: trader32Hex,
-				tokenOut: tokenOut32Hex,
-				minAmountOut: minAmountOut64,
-				gasDrop: gasDrop64,
-				cancelFee: destRefundFee64,
-				refundFee: sourceRefundFee64,
-				deadline: deadline64,
-				destAddr: destAddr32Hex,
-				destChainId: destChain,
-				referrerAddr: referrerAddr32Hex,
-				referrerBps: referrerBps,
-				auctionMode: swap.auctionMode,
-				random: random32Hex,
-			},
-			swap.gaslessSignature,
-			permitParams,
-			overrides,
-		);
-
-		logger.info(`Wait for submit evm confirm for ${swap.sourceTxHash} via: ${submitTx.hash}`);
-		const tx = await submitTx.wait();
-
-		if (tx.status !== 1) {
-			throw new Error(`Submitting gasless on evm tx reverted sourceTx: ${swap.sourceTxHash}, ${tx.hash}`);
-		} else {
-			swap.status = SWAP_STATUS.ORDER_CREATED;
-			swap.createTxHash = tx.hash;
-		}
-	}
-
-	async simpleFulfill(swap: Swap, availableAmountIn: number, toToken: Token) {
+	async simpleFulfill(swap: Swap, availableAmountIn: number, toToken: Token, dstGasPrice: bigint) {
 		const targetChain = swap.destChain;
 		const driverTokens = [this.tokenList.getNativeUsdc(targetChain), this.tokenList.nativeTokens[targetChain]];
 
@@ -575,9 +510,10 @@ export class EvmFulfiller {
 			throw new Error(`Not enough balance for and can not fullfill ${toToken.contract}`);
 		}
 
-		const networkFeeData: ethers.FeeData = await this.evmProviders[targetChain].getFeeData();
+		const freshGasPrice: bigint = (await this.evmProviders[targetChain].getFeeData()).gasPrice!;
+		const chosenGasPrice = freshGasPrice < dstGasPrice ? freshGasPrice : dstGasPrice;
 
-		const overrides = await getSuggestedOverrides(targetChain, networkFeeData);
+		const overrides = await getSuggestedOverrides(targetChain, chosenGasPrice);
 		const nativeCurrency = this.tokenList.nativeTokens[targetChain];
 
 		let gasDrop = swap.gasDrop64;

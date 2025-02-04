@@ -220,29 +220,6 @@ export class Relayer {
 		}
 	}
 
-	async submitGaslessOrderIfRequired(
-		swap: Swap,
-		sourceSolanaState: SwiftSourceState | null,
-		sourceEvmOrder: EvmStoredOrder | null,
-	) {
-		if (!swap.gasless) {
-			return; // not gasless
-		}
-
-		if (sourceEvmOrder && sourceEvmOrder.destChainId == +swap.destChain) {
-			logger.warn(`Order already submitted for ${swap.sourceTxHash}`);
-			swap.status = 'ORDER_CREATED';
-			if (!swap.createTxHash) {
-				throw new Error('Gasless swap is already registered but createTxHash is missing');
-			}
-			return;
-		}
-
-		await this.driverService.submitGaslessOrder(swap);
-
-		logger.info(`Order submitted for ${swap.sourceTxHash}`);
-	}
-
 	async bidAndFulfillEvm(
 		swap: Swap,
 		srcState: SwiftSourceState | null,
