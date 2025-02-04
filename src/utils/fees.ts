@@ -269,6 +269,8 @@ export class FeeService {
 			fulfillAndUnlock: totalCost,
 			fromTokenPrice: fromTokenPrice,
 			toTokenPrice: toTokenPrice,
+			srcGasPrice,
+			dstGasPrice,
 		};
 	}
 
@@ -432,6 +434,8 @@ export type SwiftCosts = {
 	fulfillAndUnlock: number;
 	fromTokenPrice: number;
 	toTokenPrice: number;
+	srcGasPrice: bigint;
+	dstGasPrice: bigint;
 };
 
 export type ExpenseParams = {

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { FeeData, ethers } from 'ethers6';
+import { ethers } from 'ethers6';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
@@ -11,7 +11,7 @@ import {
 } from '../config/chains';
 import logger from './logger';
 
-export async function getSuggestedOverrides(targetChain: number, networkFeeData: FeeData): Promise<any> {
+export async function getSuggestedOverrides(targetChain: number, chainGasPrice: bigint): Promise<any> {
 	let overrides: {
 		maxPriorityFeePerGas?: bigint;
 		maxFeePerGas?: bigint;
@@ -30,9 +30,11 @@ export async function getSuggestedOverrides(targetChain: number, networkFeeData:
 	} else if (targetChain === CHAIN_ID_BSC) {
 		overrides['gasPrice'] = ethers.parseUnits('1.5', 'gwei');
 	} else if (targetChain === CHAIN_ID_OPTIMISM) {
-		overrides['gasPrice'] = networkFeeData.gasPrice!;
+		overrides['gasPrice'] = chainGasPrice;
 	} else if (targetChain === CHAIN_ID_BASE) {
-		overrides['gasPrice'] = networkFeeData.gasPrice! * 2n;
+		overrides['gasPrice'] = chainGasPrice * 2n;
+	} else {
+		overrides['gasPrice'] = chainGasPrice;
 	}
 
 	return overrides;

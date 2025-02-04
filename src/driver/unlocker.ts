@@ -560,7 +560,7 @@ export class Unlocker {
 		txHash: string;
 	}> {
 		const networkFeeData = await this.evmProviders[destChain].getFeeData();
-		const overrides = await getSuggestedOverrides(destChain, networkFeeData);
+		const overrides = await getSuggestedOverrides(destChain, networkFeeData.gasPrice!);
 		const tx: ethers.TransactionReceipt = await (
 			await this.walletsHelper.getWriteContract(destChain).postBatch(orderHashes, overrides)
 		).wait();
@@ -636,7 +636,7 @@ export class Unlocker {
 		const swiftContract = this.walletsHelper.getWriteContract(sourceChain, false);
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
-		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData);
+		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData.gasPrice!);
 		let tx: ethers.TransactionResponse;
 		if (isBatch) {
 			tx = await swiftContract.unlockBatch(hexToUint8Array(signedVaa), overrides);
