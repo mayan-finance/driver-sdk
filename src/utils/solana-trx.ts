@@ -70,12 +70,12 @@ export class SolanaMultiTxSender {
 
 	async updateJitoTips(): Promise<void> {
 		try {
-			const { data } = await axios.get('http://bundles.jito.wtf/api/v1/bundles/tip_floor');
+			const { data } = await axios.get('https://bundles.jito.wtf/api/v1/bundles/tip_floor');
 			this.minJitoTipAmount = Math.min(
 				this.maxJitoTipAmount,
 				Math.max(data[0]['landed_tips_75th_percentile'], this.minJitoTipAmount),
 			);
-			console.log(`Updated jito tips: ${this.minJitoTipAmount}`);
+			// console.log(`Updated jito tips: ${this.minJitoTipAmount}`);
 		} catch (error) {
 			logger.error(`Error updating jito tips: ${error}`);
 		}
@@ -356,7 +356,9 @@ export class SolanaMultiTxSender {
 		});
 
 		if (rpcResponse.value.err) {
-			console.error(`Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)} logs: ${rpcResponse.value.logs}`);
+			console.error(
+				`Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)} logs: ${rpcResponse.value.logs}`,
+			);
 			return null;
 		}
 
