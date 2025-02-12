@@ -43,6 +43,7 @@ export class MayanExplorerWatcher {
 		const swap: Swap = {
 			retries: 0,
 			trader: rawSwap.trader,
+			orderId: rawSwap.orderId,
 			sourceTxHash: rawSwap.sourceTxHash,
 			gasless: !!rawSwap.gasless,
 			gaslessTx: rawSwap.gaslessTx,
@@ -106,11 +107,6 @@ export class MayanExplorerWatcher {
 						return;
 					}
 
-					// if (!this.initiateAddresses.includes(rawSwap.initiateContractAddress)) {
-					// 	logger.info(`Swap droppped because initiateAddress not supported ${rawSwap.sourceTxHash}`);
-					// 	return;
-					// }
-
 					if (rawSwap.status !== 'ORDER_CREATED' && rawSwap.status !== 'ORDER_FULFILLED') {
 						return;
 					}
@@ -168,8 +164,8 @@ export class MayanExplorerWatcher {
 						continue;
 					}
 
-					if (this.relayer.relayingSwaps.find((x) => x.orderHash === s.orderHash)) {
-						logger.verbose(`Already progressing swap ${s.sourceTxHash}`);
+					if (this.relayer.relayingSwaps.find((x) => x.orderId === s.orderId)) {
+						logger.verbose(`Already progressing swap ${s.sourceTxHash} ${s.orderId}`);
 						continue;
 					}
 

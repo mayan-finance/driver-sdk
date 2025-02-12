@@ -2,6 +2,7 @@ import Decimal from 'decimal.js';
 import { Token } from './config/tokens';
 
 export type Swap = {
+	orderId: string;
 	trader: string;
 	sourceTxHash: string;
 	orderHash: string;
