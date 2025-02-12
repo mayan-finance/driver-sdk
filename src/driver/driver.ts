@@ -17,6 +17,7 @@ import { tryNativeToUint8Array } from '../utils/buffer';
 import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
 import { SolanaMultiTxSender } from '../utils/solana-trx';
+import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
 import { AUCTION_MODES } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from '../utils/wormhole';
@@ -24,7 +25,6 @@ import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
-import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;
@@ -424,7 +424,7 @@ export class DriverService {
 
 		insertTransactionLog(
 			DB_PATH,
-			swap.sourceTxHash,
+			`${swap.sourceTxHash}__${swap.orderId}`,
 			swap.sourceChain.toString(),
 			swap.destChain.toString(),
 			fulfillAmount * expenses.fromTokenPrice,
