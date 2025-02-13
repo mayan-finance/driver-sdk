@@ -53,39 +53,29 @@ export class SwapRouters {
 			amountIn: string;
 			timeout?: number;
 		},
-		includeGas: boolean = true,
+		swapRetries: number,
 		retries: number = 3,
 	): Promise<{
 		toAmount: string;
 		gas: number;
 	}> {
+		let quotename = '1inch';
+
 		try {
-			return await this.get1InchQuote(swapParams, includeGas, retries);
+			let quoteFunction = this.get1InchQuote;
+			if (swapRetries % 2 === 0) {
+				quoteFunction = this.getOkxQuote;
+				quotename = 'okx';
+			}
+			return await quoteFunction(swapParams, retries);
 		} catch (err) {
-			console.error(`Error using 1inch as swap ${err}. trying okx`);
+			console.error(`Error using ${quotename} as swap ${err}. trying other`);
 			try {
 				return await this.getOkxQuote(swapParams, retries);
 			} catch (errrr) {
 				throw errrr;
 			}
 		}
-
-		// let chosenRouter = this.routersConfig.selectedEvmRouter[swapParams.whChainId];
-		// if (!chosenRouter) {
-		// 	chosenRouter = EvmRouter.ONE1INCH;
-		// }
-
-		// switch (chosenRouter) {
-		// 	case EvmRouter.ONE1INCH:
-		// 		return await this.get1InchQuote(swapParams, includeGas, retries);
-		// 	case EvmRouter.OKX:
-		// 		return await this.getOkxQuote(swapParams, retries);
-		// 	case EvmRouter.UNISWAP_V3:
-		// 		throw new Error('not implemented uniswap yet');
-		// 	// return await this.getUniswapQuote(swapParams, includeGas, retries);
-		// 	default:
-		// 		return await this.get1InchQuote(swapParams, includeGas, retries);
-		// }
 	}
 
 	async getSwap(
@@ -97,7 +87,7 @@ export class SwapRouters {
 			slippagePercent: number;
 			timeout?: number;
 		},
-		includeGas: boolean = true,
+		swapRetries: number,
 		retries: number = 3,
 	): Promise<{
 		tx: {
@@ -109,10 +99,16 @@ export class SwapRouters {
 		gas: number;
 		toAmount: string;
 	}> {
+		let quotename = '1inch';
 		try {
-			return await this.get1InchSwap(swapParams, includeGas, retries);
+			let swapFunction = this.get1InchSwap;
+			if (swapRetries % 2 === 0) {
+				quotename = 'okx';
+				swapFunction = this.getOkxSwap;
+			}
+			return await swapFunction(swapParams, retries);
 		} catch (err) {
-			console.error(`Error using 1inch as swap ${err}. trying okx`);
+			console.error(`Error using ${quotename} as swap ${err}. trying other`);
 			try {
 				return await this.getOkxSwap(swapParams, retries);
 			} catch (errrr) {
@@ -196,7 +192,6 @@ export class SwapRouters {
 			amountIn: string;
 			timeout?: number;
 		},
-		includeGas: boolean = true,
 		retries: number = 3,
 	): Promise<{
 		toAmount: string;
@@ -224,7 +219,7 @@ export class SwapRouters {
 				dst: swapParams.destToken,
 				excludedProtocols: 'BASE_MAVERICK,BASE_UNISWAP_V2,BASE_UNISWAP_V3',
 				amount: swapParams.amountIn,
-				includeGas: includeGas,
+				includeGas: true,
 			},
 		};
 
@@ -241,7 +236,7 @@ export class SwapRouters {
 				await delay(200);
 			}
 			if (isRateLimited && retries > 0) {
-				return this.get1InchQuote(swapParams, includeGas, retries - 1);
+				return this.get1InchQuote(swapParams, retries - 1);
 			}
 			throw new Error(`Failed to get quote from 1inch: ${err}`);
 		}
@@ -256,7 +251,6 @@ export class SwapRouters {
 			slippagePercent: number;
 			timeout?: number;
 		},
-		includeGas: boolean = true,
 		retries: number = 3,
 	): Promise<{
 		tx: {
@@ -293,7 +287,7 @@ export class SwapRouters {
 				from: swapSourceDst,
 				slippage: swapParams.slippagePercent,
 				disableEstimate: true,
-				includeGas: includeGas,
+				includeGas: true,
 			},
 		};
 
@@ -311,7 +305,7 @@ export class SwapRouters {
 				await delay(200);
 			}
 			if (isRateLimited && retries > 0) {
-				return this.get1InchSwap(swapParams, includeGas, retries - 1);
+				return this.get1InchSwap(swapParams, retries - 1);
 			}
 			throw new Error(`Failed to get swap from 1inch: ${err}`);
 		}

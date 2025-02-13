@@ -57,6 +57,7 @@ export class AuctionFulfillerConfig {
 				effectiveAmountIn,
 				normalizedMinAmountOut,
 				swap.toToken,
+				swap.retries,
 			);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
@@ -113,6 +114,7 @@ export class AuctionFulfillerConfig {
 		effectiveAmountInDriverToken: number,
 		normalizedMinAmountOut: bigint,
 		toToken: Token,
+		swapRetries: number,
 	): Promise<bigint> {
 		let output: bigint;
 		if (driverToken.contract === toToken.contract) {
@@ -126,7 +128,7 @@ export class AuctionFulfillerConfig {
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				true,
+				swapRetries,
 				3,
 			);
 
@@ -183,6 +185,7 @@ export class AuctionFulfillerConfig {
 				effectiveAmountIn,
 				normalizedMinAmountOut,
 				swap.toToken,
+				swap.retries,
 			);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;

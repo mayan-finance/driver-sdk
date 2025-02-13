@@ -320,7 +320,7 @@ export class EvmFulfiller {
 					.directFulfill(...args);
 			}
 		} else {
-			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken);
+			const swapParams = await this.getEvmFulfillParams(amountIn64, toToken, targetChain, driverToken, swap.retries);
 			if (swapParams.expectedAmountOut < realMinAmountOut) {
 				throw new Error(
 					`Can not evm fulfill ${swap.sourceTxHash} on evm. min amount out issue ${swapParams.expectedAmountOut} ${realMinAmountOut} with input: ${amountIn64} raw input: ${swap.fromAmount64}`,
@@ -402,6 +402,7 @@ export class EvmFulfiller {
 		toToken: Token,
 		destChain: number,
 		driverToken: Token,
+		swapRetries: number,
 	): Promise<{
 		evmRouterAddress: string;
 		evmRouterCalldata: string;
@@ -416,7 +417,7 @@ export class EvmFulfiller {
 				srcToken: driverToken.contract,
 				timeout: 3000,
 			},
-			true,
+			swapRetries,
 			4,
 		);
 
@@ -446,7 +447,7 @@ export class EvmFulfiller {
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
 					timeout: 2000,
 				},
-				true,
+				0,
 				3,
 			);
 
