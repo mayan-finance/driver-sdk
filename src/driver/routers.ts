@@ -62,9 +62,9 @@ export class SwapRouters {
 		let quotename = '1inch';
 
 		try {
-			let quoteFunction = this.get1InchQuote;
+			let quoteFunction = this.get1InchQuote.bind(this);
 			if (swapRetries % 2 === 0) {
-				quoteFunction = this.getOkxQuote;
+				quoteFunction = this.getOkxQuote.bind(this);
 				quotename = 'okx';
 			}
 			return await quoteFunction(swapParams, retries);
@@ -101,10 +101,10 @@ export class SwapRouters {
 	}> {
 		let quotename = '1inch';
 		try {
-			let swapFunction = this.get1InchSwap;
+			let swapFunction = this.get1InchSwap.bind(this);
 			if (swapRetries % 2 === 0) {
 				quotename = 'okx';
-				swapFunction = this.getOkxSwap;
+				swapFunction = this.getOkxSwap.bind(this);
 			}
 			return await swapFunction(swapParams, retries);
 		} catch (err) {
@@ -115,22 +115,6 @@ export class SwapRouters {
 				throw errrr;
 			}
 		}
-		// let chosenRouter = this.routersConfig.selectedEvmRouter[swapParams.whChainId];
-		// if (!chosenRouter) {
-		// 	chosenRouter = EvmRouter.ONE1INCH;
-		// }
-
-		// switch (chosenRouter) {
-		// 	case EvmRouter.ONE1INCH:
-		// 		return await this.get1InchSwap(swapParams, includeGas, retries);
-		// 	case EvmRouter.OKX:
-		// 		return await this.getOkxSwap(swapParams, retries);
-		// 	case EvmRouter.UNISWAP_V3:
-		// 		throw new Error('not implemented uniswap yet');
-		// 	// return await this.getUniswapSwap(swapParams, includeGas, retries);
-		// 	default:
-		// 		throw new Error('not implemented yyyy');
-		// }
 	}
 
 	// async getUniswapQuote(
@@ -449,6 +433,10 @@ export class SwapRouters {
 			const response = await axios.get(apiUrl, config);
 			const tx = response.data.data[0].tx;
 
+			if (tx.to.toLowerCase() !== OkxDexRouterContracts[swapParams.whChainId].toLowerCase()) {
+				throw new Error(`Invalid okx router address ${tx.to}`);
+			}
+
 			if (swapParams.srcToken !== '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
 				// erc 20
 				const data = this.okxIface.encodeFunctionData('approveAndForward', [
@@ -559,4 +547,14 @@ const tokenApprovalContracts: { [chainId: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0x70cBb871E8f30Fc8Ce23609E9E0Ea87B6b222F58',
 	[CHAIN_ID_OPTIMISM]: '0x68D6B739D2020067D1e2F713b999dA97E4d54812',
 	[CHAIN_ID_BASE]: '0x57df6092665eb6058DE53939612413ff4B09114E',
+};
+
+const OkxDexRouterContracts: { [chainId: number]: string } = {
+	[CHAIN_ID_ETH]: '0x7D0CcAa3Fac1e5A943c5168b6CEd828691b46B36',
+	[CHAIN_ID_BSC]: '0x9333C74BDd1E118634fE5664ACA7a9710b108Bab',
+	[CHAIN_ID_POLYGON]: '0xA748D6573acA135aF68F2635BE60CB80278bd855',
+	[CHAIN_ID_AVAX]: '0x1daC23e41Fc8ce857E86fD8C1AE5b6121C67D96d',
+	[CHAIN_ID_ARBITRUM]: '0xf332761c673b59B21fF6dfa8adA44d78c12dEF09',
+	[CHAIN_ID_OPTIMISM]: '0xf332761c673b59B21fF6dfa8adA44d78c12dEF09',
+	[CHAIN_ID_BASE]: '0x6b2C0c7be2048Daa9b5527982C29f48062B34D58',
 };
