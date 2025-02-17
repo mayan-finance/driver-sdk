@@ -51,7 +51,11 @@ export class EvmFulfiller {
 	}
 
 	async init() {
-		await this.lazySetAllowances();
+		try {
+			await this.lazySetAllowances();
+		} catch (err) {
+			logger.error(`Error initializing setting allowances: ${err}`);
+		}
 	}
 
 	private async lazySetAllowances() {

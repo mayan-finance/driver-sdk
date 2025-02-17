@@ -466,3 +466,42 @@ async function getBundleStatuses(bundleIds: string[], jitoApiUrl: string): Promi
 
 	return response.data.result;
 }
+
+export class FailsafeSolanaConnectionHandler {
+	private connections: Connection[];
+	private activeConnection: Connection;
+
+	getConnectionProxy(): Connection {
+		return new Proxy(this, {
+			get: (target, prop) => {
+				return this.activeConnection[prop as keyof Connection];
+			},
+		}) as any;
+	}
+
+	constructor(rpcUrls: string) {
+		this.connections = [];
+		for (let rpcUrl of rpcUrls.split(',')) {
+			this.connections.push(new Connection(rpcUrl, 'confirmed'));
+		}
+
+		this.activeConnection = this.connections[0];
+		this.scheduleHealthCheck();
+	}
+
+	private scheduleHealthCheck() {
+		setInterval(this.setActiveConnection.bind(this), 5000);
+	}
+
+	private async setActiveConnection() {
+		for (let con of this.connections) {
+			try {
+				await con.getLatestBlockhash();
+				this.activeConnection = con;
+				return;
+			} catch (error) {
+				logger.error(`Failed to set active connection: ${error}`);
+			}
+		}
+	}
+}

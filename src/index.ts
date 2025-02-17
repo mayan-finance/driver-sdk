@@ -1,4 +1,4 @@
-import { Connection, PublicKey } from '@solana/web3.js';
+import { PublicKey } from '@solana/web3.js';
 import 'dotenv/config';
 import { AuctionFulfillerConfig } from './auction';
 import { CHAIN_ID_SOLANA, supportedChainIds } from './config/chains';
@@ -27,12 +27,12 @@ import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
 import { Relayer } from './relayer';
 import { SimpleFulfillerConfig } from './simple';
-import { makeEvmProviders, makeSecondEvmProviders } from './utils/evm-providers';
+import { makeEvmProviders, makeSecondEvmProviders, refreshEvmProvidersPeriodically } from './utils/evm-providers';
 import { FeeService } from './utils/fees';
 import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
 import { LookupTableOptimizer } from './utils/lut';
-import { PriorityFeeHelper, SolanaMultiTxSender } from './utils/solana-trx';
+import { FailsafeSolanaConnectionHandler, PriorityFeeHelper, SolanaMultiTxSender } from './utils/solana-trx';
 import { createDatabase, DB_PATH } from './utils/sqlite3';
 import { VaaPoster } from './utils/vaa-poster';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
@@ -82,11 +82,10 @@ export async function main() {
 		refershAndPatchConfigs(globalConfig, contracts, rpcConfig);
 	}, 60_000);
 
-	const evmProviders = makeEvmProviders(supportedChainIds, rpcConfig);
-	const secondaryEvmProviders = makeSecondEvmProviders(supportedChainIds, rpcConfig);
-	const solanaConnection = new Connection(rpcConfig.solana.solanaMainRpc, {
-		commitment: 'confirmed',
-	});
+	const evmProviders = await makeEvmProviders(supportedChainIds, rpcConfig);
+	refreshEvmProvidersPeriodically();
+	const secondaryEvmProviders = await makeSecondEvmProviders(supportedChainIds, rpcConfig);
+	const solanaConnection = new FailsafeSolanaConnectionHandler(rpcConfig.solana.solanaMainRpc).getConnectionProxy();
 
 	const solanaTxSender = new SolanaMultiTxSender(rpcConfig, walletConf);
 
