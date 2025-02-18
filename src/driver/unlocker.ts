@@ -13,9 +13,11 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
 	CHAIN_ID_UNICHAIN,
+	isEvmChainId,
 } from '../config/chains';
-import { ContractsConfig, SolanaProgram } from '../config/contracts';
+import { ContractsConfig, SolanaProgramV2 } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
@@ -70,7 +72,7 @@ export type UnlockableSwapSingleItem = {
 const MAX_BATCH_SIZE = 8;
 
 export class Unlocker {
-	private readonly solprogram = new PublicKey(SolanaProgram);
+	private readonly solprogram = new PublicKey(SolanaProgramV2);
 	private readonly driverAddresses: string[] = [];
 	private locks: { [key: string]: boolean } = {};
 	private readonly wormholeInterface = new ethers.Interface(WormholeAbi);
@@ -366,7 +368,7 @@ export class Unlocker {
 		fromTokenAddress: string,
 	): Promise<string> {
 		const stateAddr = getSwiftStateAddrSrc(
-			new PublicKey(SolanaProgram),
+			new PublicKey(SolanaProgramV2),
 			Buffer.from(orderHash.replace('0x', ''), 'hex'),
 		);
 		const fromMint = new PublicKey(fromTokenAddress);
@@ -407,7 +409,7 @@ export class Unlocker {
 
 		const foundStates = orders.map((ord) =>
 			getSwiftStateAddrSrc(
-				new PublicKey(SolanaProgram),
+				new PublicKey(SolanaProgramV2),
 				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
 			).toString(),
 		);
@@ -429,7 +431,7 @@ export class Unlocker {
 			const driverAss = getAssociatedTokenAddressSync(fromMint, driver, false);
 
 			const state = getSwiftStateAddrSrc(
-				new PublicKey(SolanaProgram),
+				new PublicKey(SolanaProgramV2),
 				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
 			);
 			if (!foundStates.includes(state.toString())) {
@@ -504,7 +506,7 @@ export class Unlocker {
 				}
 			}
 		} else {
-			const sourceOrder = await this.walletsHelper.getReadContract(sourceChainId).orders(orderHash);
+			const sourceOrder = await this.walletsHelper.getSourceReadContract(sourceChainId).orders(orderHash);
 			if (sourceOrder.status == EVM_STATES.UNLOCKED) {
 			}
 		}
@@ -565,7 +567,7 @@ export class Unlocker {
 		const networkFeeData = await this.evmProviders[destChain].getFeeData();
 		const overrides = await getSuggestedOverrides(destChain, networkFeeData.gasPrice!);
 		const tx: ethers.TransactionReceipt = await (
-			await this.walletsHelper.getWriteContract(destChain).postBatch(orderHashes, overrides)
+			await this.walletsHelper.getDestWriteContract(destChain).postBatch(orderHashes, overrides)
 		).wait();
 
 		if (tx.status !== 1) {
@@ -584,7 +586,7 @@ export class Unlocker {
 		sequence: bigint;
 		txHash: string;
 	}> {
-		const swiftProgram = new PublicKey(this.contracts.contracts[CHAIN_ID_SOLANA]);
+		const swiftProgram = new PublicKey(SolanaProgramV2);
 		const [swiftEmitter, _] = PublicKey.findProgramAddressSync([Buffer.from('emitter')], swiftProgram);
 		const wormholeAccs = get_wormhole_core_accounts(swiftEmitter);
 		const newMessageAccount = Keypair.generate();
@@ -636,7 +638,7 @@ export class Unlocker {
 		destChain: number,
 		isBatch: boolean,
 	): Promise<string> {
-		const swiftContract = this.walletsHelper.getWriteContract(sourceChain, false);
+		const swiftContract = this.walletsHelper.getSourceWriteContract(sourceChain, false);
 
 		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
 		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData.gasPrice!);
@@ -745,7 +747,7 @@ export class Unlocker {
 		// Fetching orderHashes in chunks of 1000
 		for (let i = 0; i < orderHashes.length; i += maxFetchPerCall) {
 			const chunk = orderHashes.slice(i, i + maxFetchPerCall);
-			const statuses = await this.walletsHelper.getReadContract(sourceChain).getOrders(chunk);
+			const statuses = await this.walletsHelper.getSourceReadContract(sourceChain).getOrders(chunk);
 			for (let j = 0; j < chunk.length; j++) {
 				if (statuses[j].status == EVM_STATES.UNLOCKED) {
 					result.add(chunk[j]);
@@ -772,7 +774,16 @@ export class Unlocker {
 	}
 
 	private async getSignedVaa(sequence: string, destChainId: number, deadlineSeconds?: number): Promise<string> {
-		const contractAddress = this.contracts.contracts[destChainId];
+		let contractAddress: string;
+		if (isEvmChainId(destChainId)) {
+			contractAddress = this.contracts.evmContractsV2Dst[destChainId];
+		} else if (destChainId === CHAIN_ID_SUI) {
+			contractAddress = this.contracts.suiIds.emitterId;
+		} else if (destChainId === CHAIN_ID_SOLANA) {
+			contractAddress = SolanaProgramV2;
+		} else {
+			throw new Error('Cannot get emitter address for chainId=' + destChainId);
+		}
 		let mayanBridgeEmitterAddress;
 		if (ethers.isAddress(contractAddress)) {
 			mayanBridgeEmitterAddress = getEmitterAddressEth(contractAddress);

@@ -1,4 +1,3 @@
-import { AnchorProvider, BN, Program, Wallet } from '@coral-xyz/anchor';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import {
 	ComputeBudgetProgram,
@@ -10,17 +9,17 @@ import {
 	SystemProgram,
 	TransactionInstruction,
 } from '@solana/web3.js';
-import Decimal from 'decimal.js';
-import { ethers } from 'ethers6';
-import { IDL as AuctionIdl, SwiftAuction as AuctionT } from '../abis/swift-auction.idl';
-import { IDL as SwiftIdl, Swift as SwiftT } from '../abis/swift.idl';
-import { WORMHOLE_DECIMALS } from '../config/chains';
+import { AnchorProvider, BN, Program, Wallet } from 'anchor30';
+import { SwiftV2Auction, SwiftV2AuctionIdl } from '../abis/swift-auction-v2.idl';
+import { SwiftV2, SwiftV2Idl } from '../abis/swift-v2.idl';
+import { FeeCollectorSolana } from '../config/contracts';
+import { tokenTo32ByteAddress } from '../config/tokens';
 import { Swap } from '../swap.dto';
-import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
+import { hexToUint8Array } from '../utils/buffer';
 
 export class NewSolanaIxHelper {
-	private readonly swiftProgram: Program<SwiftT>;
-	private readonly auctionProgram: Program<AuctionT>;
+	private readonly swiftProgram: Program<SwiftV2>;
+	private readonly auctionProgram: Program<SwiftV2Auction>;
 	private readonly auctionConfig: PublicKey;
 
 	constructor(swiftProgramId: PublicKey, auctionProgramId: PublicKey, connection: Connection) {
@@ -28,44 +27,35 @@ export class NewSolanaIxHelper {
 		const provider = new AnchorProvider(connection, new Wallet(Keypair.generate()), {
 			commitment: 'confirmed',
 		});
-		this.swiftProgram = new Program(SwiftIdl, swiftProgramId, provider);
-		this.auctionProgram = new Program(AuctionIdl, auctionProgramId, provider);
+		this.swiftProgram = new Program(SwiftV2Idl, provider);
+		this.auctionProgram = new Program(SwiftV2AuctionIdl, provider);
 
 		this.auctionConfig = PublicKey.findProgramAddressSync([Buffer.from('CONFIG')], auctionProgramId)[0];
 	}
 
-	private createOrderParams(swap: Swap, fromTokenDecimals: number) {
+	private createOrderParams(swap: Swap) {
 		return {
-			addrDest: Array.from(tryNativeToUint8Array(swap.destAddress, swap.destChain)),
-			addrRef: Array.from(tryNativeToUint8Array(swap.referrerAddress, swap.destChain)),
+			payloadType: swap.payloadId,
+			penaltyPeriod: swap.penaltyPeriod,
+			baseBond: new BN(swap.baseBond.toString()),
+			perBpsBond: new BN(swap.perBpsBond.toString()),
+			customPayload: Array.from(swap.customPayload ? hexToUint8Array(swap.customPayload) : Buffer.alloc(32)),
+			addrDest: Array.from(swap.destAddress32),
+			addrRef: Array.from(swap.referrerAddress32),
 			amountOutMin: new BN(swap.minAmountOut64.toString()),
 			auctionMode: swap.auctionMode,
 			chainDest: swap.destChain,
 			chainSource: swap.sourceChain,
 			deadline: new BN(Math.floor(swap.deadline.getTime() / 1000)),
-			feeRefund: new BN(
-				ethers
-					.parseUnits(
-						swap.refundRelayerFee.toFixed(Math.min(8, fromTokenDecimals), Decimal.ROUND_DOWN),
-						Math.min(WORMHOLE_DECIMALS, fromTokenDecimals),
-					)
-					.toString(),
-			),
-			feeCancel: new BN(
-				ethers
-					.parseUnits(
-						swap.redeemRelayerFee.toFixed(Math.min(8, fromTokenDecimals), Decimal.ROUND_DOWN), // redeem relayer fee is considered as dst refund fee for swifts
-						Math.min(WORMHOLE_DECIMALS, fromTokenDecimals),
-					)
-					.toString(),
-			), // redeem relayer fee is considered as dst refund fee (cancel fee) for swifts
+			feeRefund: new BN(swap.refundRelayerFee64.toString()),
+			feeCancel: new BN(swap.redeemRelayerFee64.toString()), // redeem relayer fee is considered as dst refund fee (cancel fee) for swifts
 			feeRateMayan: swap.mayanBps,
 			feeRateRef: swap.referrerBps,
 			gasDrop: new BN(swap.gasDrop64.toString()),
 			keyRnd: Array.from(hexToUint8Array(swap.randomKey)),
-			tokenIn: Array.from(tryNativeToUint8Array(swap.fromTokenAddress, swap.sourceChain)),
-			tokenOut: Array.from(tryNativeToUint8Array(swap.toTokenAddress, swap.destChain)),
-			trader: Array.from(tryNativeToUint8Array(swap.trader, swap.sourceChain)),
+			tokenIn: Array.from(tokenTo32ByteAddress(swap.fromToken)),
+			tokenOut: Array.from(tokenTo32ByteAddress(swap.toToken)),
+			trader: Array.from(swap.trader32),
 		};
 	}
 
@@ -79,16 +69,20 @@ export class NewSolanaIxHelper {
 		vaa: PublicKey,
 	): Promise<TransactionInstruction> {
 		return this.swiftProgram.methods
-			.unlockBatch(stateIdxInVaa)
+			.unlockBatch(stateIdxInVaa, true)
 			.accounts({
 				vaaUnlock: vaa,
-				driver: driver,
-				driverAcc: driverFromAss,
+				unlockReceiver: driver,
+				unlockReceiverAcc: driverFromAss,
 				mintFrom: mintFrom,
 				state: state,
 				stateFromAcc: stateFromAss,
 				systemProgram: SystemProgram.programId,
 				tokenProgram: TOKEN_PROGRAM_ID,
+				feeCollector: FeeCollectorSolana,
+				mayanFeeAcc: FeeCollectorSolana,
+				referrer: FeeCollectorSolana,
+				referrerFeeAcc: FeeCollectorSolana, // TODO
 			})
 			.instruction();
 	}
@@ -102,10 +96,14 @@ export class NewSolanaIxHelper {
 		vaa: PublicKey,
 	): Promise<TransactionInstruction> {
 		return this.swiftProgram.methods
-			.unlock()
+			.unlock(true)
 			.accounts({
-				driver: driver,
-				driverAcc: driverFromAss,
+				unlockReceiver: driver,
+				unlockReceiverAcc: driverFromAss,
+				feeCollector: FeeCollectorSolana,
+				mayanFeeAcc: FeeCollectorSolana,
+				referrer: FeeCollectorSolana,
+				referrerFeeAcc: FeeCollectorSolana, // TODO
 				mintFrom: mintFrom,
 				state: state,
 				stateFromAcc: stateFromAss,
@@ -127,7 +125,7 @@ export class NewSolanaIxHelper {
 		states: PublicKey[],
 	): Promise<TransactionInstruction> {
 		return this.swiftProgram.methods
-			.postUnlock()
+			.postUnlock(false)
 			.accounts({
 				clock: SYSVAR_CLOCK_PUBKEY,
 				rent: SYSVAR_RENT_PUBKEY,
@@ -155,10 +153,9 @@ export class NewSolanaIxHelper {
 		state: PublicKey,
 
 		swap: Swap,
-		fromTokenDecimals: number,
 	): Promise<TransactionInstruction> {
 		return this.swiftProgram.methods
-			.registerOrder(this.createOrderParams(swap, fromTokenDecimals))
+			.registerOrder(this.createOrderParams(swap))
 			.accounts({
 				relayer: relayer,
 				state: state,
@@ -196,10 +193,9 @@ export class NewSolanaIxHelper {
 		normalizedBidAmount: bigint,
 
 		swap: Swap,
-		fromTokenDecimals: number,
 	): Promise<TransactionInstruction> {
 		return this.auctionProgram.methods
-			.bid(this.createOrderParams(swap, fromTokenDecimals), new BN(normalizedBidAmount.toString()))
+			.bid(this.createOrderParams(swap), new BN(normalizedBidAmount.toString()))
 			.accounts({
 				config: this.auctionConfig,
 				systemProgram: SystemProgram.programId,
@@ -220,11 +216,10 @@ export class NewSolanaIxHelper {
 		whMessage: PublicKey,
 
 		swap: Swap,
-		fromTokenDecimals: number,
 		driverDestChainAddress: Uint8Array,
 	): Promise<TransactionInstruction> {
 		return this.auctionProgram.methods
-			.postAuction(this.createOrderParams(swap, fromTokenDecimals), Array.from(driverDestChainAddress))
+			.postAuction(this.createOrderParams(swap), Array.from(driverDestChainAddress))
 			.accounts({
 				driver: driver,
 				systemProgram: SystemProgram.programId,
@@ -273,16 +268,12 @@ export class NewSolanaIxHelper {
 			.settle(closeAta)
 			.accounts({
 				relayer: driver,
+				destSigner: driver,
 				state: state,
 				stateToAcc: stateToAss,
-				associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
 				dest: destAddr,
 				destAcc: destAssAddr,
-				feeCollector: mayanFeeCollector,
-				mayanFeeAcc: mayanFeeCollectorAss,
 				mintTo,
-				referrer: referrerAddr,
-				referrerFeeAcc: referrerAddrAss,
 				systemProgram: SystemProgram.programId,
 				tokenProgram: isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			})
