@@ -37,8 +37,8 @@ export async function refershAndPatchConfigs(gConf: GlobalConfig, contracts: Con
 		const data = await fetchDynamicSdkParams();
 
 		for (let key of Object.keys(data.swiftContracts)) {
-			if (contracts.contracts[+key]) {
-				contracts.contracts[+key] = data.swiftContracts[key];
+			if (contracts.contractsV2[+key]) {
+				contracts.contractsV2[+key] = data.swiftContracts[key];
 			}
 		}
 
