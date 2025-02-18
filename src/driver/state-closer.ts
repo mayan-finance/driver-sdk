@@ -42,6 +42,18 @@ export class StateCloser {
 		logger.info(`Closed ${auctionStates.length} auction states`);
 	}
 
+	async closeUnlockCompacts(unlockCompacts: string[]) {
+		let ixes = [];
+		for (let unlockCompact of unlockCompacts) {
+			const ix = await this.solanaIx.getCloseUnlockCompactIx(new PublicKey(unlockCompact), this.walletConf.solana.publicKey);
+			ixes.push(ix);
+		}
+
+		logger.info(`Closing ${unlockCompacts.length} unlock compacts`);
+		await this.solanaTxSender.createAndSendOptimizedTransaction(ixes, [this.walletConf.solana], [], 10, true);
+		logger.info(`Closed ${unlockCompacts.length} unlock compacts`);
+	}
+
 	async closeAuctionStates(auctionStates: string[]) {
 		auctionStates = auctionStates.slice(0, 200);
 		const states = await this.connection.getMultipleAccountsInfo(auctionStates.map((a) => new PublicKey(a)));

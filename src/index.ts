@@ -1,13 +1,18 @@
+import { SuiClient } from '@mysten/sui/client';
 import { PublicKey } from '@solana/web3.js';
 import 'dotenv/config';
 import { AuctionFulfillerConfig } from './auction';
-import { CHAIN_ID_SOLANA, supportedChainIds } from './config/chains';
+import { supportedChainIds } from './config/chains';
 import {
-	AuctionAddressSolana,
+	AuctionAddressV2Solana,
 	ContractsConfig,
 	FeeCollectorSolana,
 	fulfillHelpers,
-	SolanaProgram,
+	SolanaProgramV2,
+	SuiEmitterId,
+	SuiFeeMgrStateId,
+	SuiPackageId,
+	SuiStateId,
 } from './config/contracts';
 import { mayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
@@ -23,6 +28,7 @@ import { SwapRouters } from './driver/routers';
 import { SolanaFulfiller } from './driver/solana';
 import { NewSolanaIxHelper } from './driver/solana-ix';
 import { StateCloser } from './driver/state-closer';
+import { SuiFulfiller } from './driver/sui';
 import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
 import { Relayer } from './relayer';
@@ -41,7 +47,7 @@ export async function main() {
 	createDatabase(DB_PATH);
 	const walletConf = getWalletConfig();
 	logger.info(
-		`Solana Wallet is ${walletConf.solana.publicKey.toString()} and Ethereum Wallet is ${walletConf.evm.address}`,
+		`	\nSolana Wallet is ${walletConf.solana.publicKey.toString()}	\nEthereum Wallet is ${walletConf.evm.address}	\nSui Wallet is ${walletConf.sui.getPublicKey().toSuiAddress()}`,
 	);
 
 	const initialDynamicConfig = await fetchDynamicSdkParams();
@@ -73,10 +79,17 @@ export async function main() {
 	};
 
 	const contracts: ContractsConfig = {
-		auctionAddr: AuctionAddressSolana,
+		auctionAddrV2: AuctionAddressV2Solana,
 		evmFulfillHelpers: fulfillHelpers,
-		contracts: { ...initialDynamicConfig.swiftContracts, [CHAIN_ID_SOLANA]: SolanaProgram },
+		evmContractsV2Src: { ...initialDynamicConfig.swiftEvmContractsV2Source },
+		evmContractsV2Dst: { ...initialDynamicConfig.swiftEvmContractsV2Destination },
 		feeCollectorSolana: FeeCollectorSolana,
+		suiIds: {
+			emitterId: SuiEmitterId,
+			feeManagerStateId: SuiFeeMgrStateId,
+			packageId: SuiPackageId,
+			stateId: SuiStateId,
+		},
 	};
 	setInterval(() => {
 		refershAndPatchConfigs(globalConfig, contracts, rpcConfig);
@@ -93,12 +106,16 @@ export async function main() {
 
 	const walletHelper = new WalletsHelper(evmProviders, walletConf, rpcConfig, contracts);
 
-	const tokenList = new TokenList(mayanEndpoints, evmProviders, solanaConnection);
+	const suiClient = new SuiClient({
+		url: rpcConfig.suiFullNode,
+	});
+
+	const tokenList = new TokenList(mayanEndpoints, evmProviders, solanaConnection, suiClient);
 	await tokenList.init();
 
 	const solanaIxHelper = new NewSolanaIxHelper(
-		new PublicKey(contracts.contracts[CHAIN_ID_SOLANA]),
-		new PublicKey(contracts.auctionAddr),
+		new PublicKey(SolanaProgramV2),
+		new PublicKey(contracts.auctionAddrV2),
 		solanaConnection,
 	);
 
@@ -122,6 +139,8 @@ export async function main() {
 		solanaTxSender,
 		walletHelper,
 		vaaPoster,
+		tokenList,
+		suiClient,
 	);
 	unlocker.scheduleUnlockJobs();
 
@@ -141,7 +160,6 @@ export async function main() {
 		walletConf,
 		solanaIxHelper,
 		lutOptimizer,
-		walletHelper,
 		tokenList,
 	);
 	const evmFulFiller = new EvmFulfiller(
@@ -155,9 +173,10 @@ export async function main() {
 		swapRouters,
 	);
 	await evmFulFiller.init();
+	const suiFulfiller = new SuiFulfiller(suiClient, walletConf, contracts, tokenList);
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters),
+		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, suiClient, walletConf, swapRouters),
 		solanaConnection,
 		walletConf,
 		rpcConfig,
@@ -167,16 +186,11 @@ export async function main() {
 		solanaFulfiller,
 		walletHelper,
 		evmFulFiller,
+		suiFulfiller,
 		tokenList,
 		solanaTxSender,
 	);
-	const chainFinalitySvc = new ChainFinality(
-		solanaConnection,
-		contracts,
-		rpcConfig,
-		evmProviders,
-		secondaryEvmProviders,
-	);
+	const chainFinalitySvc = new ChainFinality(solanaConnection, suiClient, evmProviders, secondaryEvmProviders);
 	const relayer = new Relayer(
 		rpcConfig,
 		mayanEndpoints,
@@ -200,6 +214,7 @@ export async function main() {
 		relayer,
 		driverSvc,
 		stateCloser,
+		solanaConnection,
 	);
 	watcher.init();
 }

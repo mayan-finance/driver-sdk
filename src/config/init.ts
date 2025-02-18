@@ -9,7 +9,10 @@ import { RpcConfig } from './rpc';
 const initEndpoint = `${mayanEndpoints.priceApiUrl}/v3/driver/init`;
 
 export async function fetchDynamicSdkParams(): Promise<{
-	swiftContracts: {
+	swiftEvmContractsV2Source: {
+		[key: string]: string;
+	};
+	swiftEvmContractsV2Destination: {
 		[key: string]: string;
 	};
 	registerInterval: number;
@@ -23,10 +26,11 @@ export async function fetchDynamicSdkParams(): Promise<{
 	ignoreReferrers: string[];
 }> {
 	const result = await axios.get(initEndpoint);
-	const serverChains = Object.keys(result.data.swiftContracts).map((k) => +k);
+	const serverChains = Object.keys(result.data.swiftEvmContractsV2Source).map((k) => +k);
 	for (let chain of serverChains) {
 		if (!supportedChainIds.includes(chain)) {
-			delete result.data.swiftContracts[chain];
+			delete result.data.swiftEvmContractsV2Source[chain];
+			delete result.data.swiftEvmContractsV2Destination[chain];
 		}
 	}
 	return result.data;
@@ -36,9 +40,14 @@ export async function refershAndPatchConfigs(gConf: GlobalConfig, contracts: Con
 	try {
 		const data = await fetchDynamicSdkParams();
 
-		for (let key of Object.keys(data.swiftContracts)) {
-			if (contracts.contracts[+key]) {
-				contracts.contracts[+key] = data.swiftContracts[key];
+		for (let key of Object.keys(data.swiftEvmContractsV2Source)) {
+			if (contracts.evmContractsV2Src[+key]) {
+				contracts.evmContractsV2Src[+key] = data.swiftEvmContractsV2Source[key];
+			}
+		}
+		for (let key of Object.keys(data.swiftEvmContractsV2Destination)) {
+			if (contracts.evmContractsV2Dst[+key]) {
+				contracts.evmContractsV2Dst[+key] = data.swiftEvmContractsV2Destination[key];
 			}
 		}
 

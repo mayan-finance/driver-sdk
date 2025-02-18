@@ -80,7 +80,7 @@ export async function makeEvmProviders(chainIds: number[], rpcConfig: RpcConfig)
 			const fetchRequest = new FetchRequest(endpoint);
 			fetchRequest.timeout = RPC_TIMEOUT;
 			const provider = new ethers.JsonRpcProvider(fetchRequest, realChainId, {
-				staticNetwork: ethers.Network.from(realChainId)
+				staticNetwork: ethers.Network.from(realChainId),
 			});
 			allProviders[chainId].push(provider);
 		}
@@ -95,6 +95,7 @@ let active2ndProviders: { [chain: number]: ethers.JsonRpcProvider } = {};
 let all2ndProviders: { [chain: number]: ethers.JsonRpcProvider[] } = {};
 
 async function setFirstActive2nProvider() {
+	for (let chainId of Object.keys(all2ndProviders)) {
 	for (let chainId of Object.keys(all2ndProviders)) {
 		for (let provider of all2ndProviders[+chainId]) {
 			try {
@@ -143,7 +144,7 @@ export async function makeSecondEvmProviders(chainIds: number[], rpcConfig: RpcC
 			const fetchRequest = new FetchRequest(endpoint);
 			fetchRequest.timeout = RPC_TIMEOUT;
 			const provider = new ethers.JsonRpcProvider(fetchRequest, realChainId, {
-				staticNetwork: ethers.Network.from(realChainId)
+				staticNetwork: ethers.Network.from(realChainId),
 			});
 			all2ndProviders[chainId] = [provider];
 		}
