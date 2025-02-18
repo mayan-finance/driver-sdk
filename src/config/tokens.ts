@@ -1,6 +1,9 @@
+import { CHAIN_ID_SUI } from '@certusone/wormhole-sdk';
+import { SuiClient } from '@mysten/sui/client';
 import { TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import { Connection, ParsedAccountData, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
+import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
 import { getDecimals, getSymbol } from '../utils/erc20';
 import { EvmProviders } from '../utils/evm-providers';
 import logger from '../utils/logger';
@@ -13,6 +16,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	isEvmChainId,
 	mapNameToWormholeChainId,
 	WhChainIdToEvm,
 } from './chains';
@@ -34,8 +38,17 @@ export type Token = {
 	pythUsdPriceId?: string;
 	supportsPermit?: boolean;
 	hasTransferFee?: boolean;
-	standard: 'native' | 'erc20' | 'spl' | 'spl2022';
+	standard: 'native' | 'erc20' | 'spl' | 'spl2022' | 'suicoin';
+	verifiedAddress?: string; // for sui only
 };
+
+export function tokenTo32ByteAddress(t: Token): Buffer {
+	if (t.wChainId === CHAIN_ID_SUI || t.realOriginChainId === CHAIN_ID_SUI) {
+		return Buffer.from(hexToUint8Array(t.verifiedAddress!));
+	} else {
+		return Buffer.from(tryNativeToUint8Array(t.contract, t.wChainId || t.realOriginChainId));
+	}
+}
 
 export class TokenList {
 	private endpoints: MayanEndpoints;
@@ -43,10 +56,12 @@ export class TokenList {
 	public nativeTokens: { [index: string]: Token } = {};
 	private allPythIds: string[] = [];
 	private readonly pythToCoingeckoIds: { [pythId: string]: Set<string> } = {};
-	private pythPrices: { [coingeckoId: string]: {
-		updatedAt: Date;
-		price: number;
-	} } = {};
+	private pythPrices: {
+		[coingeckoId: string]: {
+			updatedAt: Date;
+			price: number;
+		};
+	} = {};
 	private pythLock = false;
 	private initialized = false;
 
@@ -54,6 +69,7 @@ export class TokenList {
 		endpoints: MayanEndpoints,
 		private readonly evmProviders: EvmProviders,
 		private readonly connection: Connection,
+		private readonly suiClient: SuiClient,
 	) {
 		this.endpoints = endpoints;
 	}
@@ -115,7 +131,6 @@ export class TokenList {
 			this.pythPrices['usd-coin']?.price &&
 			this.pythPrices['tether']?.updatedAt > new Date(Date.now() - 60 * 1000)
 		) {
-
 			return this.pythPrices['tether'].price / this.pythPrices['usd-coin'].price;
 		}
 		return null;
@@ -124,7 +139,11 @@ export class TokenList {
 	async updateList() {
 		try {
 			let tokenCount = 0;
-			const allTokens = await axios.get(this.endpoints.priceApiUrl + '/v3/tokens');
+			const allTokens = await axios.get(this.endpoints.priceApiUrl + '/v3/tokens', {
+				params: {
+					standard: 'erc20,native,spl,spl2022,suicoin',
+				},
+			});
 			for (const chainName of Object.keys(allTokens.data)) {
 				const chainId = mapNameToWormholeChainId(chainName);
 				if (!!chainId) {
@@ -135,7 +154,9 @@ export class TokenList {
 			this.nativeTokens = Object.entries(this.tokensPerChain).reduce(
 				(acc, [chainId, tokens]) => {
 					const token = tokens.find(
-						(token) => token.contract === '0x0000000000000000000000000000000000000000',
+						(token) =>
+							token.contract === '0x0000000000000000000000000000000000000000' ||
+							token.contract === '0x2::sui::SUI',
 					) as Token;
 					if (!token) {
 						logger.info(`Native token not found for chain ${chainId} and ignored`);
@@ -194,9 +215,38 @@ export class TokenList {
 
 		if (tokenChain === CHAIN_ID_SOLANA) {
 			return await this.fetchSolanaTokenData(tokenContract);
-		} else {
+		} else if (isEvmChainId(tokenChain)) {
 			return await this.fetchErc20TokenData(tokenChain, tokenContract);
+		} else if (tokenChain === CHAIN_ID_SUI) {
+			return await this.fetchSuiTokenData(tokenContract);
+		} else {
+			throw new Error(`token Chain ${tokenChain} is not supported`);
 		}
+	}
+
+	async fetchSuiTokenData(coinType: string): Promise<Token> {
+		const coinMeta = await this.suiClient.getCoinMetadata({
+			coinType: coinType,
+		});
+		if (!coinMeta || !coinMeta.id) {
+			throw new Error(`Coin ${coinType} not found on Sui chain`);
+		}
+
+		return {
+			chainId: 101,
+			coingeckoId: '',
+			contract: coinType,
+			decimals: coinMeta.decimals,
+			logoURI: coinMeta.iconUrl!,
+			mint: '',
+			name: coinMeta.name,
+			standard: 'suicoin',
+			realOriginChainId: CHAIN_ID_SUI,
+			realOriginContractAddress: coinType,
+			symbol: coinMeta.symbol,
+			wChainId: CHAIN_ID_SUI,
+			verifiedAddress: coinMeta.id,
+		};
 	}
 
 	async fetchErc20TokenData(chainId: number, tokenContract: string): Promise<Token> {
@@ -278,6 +328,8 @@ export class TokenList {
 						tokenContract = '0x0000000000000000000000000000000000000000';
 					}
 					return t.contract === tokenContract;
+				case CHAIN_ID_SUI:
+					return t.contract === tokenContract || t.verifiedAddress === tokenContract; // both coinType and verifiedAddress searched for sui
 				default:
 					return t.contract.toLowerCase() === tokenContract.toLowerCase();
 			}
@@ -295,6 +347,7 @@ const UsdcContracts: { [key: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
 	[CHAIN_ID_OPTIMISM]: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
 	[CHAIN_ID_BASE]: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+	[CHAIN_ID_SUI]: '0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC',
 };
 
 const UsdtContracts: { [key: number]: string } = {

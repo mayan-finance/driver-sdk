@@ -4,6 +4,7 @@ import { Token } from './config/tokens';
 export type Swap = {
 	orderId: string;
 	trader: string;
+	trader32: Buffer;
 	sourceTxHash: string;
 	orderHash: string;
 	status: string;
@@ -12,6 +13,7 @@ export type Swap = {
 	sourceChain: number;
 	destChain: number;
 	destAddress: string;
+	destAddress32: Buffer;
 	fromToken: Token;
 	fromTokenAddress: string;
 	fromTokenSymbol: string;
@@ -26,11 +28,14 @@ export type Swap = {
 	initiatedAt: Date;
 	swapRelayerFee: Decimal;
 	redeemRelayerFee: Decimal;
+	redeemRelayerFee64: bigint;
 	refundRelayerFee: Decimal;
+	refundRelayerFee64: bigint;
 	auctionAddress: string;
 	posAddress: string;
 	mayanAddress: string;
 	referrerAddress: string;
+	referrerAddress32: Buffer;
 	unlockRecipient: string;
 	minAmountOut: Decimal;
 	minAmountOut64: bigint;
@@ -49,6 +54,12 @@ export type Swap = {
 	gaslessSignature: string;
 	gaslessPermit: string;
 
+	payloadId: number;
+	customPayload?: string;
+	penaltyPeriod: number;
+	baseBond: bigint;
+	perBpsBond: bigint;
+
 	createTxHash: string;
 
 	retries: number;
@@ -65,7 +76,6 @@ export const SWAP_STATUS = {
 	ORDER_FULFILLED: 'ORDER_FULFILLED',
 	ORDER_SETTLED: 'ORDER_SETTLED',
 	ORDER_UNLOCKED: 'ORDER_UNLOCKED',
-	UNLOCK_SEQUENCE_RECEIVED: 'UNLOCK_SEQUENCE_RECEIVED',
 	ORDER_CANCELED: 'ORDER_CANCELED',
 	ORDER_REFUNDED: 'ORDER_REFUNDED',
 };
