@@ -1,12 +1,12 @@
-import { BorshAccountsCoder } from '@coral-xyz/anchor';
 import { Connection, PublicKey } from '@solana/web3.js';
-import { IDL as AuctionIdl } from '../abis/swift-auction.idl';
-import { IDL as SwiftIdl } from '../abis/swift.idl';
+import { BorshAccountsCoder } from 'anchor30';
+import { SwiftV2AuctionIdl } from '../abis/swift-auction-v2.idl';
+import { SwiftV2Idl } from '../abis/swift-v2.idl';
 
 const SWIFT_SOLANA_SOURCE_STATE_SEED = Buffer.from('STATE_SOURCE');
 const SWIFT_SOLANA_DEST_STATE_SEED = Buffer.from('STATE_DEST');
-const accCoder = new BorshAccountsCoder(SwiftIdl);
-const auctionAccCoder = new BorshAccountsCoder(AuctionIdl);
+const accCoderV2 = new BorshAccountsCoder(SwiftV2Idl);
+const auctionAccCoderV2 = new BorshAccountsCoder(SwiftV2AuctionIdl);
 
 export async function getSwiftStateDest(connection: Connection, stateAddr: PublicKey): Promise<SwiftDestState | null> {
 	const stateAccount = await connection.getAccountInfo(stateAddr);
@@ -21,7 +21,7 @@ export async function getSwiftStateDest(connection: Connection, stateAddr: Publi
 		};
 	}
 
-	const data = accCoder.decode('swiftDestSolanaState', stateAccount.data);
+	const data = accCoderV2.decode('swiftDestSolanaState', stateAccount.data);
 
 	if (data.status.created) {
 		return {
@@ -29,25 +29,27 @@ export async function getSwiftStateDest(connection: Connection, stateAddr: Publi
 			winner: data?.fulfill?.winner?.toString(),
 		};
 	} else if (data.status.fulfilled) {
-		return {
-			status: SOLANA_DEST_STATUSES.FULFILLED,
-			winner: data.fulfill.winner.toString(),
-		};
-	} else if (data.status.settled) {
-		return {
-			status: SOLANA_DEST_STATUSES.SETTLED,
-			winner: data.fulfill.winner.toString(),
-		};
-	} else if (data.status.posted) {
-		return {
-			status: SOLANA_DEST_STATUSES.POSTED,
-		};
+		if (data.isSettled) {
+			return {
+				status: SOLANA_DEST_STATUSES.SETTLED,
+				winner: data.fulfill.winner.toString(),
+			};
+		} else if (data.isPosted) {
+			return {
+				status: SOLANA_DEST_STATUSES.POSTED,
+			};
+		} else {
+			return {
+				status: SOLANA_DEST_STATUSES.FULFILLED,
+				winner: data.fulfill.winner.toString(),
+			};
+		}
 	} else if (data.status.cancelled) {
 		return {
 			status: SOLANA_DEST_STATUSES.CANCELLED,
 		};
 	} else {
-		throw new Error('Invalid status for dest');
+		throw new Error('Invalid v2 status for dest');
 	}
 }
 
@@ -62,7 +64,7 @@ export async function getSwiftStateSrc(connection: Connection, stateAddr: Public
 }
 
 export function parseSwiftStateSrc(accountData: Buffer): SwiftSourceState {
-	const data = accCoder.decode('swiftSourceSolanaState', accountData);
+	const data = accCoderV2.decode('swiftSourceSolanaState', accountData);
 
 	if (data.status.locked) {
 		return {
@@ -91,7 +93,7 @@ export async function getAuctionState(
 		return null;
 	}
 
-	const data = auctionAccCoder.decode('auctionState', stateAccount.data);
+	const data = auctionAccCoderV2.decode('auctionState', stateAccount.data);
 
 	return {
 		winner: data.winner.toString(),
@@ -101,8 +103,10 @@ export async function getAuctionState(
 	};
 }
 
-export function getSwiftStateAddrSrc(programId: PublicKey, orderHash: Buffer): PublicKey {
-	return PublicKey.findProgramAddressSync([SWIFT_SOLANA_SOURCE_STATE_SEED, orderHash], programId)[0];
+export function getSwiftStateAddrSrc(programId: PublicKey, orderHash: Buffer, chainDest: number): PublicKey {
+	const chainBuf = Buffer.alloc(2);
+	chainBuf.writeUInt16LE(chainDest);
+	return PublicKey.findProgramAddressSync([SWIFT_SOLANA_SOURCE_STATE_SEED, orderHash, chainBuf], programId)[0];
 }
 
 export function getSwiftStateAddrDest(programId: PublicKey, orderHash: Buffer): PublicKey {
@@ -173,9 +177,10 @@ export const SOLANA_STATES = {
 export const EVM_STATES = {
 	CREATED: 0,
 	FULFILLED: 1,
-	UNLOCKED: 2,
-	CANCELED: 3,
-	REFUNDED: 4,
+	SETTLED: 2,
+	UNLOCKED: 3,
+	CANCELED: 4,
+	REFUNDED: 5,
 };
 
 export const AUCTION_MODES = {

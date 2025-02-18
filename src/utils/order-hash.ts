@@ -1,9 +1,12 @@
 import { ethers } from 'ethers6';
-import { WORMHOLE_DECIMALS } from '../config/chains';
-import { hexToUint8Array, tryNativeToUint8Array } from './buffer';
+import { hexToUint8Array } from './buffer';
 
-
-export function reconstructOrderHash32(
+export function reconstructOrderHashV2(
+	payloadId: number,
+	penaltyPeriod: number,
+	baseBond: bigint,
+	perBpsBond: bigint,
+	customPayload: Buffer,
 	trader32: Buffer,
 	srcChainId: number,
 	tokenIn32: Buffer,
@@ -19,15 +22,18 @@ export function reconstructOrderHash32(
 	referrerBps: number,
 	mayanBps: number,
 	auctionMode: number,
-	random32: Buffer,
-): Buffer {
-	const writeBuffer = Buffer.alloc(239);
+	random: string,
+): string {
+	const writeBuffer = Buffer.alloc(290);
 	let offset = 0;
+
+	writeBuffer.writeUint8(payloadId);
+	offset += 1;
 
 	writeBuffer.set(trader32, offset);
 	offset += 32;
 
-	writeBuffer.writeUInt16BE(srcChainId, offset);
+	writeBuffer.writeUint16BE(srcChainId, offset);
 	offset += 2;
 
 	writeBuffer.set(tokenIn32, offset);
@@ -36,19 +42,19 @@ export function reconstructOrderHash32(
 	writeBuffer.set(destAddr32, offset);
 	offset += 32;
 
-	writeBuffer.writeUInt16BE(destChainId, offset);
+	writeBuffer.writeUint16BE(destChainId, offset);
 	offset += 2;
 
 	writeBuffer.set(tokenOut32, offset);
 	offset += 32;
 
-	writeBuffer.writeBigUInt64BE(minAmountOut64, offset);
+	writeBuffer.writeBigUint64BE(minAmountOut64, offset);
 	offset += 8;
 
-	writeBuffer.writeBigUInt64BE(gasDrop64, offset);
+	writeBuffer.writeBigUint64BE(gasDrop64, offset);
 	offset += 8;
 
-	writeBuffer.writeBigUInt64BE(refundFeeDest64, offset);
+	writeBuffer.writeBigInt64BE(refundFeeDest64, offset);
 	offset += 8;
 
 	writeBuffer.writeBigUInt64BE(refundFeeSrc64, offset);
@@ -57,6 +63,9 @@ export function reconstructOrderHash32(
 	const deadline64 = BigInt(deadline);
 	writeBuffer.writeBigUInt64BE(deadline64, offset);
 	offset += 8;
+
+	writeBuffer.writeUint16BE(penaltyPeriod, offset);
+	offset += 2;
 
 	writeBuffer.set(referrerAddr32, offset);
 	offset += 32;
@@ -70,149 +79,24 @@ export function reconstructOrderHash32(
 	writeBuffer.writeUInt8(auctionMode, offset);
 	offset += 1;
 
-	writeBuffer.set(random32, offset);
-	offset += 32;
-
-	if (offset !== 239) {
-		throw new Error('Invalid offset');
-	}
-
-	const orderHash = ethers.keccak256(writeBuffer);
-	return Buffer.from(hexToUint8Array(orderHash));
-}
-
-export function reconstructOrderHash(
-	trader: string,
-	srcChainId: number,
-	tokenIn: string,
-	destChainId: number,
-	tokenOut: string,
-	minAmountOut64: bigint,
-	gasDrop64: bigint,
-	refundFeeDest64: bigint,
-	refundFeeSrc64: bigint,
-	deadline: number,
-	destAddr: string,
-	referrerAddr: string,
-	referrerBps: number,
-	mayanBps: number,
-	auctionMode: number,
-	random: string,
-): Buffer {
-	const writeBuffer = Buffer.alloc(239);
-	let offset = 0;
-
-	const trader32 = Buffer.from(tryNativeToUint8Array(trader, srcChainId));
-	writeBuffer.set(trader32, offset);
-	offset += 32;
-
-	writeBuffer.writeUInt16BE(srcChainId, offset);
-	offset += 2;
-
-	const tokenIn32 = Buffer.from(tryNativeToUint8Array(tokenIn, srcChainId));
-	writeBuffer.set(tokenIn32, offset);
-	offset += 32;
-
-	const destinationAddress32 = Buffer.from(tryNativeToUint8Array(destAddr, destChainId));
-	writeBuffer.set(destinationAddress32, offset);
-	offset += 32;
-
-	writeBuffer.writeUInt16BE(destChainId, offset);
-	offset += 2;
-
-	const tokenOut32 = Buffer.from(tryNativeToUint8Array(tokenOut, destChainId));
-	writeBuffer.set(tokenOut32, offset);
-	offset += 32;
-
-	writeBuffer.writeBigUInt64BE(minAmountOut64, offset);
+	writeBuffer.writeBigUint64BE(baseBond, offset);
 	offset += 8;
 
-	writeBuffer.writeBigUInt64BE(gasDrop64, offset);
+	writeBuffer.writeBigUint64BE(perBpsBond, offset);
 	offset += 8;
-
-	writeBuffer.writeBigUInt64BE(refundFeeDest64, offset);
-	offset += 8;
-
-	writeBuffer.writeBigUInt64BE(refundFeeSrc64, offset);
-	offset += 8;
-
-	const deadline64 = BigInt(deadline);
-	writeBuffer.writeBigUInt64BE(deadline64, offset);
-	offset += 8;
-
-	const referrerAddress32 = Buffer.from(tryNativeToUint8Array(referrerAddr, destChainId));
-	writeBuffer.set(referrerAddress32, offset);
-	offset += 32;
-
-	writeBuffer.writeUInt8(referrerBps, offset);
-	offset += 1;
-
-	writeBuffer.writeUInt8(mayanBps, offset);
-	offset += 1;
-
-	writeBuffer.writeUInt8(auctionMode, offset);
-	offset += 1;
 
 	const randomKey32 = Buffer.from(hexToUint8Array(random));
 	writeBuffer.set(randomKey32, offset);
 	offset += 32;
 
-	if (offset !== 239) {
+	writeBuffer.set(customPayload, offset);
+	offset += 32;
+
+	if (offset !== 290) {
 		throw new Error('Invalid offset');
 	}
 
-	const orderHash = ethers.keccak256(writeBuffer);
-	return Buffer.from(hexToUint8Array(orderHash));
-}
-
-export function verifyOrderHash(
-	givenOrderHashHex: string,
-	trader: string,
-	srcChainId: number,
-	tokenIn: string,
-	tokenInDecimals: number,
-	destChainId: number,
-	tokenOut: string,
-	tokenOutDecimals: number,
-	minAmountOut: string,
-	gasDrop: string,
-	refundFeeDest: string,
-	refundFeeSrc: string,
-	deadline: number,
-	destAddr: string,
-	referrerAddr: string,
-	referrerBps: number,
-	mayanBps: number,
-	auctionMode: number,
-	random: string,
-) {
-	const minAmountOut64 = getAmountOfFractionalAmount(minAmountOut, Math.min(WORMHOLE_DECIMALS, tokenOutDecimals));
-	const gasDrop64 = getAmountOfFractionalAmount(gasDrop, WORMHOLE_DECIMALS);
-	const refundFeeDest64 = getAmountOfFractionalAmount(refundFeeDest, Math.min(tokenInDecimals, WORMHOLE_DECIMALS));
-	const refundFeeSrc64 = getAmountOfFractionalAmount(refundFeeSrc, Math.min(tokenInDecimals, WORMHOLE_DECIMALS));
-
-	const orderHash = reconstructOrderHash(
-		trader,
-		srcChainId,
-		tokenIn,
-		destChainId,
-		tokenOut,
-		minAmountOut64,
-		gasDrop64,
-		refundFeeDest64,
-		refundFeeSrc64,
-		deadline,
-		destAddr,
-		referrerAddr,
-		referrerBps,
-		mayanBps,
-		auctionMode,
-		random,
-	);
-
-	if (Buffer.from(givenOrderHashHex.slice(2), 'hex').compare(orderHash) !== 0) {
-		throw new Error('Invalid order hash');
-	}
+	return ethers.keccak256(writeBuffer);
 }
 
 function truncateExtraFraction(input: string | number, decimals: number): string {

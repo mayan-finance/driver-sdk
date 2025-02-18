@@ -1,22 +1,22 @@
 import { TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
-import Decimal from 'decimal.js';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, WORMHOLE_DECIMALS, supportedChainIds } from './config/chains';
-import { ContractsConfig } from './config/contracts';
+import { CHAIN_ID_BSC, CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEvmChainId, supportedChainIds } from './config/chains';
+import { ContractsConfig, SolanaProgramV2 } from './config/contracts';
 import { MayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
 import { RpcConfig } from './config/rpc';
-import { TokenList } from './config/tokens';
+import { TokenList, tokenTo32ByteAddress } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { DriverService } from './driver/driver';
 import { WalletsHelper } from './driver/wallet-helper';
 import { SWAP_STATUS, Swap } from './swap.dto';
+import { hexToUint8Array } from './utils/buffer';
 import { ChainFinality } from './utils/finality';
 import logger from './utils/logger';
-import { verifyOrderHash } from './utils/order-hash';
+import { reconstructOrderHashV2 } from './utils/order-hash';
 import { getCurrentSolanaTimeMS } from './utils/solana-trx';
 import {
 	AUCTION_MODES,
@@ -53,11 +53,15 @@ export class Relayer {
 	private async tryProgressFulfill(swap: Swap) {
 		const isSolDst = swap.destChain === CHAIN_ID_SOLANA;
 		const isSolSrc = swap.sourceChain === CHAIN_ID_SOLANA;
+		const isEvmSrc = isEvmChainId(swap.sourceChain);
+		const isSuiSrc = swap.sourceChain === CHAIN_ID_SUI;
+		const isEvmDst = isEvmChainId(swap.destChain);
+		const isSuiDst = swap.destChain === CHAIN_ID_SUI;
 		let [destState, destEvmOrder, sourceState, sourceEvmOrder] = await Promise.all([
 			isSolDst ? getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
-			!isSolDst ? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash) : null,
+			isEvmSrc ? this.walletHelper.getDestReadContract(swap.destChain).orders(swap.orderHash) : null,
 			isSolSrc ? getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
-			!isSolSrc ? this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash) : null,
+			isEvmDst ? this.walletHelper.getDestReadContract(swap.sourceChain).orders(swap.orderHash) : null,
 		]);
 
 		switch (swap.status) {
@@ -69,22 +73,30 @@ export class Relayer {
 					break;
 				}
 
-				if (swap.destChain === CHAIN_ID_SOLANA) {
+				if (isSolDst) {
 					if (swap.auctionMode === AUCTION_MODES.ENGLISH || swap.auctionMode === AUCTION_MODES.DONT_CARE) {
 						await this.bidAndFulfillSolana(swap, destState!, sourceState, sourceEvmOrder);
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
-				} else {
+				} else if (isSuiDst) {
 					if (swap.auctionMode === AUCTION_MODES.ENGLISH || swap.auctionMode === AUCTION_MODES.DONT_CARE) {
-						await this.bidAndFulfillEvm(swap, sourceState, sourceEvmOrder, destEvmOrder!);
+						await this.bidAndFulfillNonSolana(swap, sourceState, sourceEvmOrder, destEvmOrder!);
+					} else {
+						throw new Error('Unrecognized or unimplemented Auction mode for sui dest');
+					}
+				} else if (isEvmDst) {
+					if (swap.auctionMode === AUCTION_MODES.ENGLISH || swap.auctionMode === AUCTION_MODES.DONT_CARE) {
+						await this.bidAndFulfillNonSolana(swap, sourceState, sourceEvmOrder, destEvmOrder!);
 					} else {
 						throw new Error('Unrecognized Auction mode');
 					}
+				} else {
+					throw new Error(`Unrecognized destination chain when trying to fulfill ${swap.destChain}`);
 				}
 				break;
 			case SWAP_STATUS.ORDER_FULFILLED:
-				if (swap.destChain === CHAIN_ID_SOLANA) {
+				if (isSolDst) {
 					if (destState && POST_FULFILL_STATUSES.includes(destState.status)) {
 						logger.info(`Order is already settled on solana for ${swap.sourceTxHash}`);
 						swap.status = SWAP_STATUS.ORDER_SETTLED;
@@ -136,27 +148,34 @@ export class Relayer {
 				return;
 			}
 
-			verifyOrderHash(
-				swap.orderHash,
-				swap.trader,
+			const orderHashV2 = reconstructOrderHashV2(
+				swap.payloadId,
+				swap.penaltyPeriod,
+				swap.baseBond,
+				swap.perBpsBond,
+				swap.customPayload ? Buffer.from(hexToUint8Array(swap.customPayload)) : Buffer.alloc(32),
+				swap.trader32,
 				swap.sourceChain,
-				swap.fromTokenAddress,
-				swap.fromToken.decimals,
+				tokenTo32ByteAddress(swap.fromToken),
 				swap.destChain,
-				swap.toTokenAddress,
-				swap.toToken.decimals,
-				swap.minAmountOut.toFixed(Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS), Decimal.ROUND_DOWN),
-				swap.gasDrop.toFixed(8, Decimal.ROUND_DOWN),
-				swap.redeemRelayerFee.toFixed(Math.min(swap.fromToken.decimals, WORMHOLE_DECIMALS), Decimal.ROUND_DOWN),
-				swap.refundRelayerFee.toFixed(Math.min(swap.fromToken.decimals, 8), Decimal.ROUND_DOWN),
+				tokenTo32ByteAddress(swap.toToken),
+				swap.minAmountOut64,
+				swap.gasDrop64,
+				swap.redeemRelayerFee64,
+				swap.refundRelayerFee64,
 				swap.deadline.getTime() / 1000, // better to throw error if deadline is not in seconds
-				swap.destAddress,
-				swap.referrerAddress,
+				swap.destAddress32,
+				swap.referrerAddress32,
 				swap.referrerBps,
 				swap.mayanBps,
 				swap.auctionMode,
 				swap.randomKey,
 			);
+
+			if (`${orderHashV2}` !== swap.orderHash) {
+				logger.warn(`Order hash mismatch for ${swap.sourceTxHash}. discarding...`);
+				return;
+			}
 
 			if (this.relayingSwaps.find((rs) => rs.orderHash === swap.orderHash)) {
 				return;
@@ -227,23 +246,21 @@ export class Relayer {
 		}
 	}
 
-	async bidAndFulfillEvm(
+	async bidAndFulfillNonSolana(
 		swap: Swap,
 		srcState: SwiftSourceState | null,
 		sourceEvmOrder: EvmStoredOrder | null,
 		destEvmOrder: EvmStoredOrder,
 	) {
-		if (await this.checkAlreadyFulfilledOrCanceledOnEvm(swap, destEvmOrder)) {
-			return;
+		if (isEvmChainId(swap.destChain)) {
+			if (await this.checkAlreadyFulfilledOrCanceledOnEvm(swap, destEvmOrder)) {
+				return;
+			}
 		}
 
 		let auctionSignedVaa: Uint8Array | undefined;
 		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-			// swap.auctionStateAddr = PublicKey.findProgramAddressSync(
-			// 	[Buffer.from('AUCTION'), hexToUint8Array(swap.orderHash)],
-			// 	new PublicKey(this.contractsConfig.auctionAddr),
-			// )[0].toString();
 			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
 				const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
@@ -257,11 +274,11 @@ export class Relayer {
 			}
 
 			if (!auctionState) {
-				logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
+				logger.info(`In bid-and-fullfilll Non-solana Bidding for ${swap.sourceTxHash}...`);
 				await this.driverService.bid(swap);
-				logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
+				logger.info(`In bid-and-fullfilll Non-solana done bid for ${swap.sourceTxHash}...`);
 				await delay(this.gConf.auctionTimeSeconds * 1000);
-				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
+				logger.info(`Finished waiting Non-solana auction time for ${swap.sourceTxHash}`);
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
@@ -290,7 +307,7 @@ export class Relayer {
 			auctionSignedVaa = await getSignedVaa(
 				this.rpcConfig.wormholeGuardianRpcs,
 				CHAIN_ID_SOLANA,
-				this.contractsConfig.auctionAddr,
+				this.contractsConfig.auctionAddrV2,
 				sequence!.toString(),
 				500,
 			);
@@ -331,11 +348,11 @@ export class Relayer {
 			}
 
 			if (!auctionState) {
-				logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
+				logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
 				await this.driverService.bid(swap);
-				logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
+				logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
 				await delay(this.gConf.auctionTimeSeconds * 1000);
-				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
+				logger.info(`Finished waiting auction solana time for ${swap.sourceTxHash}`);
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
@@ -488,7 +505,10 @@ export class Relayer {
 	}
 
 	private async checkAlreadyFulfilledOrCanceledOnEvm(swap: Swap, destEvmOrder: EvmStoredOrder): Promise<boolean> {
-		if (destEvmOrder && destEvmOrder.status == EVM_STATES.FULFILLED) {
+		if (
+			destEvmOrder &&
+			(destEvmOrder.status == EVM_STATES.FULFILLED || destEvmOrder.status == EVM_STATES.SETTLED)
+		) {
 			logger.info(`Order was already fulfilled on evm for ${swap.sourceTxHash}`);
 			swap.status = SWAP_STATUS.ORDER_SETTLED;
 			return true;
@@ -514,7 +534,6 @@ export class Relayer {
 			swap.status === SWAP_STATUS.ORDER_SETTLED ||
 			swap.status === SWAP_STATUS.ORDER_REFUNDED ||
 			swap.status === SWAP_STATUS.ORDER_UNLOCKED ||
-			swap.status === SWAP_STATUS.UNLOCK_SEQUENCE_RECEIVED ||
 			swap.status === SWAP_STATUS.ORDER_EXPIRED
 		);
 	}
@@ -534,11 +553,15 @@ export class Relayer {
 	}
 
 	private isMayanInitiatedSwap(swap: Swap) {
-		// Only fulfill swaps that were initiated via mayan
+		// Only fulfill swaps that were initiated via mayan swift V2
 		if (swap.sourceChain === CHAIN_ID_SOLANA) {
-			return swap.mayanAddress === this.contractsConfig.contracts[swap.sourceChain];
+			return swap.mayanAddress === SolanaProgramV2;
+		} else if (swap.sourceChain === CHAIN_ID_SUI) {
+			return swap.mayanAddress === this.contractsConfig.suiIds.packageId;
+		} else if (isEvmChainId(swap.sourceChain)) {
+			return ethers.getAddress(swap.mayanAddress) === this.contractsConfig.evmContractsV2Src[swap.sourceChain];
 		} else {
-			return ethers.getAddress(swap.mayanAddress) === this.contractsConfig.contracts[swap.sourceChain];
+			throw new Error(`Unrecognized chain id to determine mayan address ${swap.sourceChain}`);
 		}
 	}
 }

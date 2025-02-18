@@ -1,62 +1,39 @@
-export type SwiftAuction = {
-	version: '0.1.0';
-	name: 'swift_auction';
+export type SwiftV2Auction = {
+	address: '9bh7SPjkNPgmq7HHWQxgCFJEnMPvAPdLcBEQL1FSG1YR';
+	metadata: {
+		name: 'swiftAuction';
+		version: '0.1.0';
+		spec: '0.1.0';
+		description: 'Created with Anchor';
+	};
 	instructions: [
 		{
-			name: 'updateConfig';
-			accounts: [
-				{
-					name: 'updater';
-					isMut: true;
-					isSigner: true;
-				},
-				{
-					name: 'config';
-					isMut: true;
-					isSigner: false;
-				},
-				{
-					name: 'systemProgram';
-					isMut: false;
-					isSigner: false;
-				},
-			];
-			args: [
-				{
-					name: 'auctionTime';
-					type: 'u64';
-				},
-			];
-		},
-		{
 			name: 'bid';
+			discriminator: [199, 56, 85, 38, 146, 243, 37, 158];
 			accounts: [
 				{
 					name: 'config';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'driver';
-					isMut: true;
-					isSigner: true;
+					writable: true;
+					signer: true;
 				},
 				{
 					name: 'auctionState';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'systemProgram';
-					isMut: false;
-					isSigner: false;
 				},
 			];
 			args: [
 				{
 					name: 'order';
 					type: {
-						defined: 'OrderInfo';
+						defined: {
+							name: 'orderInfo';
+						};
 					};
 				},
 				{
@@ -66,69 +43,73 @@ export type SwiftAuction = {
 			];
 		},
 		{
-			name: 'postAuction';
+			name: 'closeAuction';
+			discriminator: [225, 129, 91, 48, 215, 73, 203, 172];
 			accounts: [
 				{
 					name: 'auction';
-					isMut: true;
-					isSigner: false;
+					writable: true;
+				},
+				{
+					name: 'initializer';
+					writable: true;
+				},
+			];
+			args: [];
+		},
+		{
+			name: 'postAuction';
+			discriminator: [62, 30, 249, 94, 9, 182, 79, 198];
+			accounts: [
+				{
+					name: 'auction';
+					writable: true;
 				},
 				{
 					name: 'driver';
-					isMut: true;
-					isSigner: true;
+					writable: true;
+					signer: true;
 				},
 				{
 					name: 'emitter';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'config';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'emitterSequence';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'feeCollector';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'message';
-					isMut: true;
-					isSigner: true;
+					writable: true;
+					signer: true;
 				},
 				{
 					name: 'coreBridgeProgram';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'systemProgram';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'clock';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'rent';
-					isMut: false;
-					isSigner: false;
 				},
 			];
 			args: [
 				{
 					name: 'order';
 					type: {
-						defined: 'OrderInfo';
+						defined: {
+							name: 'orderInfo';
+						};
 					};
 				},
 				{
@@ -141,73 +122,59 @@ export type SwiftAuction = {
 		},
 		{
 			name: 'postAuctionShim';
+			discriminator: [82, 7, 45, 178, 249, 242, 49, 192];
 			accounts: [
 				{
 					name: 'auction';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'driver';
-					isMut: true;
-					isSigner: true;
+					writable: true;
+					signer: true;
 				},
 				{
 					name: 'emitter';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'config';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'emitterSequence';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'feeCollector';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'message';
-					isMut: true;
-					isSigner: false;
+					writable: true;
 				},
 				{
 					name: 'coreBridgeProgram';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'systemProgram';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'clock';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'shimEventAuth';
-					isMut: false;
-					isSigner: false;
 				},
 				{
 					name: 'shimProgram';
-					isMut: false;
-					isSigner: false;
 				},
 			];
 			args: [
 				{
 					name: 'order';
 					type: {
-						defined: 'OrderInfo';
+						defined: {
+							name: 'orderInfo';
+						};
 					};
 				},
 				{
@@ -219,23 +186,116 @@ export type SwiftAuction = {
 			];
 		},
 		{
-			name: 'closeAuction';
+			name: 'updateConfig';
+			discriminator: [29, 158, 252, 191, 10, 83, 219, 99];
 			accounts: [
 				{
-					name: 'auction';
-					isMut: true;
-					isSigner: false;
+					name: 'updater';
+					writable: true;
+					signer: true;
 				},
 				{
-					name: 'initializer';
-					isMut: true;
-					isSigner: false;
+					name: 'config';
+					writable: true;
+				},
+				{
+					name: 'systemProgram';
 				},
 			];
-			args: [];
+			args: [
+				{
+					name: 'auctionTime';
+					type: 'u64';
+				},
+			];
 		},
 	];
 	accounts: [
+		{
+			name: 'auctionState';
+			discriminator: [252, 227, 205, 147, 72, 64, 250, 126];
+		},
+		{
+			name: 'config';
+			discriminator: [155, 12, 170, 224, 30, 250, 204, 130];
+		},
+	];
+	errors: [
+		{
+			code: 6000;
+			name: 'amountBidLessThanMinimumAmountOut';
+			msg: 'amount bid is less than the minimum amount out';
+		},
+		{
+			code: 6001;
+			name: 'amountBidNotGreaterThanLastBidAmount';
+			msg: 'amount bid is not greater than the last bid amount';
+		},
+		{
+			code: 6002;
+			name: 'auctionClosed';
+			msg: 'auction is closed';
+		},
+		{
+			code: 6003;
+			name: 'driverIsNotWinner';
+			msg: 'driver is not winner';
+		},
+		{
+			code: 6004;
+			name: 'auctionIsNotClosed';
+			msg: 'auction is not closed';
+		},
+		{
+			code: 6005;
+			name: 'invalidAuctionMode';
+			msg: 'invalid auction mode';
+		},
+		{
+			code: 6006;
+			name: 'whCpiError';
+			msg: 'wh cpi error';
+		},
+		{
+			code: 6007;
+			name: 'invalidOrderInfo';
+			msg: 'Invalid order info';
+		},
+		{
+			code: 6008;
+			name: 'invalidDestChain';
+			msg: 'Order with dest Solana could not be published';
+		},
+		{
+			code: 6009;
+			name: 'invalidPayloadLen';
+			msg: 'Invalid payload len';
+		},
+		{
+			code: 6010;
+			name: 'invalidInitializer';
+		},
+		{
+			code: 6011;
+			name: 'closeEpochNotReached';
+		},
+		{
+			code: 6012;
+			name: 'driverNotWhitelisted';
+			msg: 'Driver is not whitelisted';
+		},
+		{
+			code: 6013;
+			name: 'auctionAlreadyPosted';
+			msg: 'Auction already posted';
+		},
+		{
+			code: 6014;
+			name: 'invalidRefAddress';
+			msg: 'Invalid ref address';
+		},
+	];
+	types: [
 		{
 			name: 'auctionState';
 			type: {
@@ -253,19 +313,15 @@ export type SwiftAuction = {
 					},
 					{
 						name: 'initializer';
-						type: 'publicKey';
+						type: 'pubkey';
 					},
 					{
 						name: 'closeEpoch';
 						type: 'u64';
 					},
 					{
-						name: 'amountOutMin';
-						type: 'u64';
-					},
-					{
 						name: 'winner';
-						type: 'publicKey';
+						type: 'pubkey';
 					},
 					{
 						name: 'amountPromised';
@@ -294,13 +350,15 @@ export type SwiftAuction = {
 				];
 			};
 		},
-	];
-	types: [
 		{
-			name: 'OrderInfo';
+			name: 'orderInfo';
 			type: {
 				kind: 'struct';
 				fields: [
+					{
+						name: 'payloadType';
+						type: 'u8';
+					},
 					{
 						name: 'trader';
 						type: {
@@ -354,6 +412,10 @@ export type SwiftAuction = {
 						type: 'u64';
 					},
 					{
+						name: 'penaltyPeriod';
+						type: 'u16';
+					},
+					{
 						name: 'addrRef';
 						type: {
 							array: ['u8', 32];
@@ -372,7 +434,21 @@ export type SwiftAuction = {
 						type: 'u8';
 					},
 					{
+						name: 'baseBond';
+						type: 'u64';
+					},
+					{
+						name: 'perBpsBond';
+						type: 'u64';
+					},
+					{
 						name: 'keyRnd';
+						type: {
+							array: ['u8', 32];
+						};
+					},
+					{
+						name: 'customPayload';
 						type: {
 							array: ['u8', 32];
 						};
@@ -381,142 +457,44 @@ export type SwiftAuction = {
 			};
 		},
 	];
-	errors: [
-		{
-			code: 6000;
-			name: 'AmountBidLessThanMinimumAmountOut';
-			msg: 'amount bid is less than the minimum amount out';
-		},
-		{
-			code: 6001;
-			name: 'AmountBidNotGreaterThanLastBidAmount';
-			msg: 'amount bid is not greater than the last bid amount';
-		},
-		{
-			code: 6002;
-			name: 'AuctionClosed';
-			msg: 'auction is closed';
-		},
-		{
-			code: 6003;
-			name: 'DriverIsNotWinner';
-			msg: 'driver is not winner';
-		},
-		{
-			code: 6004;
-			name: 'AuctionIsNotClosed';
-			msg: 'auction is not closed';
-		},
-		{
-			code: 6005;
-			name: 'InvalidAuctionMode';
-			msg: 'invalid auction mode';
-		},
-		{
-			code: 6006;
-			name: 'WhCpiError';
-			msg: 'wh cpi error';
-		},
-		{
-			code: 6007;
-			name: 'InvalidOrderInfo';
-			msg: 'Invalid order info';
-		},
-		{
-			code: 6008;
-			name: 'InvalidDestChain';
-			msg: 'Order with dest Solana could not be published';
-		},
-		{
-			code: 6009;
-			name: 'InvalidPayloadLen';
-			msg: 'Invalid payload len';
-		},
-		{
-			code: 6010;
-			name: 'InvalidInitializer';
-		},
-		{
-			code: 6011;
-			name: 'CloseEpochNotReached';
-		},
-		{
-			code: 6012;
-			name: 'DriverNotWhitelisted';
-			msg: 'Driver is not whitelisted';
-		},
-		{
-			code: 6013;
-			name: 'AuctionAlreadyPosted';
-			msg: 'Auction already posted';
-		},
-		{
-			code: 6014;
-			name: 'InvalidRefAddress';
-			msg: 'Invalid ref address';
-		},
-	];
 };
 
-export const IDL: SwiftAuction = {
-	version: '0.1.0',
-	name: 'swift_auction',
+export const SwiftV2AuctionIdl: SwiftV2Auction = {
+	address: '9bh7SPjkNPgmq7HHWQxgCFJEnMPvAPdLcBEQL1FSG1YR',
+	metadata: {
+		name: 'swiftAuction',
+		version: '0.1.0',
+		spec: '0.1.0',
+		description: 'Created with Anchor',
+	},
 	instructions: [
 		{
-			name: 'updateConfig',
-			accounts: [
-				{
-					name: 'updater',
-					isMut: true,
-					isSigner: true,
-				},
-				{
-					name: 'config',
-					isMut: true,
-					isSigner: false,
-				},
-				{
-					name: 'systemProgram',
-					isMut: false,
-					isSigner: false,
-				},
-			],
-			args: [
-				{
-					name: 'auctionTime',
-					type: 'u64',
-				},
-			],
-		},
-		{
 			name: 'bid',
+			discriminator: [199, 56, 85, 38, 146, 243, 37, 158],
 			accounts: [
 				{
 					name: 'config',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'driver',
-					isMut: true,
-					isSigner: true,
+					writable: true,
+					signer: true,
 				},
 				{
 					name: 'auctionState',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'systemProgram',
-					isMut: false,
-					isSigner: false,
 				},
 			],
 			args: [
 				{
 					name: 'order',
 					type: {
-						defined: 'OrderInfo',
+						defined: {
+							name: 'orderInfo',
+						},
 					},
 				},
 				{
@@ -526,69 +504,73 @@ export const IDL: SwiftAuction = {
 			],
 		},
 		{
-			name: 'postAuction',
+			name: 'closeAuction',
+			discriminator: [225, 129, 91, 48, 215, 73, 203, 172],
 			accounts: [
 				{
 					name: 'auction',
-					isMut: true,
-					isSigner: false,
+					writable: true,
+				},
+				{
+					name: 'initializer',
+					writable: true,
+				},
+			],
+			args: [],
+		},
+		{
+			name: 'postAuction',
+			discriminator: [62, 30, 249, 94, 9, 182, 79, 198],
+			accounts: [
+				{
+					name: 'auction',
+					writable: true,
 				},
 				{
 					name: 'driver',
-					isMut: true,
-					isSigner: true,
+					writable: true,
+					signer: true,
 				},
 				{
 					name: 'emitter',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'config',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'emitterSequence',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'feeCollector',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'message',
-					isMut: true,
-					isSigner: true,
+					writable: true,
+					signer: true,
 				},
 				{
 					name: 'coreBridgeProgram',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'systemProgram',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'clock',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'rent',
-					isMut: false,
-					isSigner: false,
 				},
 			],
 			args: [
 				{
 					name: 'order',
 					type: {
-						defined: 'OrderInfo',
+						defined: {
+							name: 'orderInfo',
+						},
 					},
 				},
 				{
@@ -601,73 +583,59 @@ export const IDL: SwiftAuction = {
 		},
 		{
 			name: 'postAuctionShim',
+			discriminator: [82, 7, 45, 178, 249, 242, 49, 192],
 			accounts: [
 				{
 					name: 'auction',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'driver',
-					isMut: true,
-					isSigner: true,
+					writable: true,
+					signer: true,
 				},
 				{
 					name: 'emitter',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'config',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'emitterSequence',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'feeCollector',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'message',
-					isMut: true,
-					isSigner: false,
+					writable: true,
 				},
 				{
 					name: 'coreBridgeProgram',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'systemProgram',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'clock',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'shimEventAuth',
-					isMut: false,
-					isSigner: false,
 				},
 				{
 					name: 'shimProgram',
-					isMut: false,
-					isSigner: false,
 				},
 			],
 			args: [
 				{
 					name: 'order',
 					type: {
-						defined: 'OrderInfo',
+						defined: {
+							name: 'orderInfo',
+						},
 					},
 				},
 				{
@@ -679,23 +647,116 @@ export const IDL: SwiftAuction = {
 			],
 		},
 		{
-			name: 'closeAuction',
+			name: 'updateConfig',
+			discriminator: [29, 158, 252, 191, 10, 83, 219, 99],
 			accounts: [
 				{
-					name: 'auction',
-					isMut: true,
-					isSigner: false,
+					name: 'updater',
+					writable: true,
+					signer: true,
 				},
 				{
-					name: 'initializer',
-					isMut: true,
-					isSigner: false,
+					name: 'config',
+					writable: true,
+				},
+				{
+					name: 'systemProgram',
 				},
 			],
-			args: [],
+			args: [
+				{
+					name: 'auctionTime',
+					type: 'u64',
+				},
+			],
 		},
 	],
 	accounts: [
+		{
+			name: 'auctionState',
+			discriminator: [252, 227, 205, 147, 72, 64, 250, 126],
+		},
+		{
+			name: 'config',
+			discriminator: [155, 12, 170, 224, 30, 250, 204, 130],
+		},
+	],
+	errors: [
+		{
+			code: 6000,
+			name: 'amountBidLessThanMinimumAmountOut',
+			msg: 'amount bid is less than the minimum amount out',
+		},
+		{
+			code: 6001,
+			name: 'amountBidNotGreaterThanLastBidAmount',
+			msg: 'amount bid is not greater than the last bid amount',
+		},
+		{
+			code: 6002,
+			name: 'auctionClosed',
+			msg: 'auction is closed',
+		},
+		{
+			code: 6003,
+			name: 'driverIsNotWinner',
+			msg: 'driver is not winner',
+		},
+		{
+			code: 6004,
+			name: 'auctionIsNotClosed',
+			msg: 'auction is not closed',
+		},
+		{
+			code: 6005,
+			name: 'invalidAuctionMode',
+			msg: 'invalid auction mode',
+		},
+		{
+			code: 6006,
+			name: 'whCpiError',
+			msg: 'wh cpi error',
+		},
+		{
+			code: 6007,
+			name: 'invalidOrderInfo',
+			msg: 'Invalid order info',
+		},
+		{
+			code: 6008,
+			name: 'invalidDestChain',
+			msg: 'Order with dest Solana could not be published',
+		},
+		{
+			code: 6009,
+			name: 'invalidPayloadLen',
+			msg: 'Invalid payload len',
+		},
+		{
+			code: 6010,
+			name: 'invalidInitializer',
+		},
+		{
+			code: 6011,
+			name: 'closeEpochNotReached',
+		},
+		{
+			code: 6012,
+			name: 'driverNotWhitelisted',
+			msg: 'Driver is not whitelisted',
+		},
+		{
+			code: 6013,
+			name: 'auctionAlreadyPosted',
+			msg: 'Auction already posted',
+		},
+		{
+			code: 6014,
+			name: 'invalidRefAddress',
+			msg: 'Invalid ref address',
+		},
+	],
+	types: [
 		{
 			name: 'auctionState',
 			type: {
@@ -713,19 +774,15 @@ export const IDL: SwiftAuction = {
 					},
 					{
 						name: 'initializer',
-						type: 'publicKey',
+						type: 'pubkey',
 					},
 					{
 						name: 'closeEpoch',
 						type: 'u64',
 					},
 					{
-						name: 'amountOutMin',
-						type: 'u64',
-					},
-					{
 						name: 'winner',
-						type: 'publicKey',
+						type: 'pubkey',
 					},
 					{
 						name: 'amountPromised',
@@ -754,13 +811,15 @@ export const IDL: SwiftAuction = {
 				],
 			},
 		},
-	],
-	types: [
 		{
-			name: 'OrderInfo',
+			name: 'orderInfo',
 			type: {
 				kind: 'struct',
 				fields: [
+					{
+						name: 'payloadType',
+						type: 'u8',
+					},
 					{
 						name: 'trader',
 						type: {
@@ -814,6 +873,10 @@ export const IDL: SwiftAuction = {
 						type: 'u64',
 					},
 					{
+						name: 'penaltyPeriod',
+						type: 'u16',
+					},
+					{
 						name: 'addrRef',
 						type: {
 							array: ['u8', 32],
@@ -832,88 +895,27 @@ export const IDL: SwiftAuction = {
 						type: 'u8',
 					},
 					{
+						name: 'baseBond',
+						type: 'u64',
+					},
+					{
+						name: 'perBpsBond',
+						type: 'u64',
+					},
+					{
 						name: 'keyRnd',
+						type: {
+							array: ['u8', 32],
+						},
+					},
+					{
+						name: 'customPayload',
 						type: {
 							array: ['u8', 32],
 						},
 					},
 				],
 			},
-		},
-	],
-	errors: [
-		{
-			code: 6000,
-			name: 'AmountBidLessThanMinimumAmountOut',
-			msg: 'amount bid is less than the minimum amount out',
-		},
-		{
-			code: 6001,
-			name: 'AmountBidNotGreaterThanLastBidAmount',
-			msg: 'amount bid is not greater than the last bid amount',
-		},
-		{
-			code: 6002,
-			name: 'AuctionClosed',
-			msg: 'auction is closed',
-		},
-		{
-			code: 6003,
-			name: 'DriverIsNotWinner',
-			msg: 'driver is not winner',
-		},
-		{
-			code: 6004,
-			name: 'AuctionIsNotClosed',
-			msg: 'auction is not closed',
-		},
-		{
-			code: 6005,
-			name: 'InvalidAuctionMode',
-			msg: 'invalid auction mode',
-		},
-		{
-			code: 6006,
-			name: 'WhCpiError',
-			msg: 'wh cpi error',
-		},
-		{
-			code: 6007,
-			name: 'InvalidOrderInfo',
-			msg: 'Invalid order info',
-		},
-		{
-			code: 6008,
-			name: 'InvalidDestChain',
-			msg: 'Order with dest Solana could not be published',
-		},
-		{
-			code: 6009,
-			name: 'InvalidPayloadLen',
-			msg: 'Invalid payload len',
-		},
-		{
-			code: 6010,
-			name: 'InvalidInitializer',
-		},
-		{
-			code: 6011,
-			name: 'CloseEpochNotReached',
-		},
-		{
-			code: 6012,
-			name: 'DriverNotWhitelisted',
-			msg: 'Driver is not whitelisted',
-		},
-		{
-			code: 6013,
-			name: 'AuctionAlreadyPosted',
-			msg: 'Auction already posted',
-		},
-		{
-			code: 6014,
-			name: 'InvalidRefAddress',
-			msg: 'Invalid ref address',
 		},
 	],
 };

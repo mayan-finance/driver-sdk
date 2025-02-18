@@ -9,12 +9,12 @@ import {
 	VersionedTransaction,
 } from '@solana/web3.js';
 import axios from 'axios';
-import { CHAIN_ID_SOLANA, supportedChainIds } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEvmChainId, supportedChainIds } from '../config/chains';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { Swap } from '../swap.dto';
-import { tryNativeToUint8Array } from '../utils/buffer';
+import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
 import logger from '../utils/logger';
 import { LookupTableOptimizer } from '../utils/lut';
 import { NewSolanaIxHelper } from './solana-ix';
@@ -34,7 +34,7 @@ type WalletInfo = {
 export class SolanaFulfiller {
 	private wallets: WalletAss[] = [];
 
-	private readonly unlockWallets: Map<number, string> = new Map();
+	private readonly unlockWallets32: Map<number, Buffer> = new Map();
 
 	constructor(
 		private readonly solanaConnection: Connection,
@@ -42,7 +42,6 @@ export class SolanaFulfiller {
 		private readonly walletConfig: WalletConfig,
 		private readonly solanaIxHelper: NewSolanaIxHelper,
 		private readonly lutOptimizer: LookupTableOptimizer,
-		walletHelper: WalletsHelper,
 		tokenList: TokenList,
 	) {
 		for (let token of [tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!, tokenList.getWethSol()]) {
@@ -55,9 +54,17 @@ export class SolanaFulfiller {
 
 		for (let chainId of supportedChainIds) {
 			if (chainId === CHAIN_ID_SOLANA) {
-				continue;
+				this.unlockWallets32.set(chainId, this.walletConfig.solana.publicKey.toBuffer());
+			} else if (chainId === CHAIN_ID_SUI) {
+				this.unlockWallets32.set(
+					chainId,
+					Buffer.from(this.walletConfig.sui.getPublicKey().toSuiAddress().slice(2), 'hex'),
+				);
+			} else if (isEvmChainId(chainId)) {
+				this.unlockWallets32.set(chainId, Buffer.from(tryNativeToUint8Array(walletConfig.evm.address, chainId)));
+			} else {
+				throw new Error(`Invalid chainId for unlock wallet sui: ${chainId}`);
 			}
-			this.unlockWallets.set(chainId, walletHelper.getDriverWallet(chainId).address);
 		}
 	}
 
@@ -123,43 +130,6 @@ export class SolanaFulfiller {
 		}
 
 		return result;
-	}
-
-	async getNormalizedBid(
-		driverToken: Token,
-		effectiveAmountInDriverToken: number,
-		normalizedMinAmountOut: bigint,
-		toToken: Token,
-	): Promise<bigint> {
-		let bidAmount: bigint;
-		if (driverToken.contract === toToken.contract) {
-			bidAmount = BigInt(Math.floor(effectiveAmountInDriverToken * 0.99 * 10 ** driverToken.decimals));
-		} else {
-			const quoteRes = await this.getQuoteWithRetry(
-				BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
-				driverToken.mint,
-				toToken.mint,
-				0.1, // 10%
-			);
-
-			if (!quoteRes || !quoteRes.raw) {
-				throw new Error('jupiter quote for bid in swift failed');
-			}
-
-			bidAmount = BigInt(Math.floor(Number(quoteRes.expectedAmountOut) * Number(0.99)));
-		}
-
-		let normalizedBidAmount = bidAmount;
-		if (toToken.decimals > 8) {
-			normalizedBidAmount = bidAmount / BigInt(10 ** (toToken.decimals - 8));
-		}
-
-		if (normalizedBidAmount < normalizedMinAmountOut) {
-			logger.warn(`normalizedBidAmount is less than minAmountOut`);
-			normalizedBidAmount = normalizedMinAmountOut;
-		}
-
-		return normalizedBidAmount;
 	}
 
 	async getSimpleFulfillIxPackage(
@@ -341,8 +311,12 @@ export class SolanaFulfiller {
 	getUnlockAddress(sourceChainId: number): Uint8Array {
 		if (sourceChainId === CHAIN_ID_SOLANA) {
 			return tryNativeToUint8Array(this.walletConfig.solana.publicKey.toString(), CHAIN_ID_SOLANA);
-		} else {
+		} else if (isEvmChainId(sourceChainId)) {
 			return tryNativeToUint8Array(this.walletConfig.evm.address, sourceChainId);
+		} else if (sourceChainId === CHAIN_ID_SUI) {
+			return hexToUint8Array(this.walletConfig.sui.getPublicKey().toSuiAddress());
+		} else {
+			throw new Error(`unsupported chain id for getting solana unlock addr ${sourceChainId}`);
 		}
 	}
 }
