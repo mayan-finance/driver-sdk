@@ -80,7 +80,7 @@ export async function makeEvmProviders(chainIds: number[], rpcConfig: RpcConfig)
 			const fetchRequest = new FetchRequest(endpoint);
 			fetchRequest.timeout = RPC_TIMEOUT;
 			const provider = new ethers.JsonRpcProvider(fetchRequest, realChainId, {
-				staticNetwork: ethers.Network.from(realChainId)
+				staticNetwork: ethers.Network.from(realChainId),
 			});
 			allProviders[chainId].push(provider);
 		}
@@ -143,7 +143,7 @@ export async function makeSecondEvmProviders(chainIds: number[], rpcConfig: RpcC
 			const fetchRequest = new FetchRequest(endpoint);
 			fetchRequest.timeout = RPC_TIMEOUT;
 			const provider = new ethers.JsonRpcProvider(fetchRequest, realChainId, {
-				staticNetwork: ethers.Network.from(realChainId)
+				staticNetwork: ethers.Network.from(realChainId),
 			});
 			all2ndProviders[chainId] = [provider];
 		}

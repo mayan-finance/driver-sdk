@@ -10,21 +10,35 @@ import {
 } from './chains';
 
 export type ContractsConfig = {
-	contracts: {
+	evmContractsV2Src: {
+		[chainId: number]: string;
+	};
+	evmContractsV2Dst: {
 		[chainId: number]: string;
 	};
 	evmFulfillHelpers: {
 		[chainId: number]: string;
 	};
-	auctionAddr: string;
+	suiIds: {
+		packageId: string;
+		stateId: string;
+		feeManagerStateId: string;
+		emitterId: string;
+	};
+	auctionAddrV2: string;
 	feeCollectorSolana: string;
 };
 
-export const SolanaProgram = 'BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY';
-export const AuctionAddressSolana = '9w1D9okTM8xNE7Ntb7LpaAaoLc6LfU9nHFs2h2KTpX1H';
+export const SolanaProgramV2 = '92peaC8g5ANAxpK2aCfLTC12JgPncRKCGULQNB2DMvRH';
+export const AuctionAddressV2Solana = '9bh7SPjkNPgmq7HHWQxgCFJEnMPvAPdLcBEQL1FSG1YR';
 export const FeeCollectorSolana = 'pSwTTFE92RsRtvMCpb3mjruv5ww2KgBNVPscwdWwbxk';
 
 export const MayanForwarderAddress = '0x0654874eb7F59C6f5b39931FC45dC45337c967c3';
+
+export const SuiPackageId = '0x974af8e76ab7655b142ac344ce550cfdf9a288f2d2b0e3deff46983c4d255954';
+export const SuiStateId = '0x7ac01a7c14c53098a41593c7623823bb677b5201fb3ee35b75b47cfc6c6c6f40';
+export const SuiFeeMgrStateId = '0xe42174b6d742f40bd2b67b967542b21e6d7433f2d277a80bb59866ac73ff3f52';
+export const SuiEmitterId = '0x3cc868654f6d2cbe7c01d3614572e20ac760e28712bce0286b0be73397e4e821';
 
 export const fulfillHelpers: { [key: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
