@@ -26,7 +26,7 @@ export async function fetchDynamicSdkParams(): Promise<{
 	const serverChains = Object.keys(result.data.swiftContracts).map((k) => +k);
 	for (let chain of serverChains) {
 		if (!supportedChainIds.includes(chain)) {
-			delete result.data.swiftContract[chain];
+			delete result.data.swiftContracts[chain];
 		}
 	}
 	return result.data;
