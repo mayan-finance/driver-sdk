@@ -102,7 +102,7 @@ export async function main() {
 		solanaConnection,
 	);
 
-	const swapRouters = new SwapRouters(contracts, rpcConfig, routersConfig, evmProviders);
+	const swapRouters = new SwapRouters(contracts, rpcConfig, routersConfig, evmProviders, mayanEndpoints.priceApiUrl);
 
 	const registerSvc = new RegisterService(globalConfig, walletConf, mayanEndpoints);
 	await registerSvc.register();
