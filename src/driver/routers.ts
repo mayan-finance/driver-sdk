@@ -36,6 +36,7 @@ export class SwapRouters {
 		private readonly rpcConfig: RpcConfig,
 		private readonly routersConfig: RoutersConfig,
 		evmProviders: EvmProviders,
+		private readonly priceApiUri: string,
 	) {
 		for (let chainId in evmProviders) {
 			this.uniswapQuoterV2Contracts[+chainId] = new ethers.Contract(
@@ -68,8 +69,17 @@ export class SwapRouters {
 				quoteFunction = this.getOkxQuote.bind(this);
 				quotename = 'okx';
 			}
+			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
+				quotename = 'uniswap';
+				quoteFunction = this.getUniswapQuote.bind(this);
+			}
+
 			return await quoteFunction(swapParams, retries);
 		} catch (err) {
+			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
+				throw err;
+			}
+
 			console.error(`Error using ${quotename} as swap ${err}. trying other`);
 			try {
 				return await this.getOkxQuote(swapParams, retries);
@@ -107,14 +117,124 @@ export class SwapRouters {
 				quotename = 'okx';
 				swapFunction = this.getOkxSwap.bind(this);
 			}
+			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
+				quotename = 'uniswap';
+				swapFunction = this.getUniswapSwap.bind(this);
+			}
+
 			return await swapFunction(swapParams, retries);
 		} catch (err) {
+			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
+				throw err;
+			}
+
 			console.error(`Error using ${quotename} as swap ${err}. trying other`);
 			try {
 				return await this.getOkxSwap(swapParams, retries);
 			} catch (errrr) {
 				throw errrr;
 			}
+		}
+	}
+
+	async getUniswapQuote(
+		swapParams: {
+			whChainId: number;
+			srcToken: string;
+			destToken: string;
+			amountIn: string;
+			timeout?: number;
+		},
+		retries: number = 3,
+	): Promise<{
+		toAmount: string;
+		gas: number;
+	}> {
+		const apiUrl = `${this.priceApiUri}/v3/quote/on-chain`;
+
+		const timeout = swapParams.timeout || 3000;
+		const config: AxiosRequestConfig = {
+			timeout: timeout,
+			params: {
+				fromToken: swapParams.srcToken,
+				toToken: swapParams.destToken,
+				chain: 'unichain',
+				amountIn64: swapParams.amountIn,
+			},
+		};
+
+		try {
+			const response = await axios.get(apiUrl, config);
+			return {
+				toAmount: response.data.toAmount,
+				gas: Number(response.data.gas),
+			};
+		} catch (err: any) {
+			let isRateLimited = false;
+			if (err.response && err.response.status === 429) {
+				isRateLimited = true;
+				await delay(200);
+			}
+			if (isRateLimited && retries > 0) {
+				return this.getUniswapQuote(swapParams, retries - 1);
+			}
+			throw new Error(`Failed to get quote from uniswap(price-api): ${err}`);
+		}
+	}
+
+	async getUniswapSwap(
+		swapParams: {
+			whChainId: number;
+			srcToken: string;
+			destToken: string;
+			amountIn: string;
+			slippagePercent: number;
+			timeout?: number;
+		},
+		retries: number = 3,
+	): Promise<{
+		tx: {
+			to: string;
+			data: string;
+			value: string;
+			gas: string;
+		};
+		gas: number;
+		toAmount: string;
+	}> {
+		const apiUrl = `${this.priceApiUri}/v3/quote/on-chain`;
+
+		const timeout = swapParams.timeout || 3000;
+		const swapSourceDst = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
+		const config: AxiosRequestConfig = {
+			timeout: timeout,
+			params: {
+				fromToken: swapParams.srcToken,
+				toToken: swapParams.destToken,
+				chain: 'unichain',
+				amountIn64: swapParams.amountIn,
+				recipient: swapSourceDst,
+				slippageBps: swapParams.slippagePercent * 100,
+			},
+		};
+
+		try {
+			const response = await axios.get(apiUrl, config);
+			return {
+				tx: response.data.tx,
+				gas: Number(response.data.tx.gas),
+				toAmount: response.data.toAmount,
+			};
+		} catch (err: any) {
+			let isRateLimited = false;
+			if (err.response && err.response.status === 429) {
+				isRateLimited = true;
+				await delay(200);
+			}
+			if (isRateLimited && retries > 0) {
+				return this.getUniswapSwap(swapParams, retries - 1);
+			}
+			throw new Error(`Failed to get swap from uniswap (price-api): ${err}`);
 		}
 	}
 
