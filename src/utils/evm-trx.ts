@@ -8,6 +8,7 @@ import {
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
+	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
 import logger from './logger';
 
@@ -26,7 +27,7 @@ export async function getSuggestedOverrides(targetChain: number, chainGasPrice: 
 		overrides['gasPrice'] = ethers.parseUnits('1.5', 'gwei');
 	} else if (targetChain === CHAIN_ID_OPTIMISM) {
 		overrides['gasPrice'] = chainGasPrice;
-	} else if (targetChain === CHAIN_ID_BASE) {
+	} else if (targetChain === CHAIN_ID_BASE || targetChain === CHAIN_ID_UNICHAIN) {
 		overrides['gasPrice'] = chainGasPrice * 2n;
 	} else if (targetChain === CHAIN_ID_ETH) {
 		overrides['maxFeePerGas'] = chainGasPrice;
@@ -49,6 +50,7 @@ export function getTypicalBlocksToConfirm(targetChain: number): number {
 		case CHAIN_ID_ARBITRUM:
 			return 40;
 		case CHAIN_ID_BASE:
+		case CHAIN_ID_UNICHAIN:
 			return 8;
 		case CHAIN_ID_ETH:
 			return 2;

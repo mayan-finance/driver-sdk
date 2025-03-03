@@ -25,6 +25,8 @@ export type RpcConfig = {
 		optimism2nd: string;
 		base: string;
 		base2nd: string;
+		unichain: string;
+		unichain2nd: string;
 	};
 	jupV6Endpoint: string;
 	oneInchApiKey: string;
@@ -63,6 +65,8 @@ export const rpcConfig: RpcConfig = {
 		optimism2nd: process.env.OPTIMISM_2ND_RPC || 'https://mainnet.optimism.io',
 		polygon: process.env.POLYGON_RPC || 'https://polygon-rpc.com/',
 		polygon2nd: process.env.POLYGON_2ND_RPC || 'https://polygon-rpc.com/',
+		unichain: process.env.UNICHAIN_RPC || 'https://mainnet.unichain.org',
+		unichain2nd: process.env.UNICHAIN_2ND_RPC || 'https://mainnet.unichain.org',
 	},
 	jupV6Endpoint: process.env.JUP_V6_ENDPOINT || 'https://quote-api.jup.ag/v6',
 	oneInchApiKey: process.env.ONE_INCH_API_KEY || '',

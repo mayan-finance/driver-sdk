@@ -10,6 +10,7 @@ import {
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
+	CHAIN_ID_UNICHAIN,
 	WhChainIdToEvm,
 } from '../config/chains';
 import { ContractsConfig, okxSwapHelpers } from '../config/contracts';
@@ -547,6 +548,7 @@ const tokenApprovalContracts: { [chainId: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0x70cBb871E8f30Fc8Ce23609E9E0Ea87B6b222F58',
 	[CHAIN_ID_OPTIMISM]: '0x68D6B739D2020067D1e2F713b999dA97E4d54812',
 	[CHAIN_ID_BASE]: '0x57df6092665eb6058DE53939612413ff4B09114E',
+	[CHAIN_ID_UNICHAIN]: '',
 };
 
 const OkxDexRouterContracts: { [chainId: number]: string } = {
@@ -557,4 +559,5 @@ const OkxDexRouterContracts: { [chainId: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0xf332761c673b59B21fF6dfa8adA44d78c12dEF09',
 	[CHAIN_ID_OPTIMISM]: '0xf332761c673b59B21fF6dfa8adA44d78c12dEF09',
 	[CHAIN_ID_BASE]: '0x6b2C0c7be2048Daa9b5527982C29f48062B34D58',
+	[CHAIN_ID_UNICHAIN]: '',
 };

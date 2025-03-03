@@ -1,3 +1,4 @@
+import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
 import axios from 'axios';
 import * as mathjs from 'mathjs';
 import {
@@ -9,13 +10,13 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { Token, TokenList } from '../config/tokens';
 import { EvmProviders } from './evm-providers';
 import { AUCTION_MODES } from './state-parser';
-import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
 
 export class FeeService {
 	constructor(
@@ -304,6 +305,7 @@ export class FeeService {
 				return 2;
 			case CHAIN_ID_OPTIMISM:
 			case CHAIN_ID_BASE:
+			case CHAIN_ID_UNICHAIN:
 				return 2;
 			default:
 				return 1;
@@ -409,6 +411,7 @@ export class FeeService {
 		switch (fromChain) {
 			case CHAIN_ID_ARBITRUM:
 			case CHAIN_ID_BASE:
+			case CHAIN_ID_UNICHAIN:
 			case CHAIN_ID_OPTIMISM:
 			case CHAIN_ID_POLYGON:
 			case CHAIN_ID_BSC:

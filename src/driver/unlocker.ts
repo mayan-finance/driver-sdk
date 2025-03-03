@@ -13,6 +13,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
 import { ContractsConfig, SolanaProgram } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
@@ -266,6 +267,7 @@ export class Unlocker {
 			switch (sourceChainId) {
 				case CHAIN_ID_ARBITRUM:
 				case CHAIN_ID_BASE:
+				case CHAIN_ID_UNICHAIN:
 				case CHAIN_ID_OPTIMISM:
 				case CHAIN_ID_POLYGON:
 				case CHAIN_ID_BSC:
