@@ -6,6 +6,7 @@ import {
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
+	CHAIN_ID_UNICHAIN,
 } from './chains';
 
 export type ContractsConfig = {
@@ -33,6 +34,7 @@ export const fulfillHelpers: { [key: number]: string } = {
 	[CHAIN_ID_OPTIMISM]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
 	[CHAIN_ID_POLYGON]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
 	[CHAIN_ID_BSC]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
+	[CHAIN_ID_UNICHAIN]: '0xAb7aC537D02003F148dc8e76873692c874Ec169b',
 };
 
 export const okxSwapHelpers: { [key: number]: string } = {
@@ -43,4 +45,5 @@ export const okxSwapHelpers: { [key: number]: string } = {
 	[CHAIN_ID_OPTIMISM]: '0x5E18824Bb0e73BB9bd78E7B2D38a3289BcCdEe1D',
 	[CHAIN_ID_POLYGON]: '0x5E18824Bb0e73BB9bd78E7B2D38a3289BcCdEe1D',
 	[CHAIN_ID_BSC]: '0x5E18824Bb0e73BB9bd78E7B2D38a3289BcCdEe1D',
+	[CHAIN_ID_UNICHAIN]: '0x5E18824Bb0e73BB9bd78E7B2D38a3289BcCdEe1D',
 };

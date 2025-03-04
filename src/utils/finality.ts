@@ -9,6 +9,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
@@ -32,6 +33,7 @@ export class ChainFinality {
 		[CHAIN_ID_ARBITRUM]: 1,
 		[CHAIN_ID_OPTIMISM]: 1,
 		[CHAIN_ID_BASE]: 1,
+		[CHAIN_ID_UNICHAIN]: 1,
 	};
 
 	private readonly minSwapValueUsd = 100;

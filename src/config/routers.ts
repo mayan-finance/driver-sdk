@@ -6,6 +6,7 @@ import {
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
+	CHAIN_ID_UNICHAIN,
 } from './chains';
 
 export enum EvmRouter {
@@ -33,6 +34,7 @@ export const routersConfig: RoutersConfig = {
 		[CHAIN_ID_ARBITRUM]: EvmRouter.ONE1INCH,
 		[CHAIN_ID_POLYGON]: EvmRouter.ONE1INCH,
 		[CHAIN_ID_BASE]: EvmRouter.OKX,
+		[CHAIN_ID_UNICHAIN]: EvmRouter.UNISWAP_V3,
 		[CHAIN_ID_BSC]: EvmRouter.ONE1INCH,
 		[CHAIN_ID_AVAX]: EvmRouter.ONE1INCH,
 	},
@@ -61,6 +63,11 @@ export const routersConfig: RoutersConfig = {
 			quoterV2: '0x3d4e44Eb1374240CE5F1B871ab261CD16335B76a',
 			universalRouter: '0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD',
 			swapRouter02: '0x2626664c2603336E57B271c5C0b26F421741e481',
+		},
+		[CHAIN_ID_UNICHAIN]: {
+			quoterV2: '0x385a5cf5f83e99f7bb2852b6a19c3538b9fa7658',
+			universalRouter: '0xef740bf23acae26f6492b10de645d6b98dc8eaf3',
+			swapRouter02: '0x73855d06de49d0fe4a9c42636ba96c62da12ff9c',
 		},
 		[CHAIN_ID_BSC]: {
 			quoterV2: '0x78D78E420Da98ad378D7799bE8f4AF69033EB077',

@@ -13,6 +13,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_UNICHAIN,
 	mapNameToWormholeChainId,
 	WhChainIdToEvm,
 } from './chains';
@@ -43,10 +44,12 @@ export class TokenList {
 	public nativeTokens: { [index: string]: Token } = {};
 	private allPythIds: string[] = [];
 	private readonly pythToCoingeckoIds: { [pythId: string]: Set<string> } = {};
-	private pythPrices: { [coingeckoId: string]: {
-		updatedAt: Date;
-		price: number;
-	} } = {};
+	private pythPrices: {
+		[coingeckoId: string]: {
+			updatedAt: Date;
+			price: number;
+		};
+	} = {};
 	private pythLock = false;
 	private initialized = false;
 
@@ -115,7 +118,6 @@ export class TokenList {
 			this.pythPrices['usd-coin']?.price &&
 			this.pythPrices['tether']?.updatedAt > new Date(Date.now() - 60 * 1000)
 		) {
-
 			return this.pythPrices['tether'].price / this.pythPrices['usd-coin'].price;
 		}
 		return null;
@@ -174,7 +176,11 @@ export class TokenList {
 	}
 
 	getEth(chainId: number): Token | null {
-		if ([CHAIN_ID_ETH, CHAIN_ID_ARBITRUM, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE].includes(chainId as any)) {
+		if (
+			[CHAIN_ID_ETH, CHAIN_ID_ARBITRUM, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE, CHAIN_ID_UNICHAIN].includes(
+				chainId as any,
+			)
+		) {
 			return this.nativeTokens[chainId];
 		}
 		return null;
@@ -295,6 +301,7 @@ const UsdcContracts: { [key: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
 	[CHAIN_ID_OPTIMISM]: '0x0b2c639c533813f4aa9d7837caf62653d097ff85',
 	[CHAIN_ID_BASE]: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
+	[CHAIN_ID_UNICHAIN]: '0x078d782b760474a361dda0af3839290b0ef57ad6',
 };
 
 const UsdtContracts: { [key: number]: string } = {

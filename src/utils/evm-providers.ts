@@ -7,6 +7,7 @@ import {
 	CHAIN_ID_ETH,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
+	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
 import { RpcConfig } from '../config/rpc';
 
@@ -67,6 +68,9 @@ export async function makeEvmProviders(chainIds: number[], rpcConfig: RpcConfig)
 		} else if (chainId === CHAIN_ID_BASE) {
 			realChainId = 8453;
 			endpoints = rpcConfig.evmEndpoints.base.split(',');
+		} else if (chainId === CHAIN_ID_UNICHAIN) {
+			realChainId = 130;
+			endpoints = rpcConfig.evmEndpoints.unichain.split(',');
 		}
 
 		for (let endpoint of endpoints) {
@@ -125,6 +129,9 @@ export async function makeSecondEvmProviders(chainIds: number[], rpcConfig: RpcC
 		} else if (chainId === CHAIN_ID_BASE) {
 			realChainId = 8453;
 			endpoints = rpcConfig.evmEndpoints.base2nd.split(',');
+		} else if (chainId === CHAIN_ID_UNICHAIN) {
+			realChainId = 130;
+			endpoints = rpcConfig.evmEndpoints.unichain2nd.split(',');
 		}
 
 		for (let endpoint of endpoints) {
@@ -133,9 +140,9 @@ export async function makeSecondEvmProviders(chainIds: number[], rpcConfig: RpcC
 			});
 			all2ndProviders[chainId] = [provider];
 		}
-
-		await setFirstActive2nProvider();
 	}
+
+	await setFirstActive2nProvider();
 
 	return active2ndProviders;
 }

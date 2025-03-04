@@ -29,11 +29,15 @@ export class RegisterService {
 		// 	Buffer.from(this.signMessage),
 		// 	this.walletConfig.solana.publicKey.toBuffer(),
 		// );
-		await axios.post(`${this.endpoints.priceApiUrl}/v3/driver/register/`, {
-			evmAddress: this.walletConfig.evm.address,
-			evmSignature: this.signedEvmHex,
-			solanaAddress: this.walletConfig.solana.publicKey.toString(),
-			solanaSignature: this.signedSolanaHex,
-		});
+		try {
+			await axios.post(`${this.endpoints.priceApiUrl}/v3/driver/register/`, {
+				evmAddress: this.walletConfig.evm.address,
+				evmSignature: this.signedEvmHex,
+				solanaAddress: this.walletConfig.solana.publicKey.toString(),
+				solanaSignature: this.signedSolanaHex,
+			});
+		} catch (err) {
+			console.error(`Error when trying to register ${err}`);
+		}
 	}
 }
