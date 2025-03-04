@@ -1,9 +1,8 @@
-import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
 import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA } from './config/chains';
+import { CHAIN_ID_SOLANA, isEvmChainId } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
@@ -300,7 +299,7 @@ export class AuctionFulfillerConfig {
 				const balance = await this.connection.getTokenAccountBalance(ataKey);
 				return balance?.value?.uiAmount || 0;
 			}
-		} else if (isEVMChain(token.wChainId as ChainId)) {
+		} else if (isEvmChainId(+token.wChainId!)) {
 			if (token.contract === ethers.ZeroAddress) {
 				const balance = await this.evmProviders[token.wChainId!].getBalance(this.walletConfig.evm.address);
 				return Number(balance) / 10 ** 18;

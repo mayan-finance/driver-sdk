@@ -58,6 +58,17 @@ export const ETH_CHAINS: number[] = [
 	CHAIN_ID_UNICHAIN,
 ];
 
+export const EVM_CHAINS: number[] = [
+	CHAIN_ID_ETH,
+	CHAIN_ID_BSC,
+	CHAIN_ID_AVAX,
+	CHAIN_ID_BASE,
+	CHAIN_ID_POLYGON,
+	CHAIN_ID_OPTIMISM,
+	CHAIN_ID_UNICHAIN,
+	CHAIN_ID_ARBITRUM,
+];
+
 export const WhChainIdToEvm: { [chainId: number]: number } = {
 	[CHAIN_ID_ETH]: 1,
 	[CHAIN_ID_BSC]: 56,
@@ -70,3 +81,7 @@ export const WhChainIdToEvm: { [chainId: number]: number } = {
 };
 
 export const WORMHOLE_DECIMALS = 8;
+
+export function isEvmChainId(chainId: number) {
+	return EVM_CHAINS.includes(chainId);
+}

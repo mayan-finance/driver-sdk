@@ -1,4 +1,3 @@
-import { ChainId, isEVMChain } from '@certusone/wormhole-sdk';
 import axios from 'axios';
 import * as mathjs from 'mathjs';
 import {
@@ -11,6 +10,7 @@ import {
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
 	CHAIN_ID_UNICHAIN,
+	isEvmChainId,
 } from '../config/chains';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
@@ -252,11 +252,11 @@ export class FeeService {
 		};
 
 		let compensation = 0.0;
-		if (isEVMChain(qr.fromChainId as ChainId) && qr.toChainId === CHAIN_ID_SOLANA) {
+		if (isEvmChainId(qr.fromChainId) && qr.toChainId === CHAIN_ID_SOLANA) {
 			compensation = compensationsSol.evmToSolana;
-		} else if (isEVMChain(qr.fromChainId as ChainId) && isEVMChain(qr.toChainId as ChainId)) {
+		} else if (isEvmChainId(qr.fromChainId) && isEvmChainId(qr.toChainId)) {
 			compensation = compensationsSol.evmToEvm;
-		} else if (qr.fromChainId === CHAIN_ID_SOLANA && isEVMChain(qr.toChainId as ChainId)) {
+		} else if (qr.fromChainId === CHAIN_ID_SOLANA && isEvmChainId(qr.toChainId)) {
 			compensation = compensationsSol.solanaToEvm;
 		}
 
