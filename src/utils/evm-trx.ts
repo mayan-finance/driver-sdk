@@ -29,9 +29,6 @@ export async function getSuggestedOverrides(targetChain: number, chainGasPrice: 
 		overrides['gasPrice'] = chainGasPrice;
 	} else if (targetChain === CHAIN_ID_BASE || targetChain === CHAIN_ID_UNICHAIN) {
 		overrides['gasPrice'] = chainGasPrice * 2n;
-	} else if (targetChain === CHAIN_ID_ETH) {
-		overrides['maxFeePerGas'] = chainGasPrice;
-		overrides['maxPriorityFeePerGas'] = chainGasPrice;
 	}
 
 	return overrides;

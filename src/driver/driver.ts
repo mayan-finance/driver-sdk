@@ -421,6 +421,7 @@ export class DriverService {
 			swap,
 			expenses,
 		);
+		logger.info(`Fulfilling ${swap.sourceTxHash} with ${fulfillAmount}`);
 
 		insertTransactionLog(
 			DB_PATH,

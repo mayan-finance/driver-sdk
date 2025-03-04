@@ -1,4 +1,12 @@
-import { Connection, Keypair, MessageV0, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import {
+	ComputeBudgetProgram,
+	Connection,
+	Keypair,
+	MessageV0,
+	PublicKey,
+	Transaction,
+	VersionedTransaction,
+} from '@solana/web3.js';
 
 import { chunks } from '@certusone/wormhole-sdk';
 import {
@@ -83,7 +91,13 @@ export class VaaPoster {
 		const { blockhash } = await this.connection.getLatestBlockhash();
 		const msg = MessageV0.compile({
 			payerKey: this.walletConf.solana.publicKey,
-			instructions: [finalTrxPriorityFee, finalInstruction],
+			instructions: [
+				ComputeBudgetProgram.setComputeUnitLimit({
+					units: 265_000,
+				}),
+				finalTrxPriorityFee,
+				finalInstruction,
+			],
 			recentBlockhash: blockhash,
 			addressLookupTableAccounts: [
 				(

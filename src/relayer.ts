@@ -178,7 +178,7 @@ export class Relayer {
 
 			while (!this.finished(swap) && swap.retries < 7) {
 				try {
-					logger.info(`In while-switch ${swap.sourceTxHash} with status: ${swap.status}`);
+					logger.info(`In while-switch ${swap.sourceTxHash} with status: ${swap.status} ${swap.retries}`);
 					await this.tryProgressFulfill(swap);
 				} catch (err) {
 					logger.error(`error in main while for tx: ${swap.sourceTxHash} ${err}`);

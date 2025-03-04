@@ -84,7 +84,7 @@ export class SwapRouters {
 			try {
 				return await this.getOkxQuote(swapParams, retries);
 			} catch (errrr) {
-				throw errrr;
+				throw new Error(`${quotename} ${errrr}`);
 			}
 		}
 	}
@@ -534,6 +534,7 @@ export class SwapRouters {
 			slippage: swapParams.slippagePercent / 100,
 			userWalletAddress: swapSource,
 			swapReceiverAddress: swapDest,
+			priceImpactProtectionPercentage: 1,
 		};
 
 		const config: AxiosRequestConfig = {
