@@ -54,6 +54,7 @@ export class ChainFinality {
 			[CHAIN_ID_ARBITRUM]: 0.3,
 			[CHAIN_ID_OPTIMISM]: 3,
 			[CHAIN_ID_BASE]: 3,
+			[CHAIN_ID_UNICHAIN]: 3,
 		};
 
 		this.minimumBlocksToFinality = {
@@ -64,6 +65,7 @@ export class ChainFinality {
 			[CHAIN_ID_ARBITRUM]: 1,
 			[CHAIN_ID_OPTIMISM]: 1,
 			[CHAIN_ID_BASE]: 1,
+			[CHAIN_ID_UNICHAIN]: 1,
 		};
 	}
 
