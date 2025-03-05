@@ -125,7 +125,7 @@ export class AuctionFulfillerConfig {
 					srcToken: driverToken.contract,
 					destToken: toToken.contract,
 					amountIn: BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)).toString(),
-					timeout: 2000,
+					timeout: 4000,
 				},
 				swapRetries,
 				3,
