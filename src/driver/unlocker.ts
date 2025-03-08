@@ -15,7 +15,7 @@ import {
 	CHAIN_ID_SOLANA,
 	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
-import { ContractsConfig, SolanaProgram } from '../config/contracts';
+import { ContractsConfig, SolanaProgramV2 } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { RpcConfig } from '../config/rpc';
@@ -69,7 +69,7 @@ export type UnlockableSwapSingleItem = {
 const MAX_BATCH_SIZE = 8;
 
 export class Unlocker {
-	private readonly solprogram = new PublicKey(SolanaProgram);
+	private readonly solprogram = new PublicKey(SolanaProgramV2);
 	private readonly driverAddresses: string[] = [];
 	private locks: { [key: string]: boolean } = {};
 	private readonly wormholeInterface = new ethers.Interface(WormholeAbi);
@@ -365,7 +365,7 @@ export class Unlocker {
 		fromTokenAddress: string,
 	): Promise<string> {
 		const stateAddr = getSwiftStateAddrSrc(
-			new PublicKey(SolanaProgram),
+			new PublicKey(SolanaProgramV2),
 			Buffer.from(orderHash.replace('0x', ''), 'hex'),
 		);
 		const fromMint = new PublicKey(fromTokenAddress);
@@ -406,7 +406,7 @@ export class Unlocker {
 
 		const foundStates = orders.map((ord) =>
 			getSwiftStateAddrSrc(
-				new PublicKey(SolanaProgram),
+				new PublicKey(SolanaProgramV2),
 				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
 			).toString(),
 		);
@@ -428,7 +428,7 @@ export class Unlocker {
 			const driverAss = getAssociatedTokenAddressSync(fromMint, driver, false);
 
 			const state = getSwiftStateAddrSrc(
-				new PublicKey(SolanaProgram),
+				new PublicKey(SolanaProgramV2),
 				Buffer.from(ord.orderHash.replace('0x', ''), 'hex'),
 			);
 			if (!foundStates.includes(state.toString())) {
@@ -583,7 +583,7 @@ export class Unlocker {
 		sequence: bigint;
 		txHash: string;
 	}> {
-		const swiftProgram = new PublicKey(this.contracts.contracts[CHAIN_ID_SOLANA]);
+		const swiftProgram = new PublicKey(this.contracts.contractsV2[CHAIN_ID_SOLANA]);
 		const [swiftEmitter, _] = PublicKey.findProgramAddressSync([Buffer.from('emitter')], swiftProgram);
 		const wormholeAccs = get_wormhole_core_accounts(swiftEmitter);
 		const newMessageAccount = Keypair.generate();
@@ -771,7 +771,7 @@ export class Unlocker {
 	}
 
 	private async getSignedVaa(sequence: string, destChainId: number, deadlineSeconds?: number): Promise<string> {
-		const contractAddress = this.contracts.contracts[destChainId];
+		const contractAddress = this.contracts.contractsV2[destChainId];
 		let mayanBridgeEmitterAddress;
 		if (ethers.isAddress(contractAddress)) {
 			mayanBridgeEmitterAddress = getEmitterAddressEth(contractAddress);

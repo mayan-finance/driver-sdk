@@ -28,11 +28,11 @@ export class WalletsHelper {
 		private readonly rpcConfig: RpcConfig,
 		private readonly contracts: ContractsConfig,
 	) {
-		for (let chainId of Object.keys(this.contracts.contracts)) {
+		for (let chainId of Object.keys(this.contracts.contractsV2)) {
 			if (+chainId === CHAIN_ID_SOLANA) {
 				continue;
 			}
-			let contractAddr = this.contracts.contracts[+chainId];
+			let contractAddr = this.contracts.contractsV2[+chainId];
 			let wallet = new ethers.Wallet(this.walletConfig.evm.privateKey, this.evmProviders[chainId]);
 
 			this.evmWallets[+chainId] = wallet;
@@ -52,7 +52,7 @@ export class WalletsHelper {
 		const flashbotWallet = new ethers.Wallet(this.walletConfig.evm.privateKey, flashbotsProvider);
 		this.flashBotWallet = flashbotWallet;
 		this.flashBotSwiftContract = new ethers.Contract(
-			this.contracts.contracts[CHAIN_ID_ETH],
+			this.contracts.contractsV2[CHAIN_ID_ETH],
 			SwiftAbi,
 			flashbotWallet,
 		);
