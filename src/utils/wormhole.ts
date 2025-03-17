@@ -3,7 +3,7 @@ import { publicrpc } from '@certusone/wormhole-sdk-proto-web';
 import { PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA } from '../config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_UNICHAIN } from '../config/chains';
 import { NodeHttpTransportWithDefaultTimeout } from './grpc';
 import logger from './logger';
 import { delay } from './util';
@@ -69,6 +69,31 @@ export function getEmitterAddressSolana(programAddress: string) {
 		.toString('hex');
 }
 
+export async function getSignedVAAWithRetryGeneric(
+	hosts: string[],
+	emitterChain: number,
+	emitterAddress: string,
+	sequence: string,
+	extraGrpcOpts?: {},
+	retryTimeout?: number,
+	retryAttempts?: number,
+): Promise<{
+	vaaBytes: Uint8Array;
+}> {
+	if (emitterChain === CHAIN_ID_UNICHAIN) {
+		return { vaaBytes: await getSignedVaaFromWormholeScan(emitterChain, emitterAddress, sequence) };
+	}
+	return await getSignedVAAWithRetry(
+		hosts,
+		emitterChain as ChainId,
+		emitterAddress,
+		sequence,
+		extraGrpcOpts,
+		retryTimeout,
+		retryAttempts,
+	);
+}
+
 export async function getSignedVaa(
 	guardianRpcs: string[],
 	chainId: number,
@@ -88,7 +113,7 @@ export async function getSignedVaa(
 	// poll until the guardian(s) witness and sign the vaa
 	while (true) {
 		try {
-			const { vaaBytes: signedVAA } = await getSignedVAAWithRetry(
+			const { vaaBytes: signedVAA } = await getSignedVAAWithRetryGeneric(
 				guardianRpcs,
 				chainId as ChainId,
 				mayanBridgeEmitterAddress,
@@ -109,21 +134,19 @@ export async function getSignedVaa(
 }
 
 async function getSignedVaaFromWormholeScan(
-	chainid: number,
-	emitter: string,
+	emitterChain: number,
+	emitterAddress: string,
 	sequence: string,
-): Promise<{ vaaBytes: Uint8Array } | null> {
-	try {
-		const result = await axios.get(`https://api.wormholescan.io/v1/signed_vaa/${chainid}/${emitter}/${sequence}`);
-		if (result?.data?.vaaBytes) {
-			return {
-				vaaBytes: new Uint8Array(Buffer.from(result.data.vaaBytes, 'base64')),
-			};
-		}
-		return null;
-	} catch (e) {
-		return null;
+): Promise<Uint8Array> {
+	const { data } = await axios.get(
+		`https://api.wormholescan.io/v1/signed_vaa/${emitterChain}/${emitterAddress}/${sequence}`,
+	);
+
+	if (data && data.vaaBytes) {
+		return new Uint8Array(Buffer.from(data.vaaBytes, 'base64'));
 	}
+
+	throw new Error(`Signed vaa not found for ${emitterChain}/${emitterAddress}/${sequence}`);
 }
 
 export async function getSignedVAARaw(
