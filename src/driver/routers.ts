@@ -673,7 +673,7 @@ const tokenApprovalContracts: { [chainId: number]: string } = {
 };
 
 const OkxDexRouterContracts: { [chainId: number]: string } = {
-	[CHAIN_ID_ETH]: '0x7D0CcAa3Fac1e5A943c5168b6CEd828691b46B36',
+	[CHAIN_ID_ETH]: '0x1ef032a3c471a99cc31578c8007f256d95e89896',
 	[CHAIN_ID_BSC]: '0x9333C74BDd1E118634fE5664ACA7a9710b108Bab',
 	[CHAIN_ID_POLYGON]: '0xA748D6573acA135aF68F2635BE60CB80278bd855',
 	[CHAIN_ID_AVAX]: '0x1daC23e41Fc8ce857E86fD8C1AE5b6121C67D96d',
