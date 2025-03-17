@@ -39,6 +39,7 @@ import {
 	findVaaAddress,
 	getEmitterAddressEth,
 	getEmitterAddressSolana,
+	getSignedVAAWithRetryGeneric,
 	getWormholeSequenceFromPostedMessage,
 	get_wormhole_core_accounts,
 } from '../utils/wormhole';
@@ -789,7 +790,7 @@ export class Unlocker {
 			}
 
 			try {
-				const { vaaBytes: signedVAA2 } = await getSignedVAAWithRetry(
+				const { vaaBytes: signedVAA2 } = await getSignedVAAWithRetryGeneric(
 					this.rpcConfig.wormholeGuardianRpcs,
 					destChainId as ChainId,
 					mayanBridgeEmitterAddress,
