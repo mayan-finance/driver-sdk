@@ -1,6 +1,8 @@
 import axios from 'axios';
 import Decimal from 'decimal.js';
+import { ethers } from 'ethers6';
 import * as io from 'socket.io-client';
+import { WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig, MayanForwarderAddress } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
@@ -9,6 +11,7 @@ import { WalletConfig } from '../config/wallet';
 import { StateCloser } from '../driver/state-closer';
 import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
+import { tryNativeToUint8ArrayGeneral } from '../utils/buffer';
 import logger from '../utils/logger';
 
 export class MayanExplorerWatcher {
@@ -31,18 +34,29 @@ export class MayanExplorerWatcher {
 		this.initiateAddresses = [];
 		this.initiateAddresses.push(MayanForwarderAddress);
 		this.initiateAddresses.push(MayanForwarderAddress.toLowerCase());
-		for (let chainId of Object.keys(contracts.contracts)) {
-			this.initiateAddresses.push(contracts.contracts[+chainId]);
-			this.initiateAddresses.push(contracts.contracts[+chainId].toLowerCase());
+		for (let chainId of Object.keys(contracts.contractsV2)) {
+			this.initiateAddresses.push(contracts.contractsV2[+chainId]);
+			this.initiateAddresses.push(contracts.contractsV2[+chainId].toLowerCase());
 		}
 	}
 
 	private async createSwapFromJson(rawSwap: any) {
 		const fromToken = await this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
 		const toToken = await this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
+		const trader32 = Buffer.from(tryNativeToUint8ArrayGeneral(rawSwap.trader, +rawSwap.sourceChain));
+		const dest32 = Buffer.from(tryNativeToUint8ArrayGeneral(rawSwap.destAddress, +rawSwap.destChain));
+		const ref32 = Buffer.from(tryNativeToUint8ArrayGeneral(rawSwap.referrerAddress, +rawSwap.destChain));
+
+		const refundFeeDest64 = ethers.parseUnits(
+			rawSwap.refundFeeDest,
+			Math.min(fromToken.decimals, WORMHOLE_DECIMALS),
+		);
+		const refundFeeSrc64 = ethers.parseUnits(rawSwap.refundFeeSrc, Math.min(fromToken.decimals, WORMHOLE_DECIMALS));
+
 		const swap: Swap = {
 			retries: 0,
 			trader: rawSwap.trader,
+			trader32: trader32,
 			orderId: rawSwap.orderId,
 			sourceTxHash: rawSwap.sourceTxHash,
 			gasless: !!rawSwap.gasless,
@@ -54,6 +68,7 @@ export class MayanExplorerWatcher {
 			createTxHash: rawSwap.createTxHash,
 			deadline: new Date(rawSwap.deadline),
 			destAddress: rawSwap.destAddress,
+			destAddress32: dest32,
 			destChain: Number(rawSwap.destChain),
 			driverAddress: rawSwap.driverAddress,
 			fromToken: fromToken,
@@ -73,9 +88,12 @@ export class MayanExplorerWatcher {
 			posAddress: rawSwap.posAddress,
 			randomKey: rawSwap.randomKey,
 			redeemRelayerFee: new Decimal(rawSwap.redeemRelayerFee),
+			redeemRelayerFee64: refundFeeDest64,
 			referrerAddress: rawSwap.referrerAddress,
+			referrerAddress32: ref32,
 			referrerBps: Number(rawSwap.referrerBps),
 			refundRelayerFee: new Decimal(rawSwap.refundRelayerFee),
+			refundRelayerFee64: refundFeeSrc64,
 			service: rawSwap.service,
 			sourceChain: Number(rawSwap.sourceChain),
 			stateAddr: rawSwap.stateAddr,
@@ -86,6 +104,12 @@ export class MayanExplorerWatcher {
 			toTokenAddress: rawSwap.toTokenAddress,
 			toTokenSymbol: rawSwap.toTokenSymbol,
 			unlockRecipient: rawSwap.unlockRecipient,
+			penaltyPeriod: rawSwap.penaltyPeriod ? Number(rawSwap.penaltyPeriod) : 0,
+			baseBond: rawSwap.baseBond ? BigInt(rawSwap.baseBond) : 0n,
+			perBpsBond: rawSwap.perBpsBond ? BigInt(rawSwap.perBpsBond) : 0n,
+
+			payloadId: rawSwap.payloadId ? Number(rawSwap.payloadId) : 0,
+			customPayload: rawSwap.customPayload ? rawSwap.customPayload : '0x' + Buffer.alloc(32).toString('hex'),
 		};
 
 		return swap;
@@ -103,7 +127,7 @@ export class MayanExplorerWatcher {
 			socket.on('SWAP_CREATED', async (data) => {
 				try {
 					const rawSwap = JSON.parse(data);
-					if (!rawSwap.orderHash || !['SWIFT_NFT', 'SWIFT_SWAP'].includes(rawSwap.service)) {
+					if (!rawSwap.orderHash || !['SWIFT_SWAP_V2'].includes(rawSwap.service)) {
 						return;
 					}
 
