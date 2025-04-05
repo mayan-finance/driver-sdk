@@ -69,7 +69,7 @@ export class SwapRouters {
 				quotename = 'uniswap';
 				quoteFunction = this.getUniswapQuote.bind(this);
 			}
-			if (swapRetries % 2 === 0) {
+			if (swapRetries % 2 === 1) {
 				quoteFunction = this.get0xQuote.bind(this);
 				quotename = '0x';
 			}
@@ -117,7 +117,7 @@ export class SwapRouters {
 				quotename = 'uniswap';
 				swapFunction = this.getUniswapSwap.bind(this);
 			}
-			if (swapRetries % 2 === 0) {
+			if (swapRetries % 2 === 1) {
 				quotename = '0x';
 				swapFunction = this.get0xSwap.bind(this);
 			}
