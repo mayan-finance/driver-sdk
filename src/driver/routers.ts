@@ -65,13 +65,13 @@ export class SwapRouters {
 
 		try {
 			let quoteFunction = this.get1InchQuote.bind(this);
-			if (swapRetries % 2 === 0) {
-				quoteFunction = this.getOkxQuote.bind(this);
-				quotename = 'okx';
-			}
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
 				quotename = 'uniswap';
 				quoteFunction = this.getUniswapQuote.bind(this);
+			}
+			if (swapRetries % 2 === 1) {
+				quoteFunction = this.get0xQuote.bind(this);
+				quotename = '0x';
 			}
 
 			return await quoteFunction(swapParams, retries);
@@ -79,13 +79,13 @@ export class SwapRouters {
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
 				throw err;
 			}
-
-			console.error(`Error using ${quotename} as swap ${err}. trying other`);
-			try {
-				return await this.getOkxQuote(swapParams, retries);
-			} catch (errrr) {
-				throw new Error(`${quotename} ${errrr}`);
-			}
+			throw new Error(`Error using ${quotename} as quote ${err}`);
+			// console.error(`Error using ${quotename} as swap ${err}. trying other`);
+			// try {
+			// 	return await this.getOkxQuote(swapParams, retries);
+			// } catch (errrr) {
+			// 	throw new Error(`${quotename} ${errrr}`);
+			// }
 		}
 	}
 
@@ -113,13 +113,13 @@ export class SwapRouters {
 		let quotename = '1inch';
 		try {
 			let swapFunction = this.get1InchSwap.bind(this);
-			if (swapRetries % 2 === 0) {
-				quotename = 'okx';
-				swapFunction = this.getOkxSwap.bind(this);
-			}
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
 				quotename = 'uniswap';
 				swapFunction = this.getUniswapSwap.bind(this);
+			}
+			if (swapRetries % 2 === 1) {
+				quotename = '0x';
+				swapFunction = this.get0xSwap.bind(this);
 			}
 
 			return await swapFunction(swapParams, retries);
@@ -127,13 +127,13 @@ export class SwapRouters {
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
 				throw err;
 			}
-
-			console.error(`Error using ${quotename} as swap ${err}. trying other`);
-			try {
-				return await this.getOkxSwap(swapParams, retries);
-			} catch (errrr) {
-				throw errrr;
-			}
+			throw new Error(`Error using ${quotename} as swap ${err}`);
+			// console.error(`Error using ${quotename} as swap ${err}. trying other`);
+			// try {
+			// 	return await this.getOkxSwap(swapParams, retries);
+			// } catch (errrr) {
+			// 	throw errrr;
+			// }
 		}
 	}
 
@@ -587,6 +587,146 @@ export class SwapRouters {
 				return this.getOkxSwap(swapParams, retries - 1);
 			}
 			throw new Error(`Failed to get swap from okx: ${err}`);
+		}
+	}
+
+	async get0xQuote(
+		swapParams: {
+			whChainId: number;
+			srcToken: string;
+			destToken: string;
+			amountIn: string;
+			timeout?: number;
+		},
+		retries: number = 3,
+	): Promise<{
+		toAmount: string;
+		gas: number;
+	}> {
+		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
+			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+		}
+		if (swapParams.destToken === '0x0000000000000000000000000000000000000000') {
+			swapParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+		}
+
+		const timeout = swapParams.timeout || 1500;
+		const config: AxiosRequestConfig = {
+			timeout: timeout,
+			headers: {
+				'0x-api-key': process.env.ZEROX_API_KEY,
+				'0x-version': 'v2',
+			},
+			params: {
+				chainId: WhChainIdToEvm[swapParams.whChainId],
+				sellToken: swapParams.srcToken,
+				buyToken: swapParams.destToken,
+				sellAmount: swapParams.amountIn,
+			},
+		};
+
+		try {
+			const res = await axios.get('https://api.0x.org/swap/allowance-holder/price', config);
+
+			return {
+				toAmount: res.data.buyAmount,
+				gas: Number(res.data.gas),
+			};
+		} catch (err: any) {
+			let isRateLimited = false;
+			if (err.response && err.response.status === 429) {
+				isRateLimited = true;
+				await delay(200);
+			}
+			if (isRateLimited) {
+				console.log(
+					`# Throttled 0x for ${timeout}ms ${swapParams.srcToken} -> ${swapParams.destToken} ${swapParams.amountIn}`,
+				);
+			}
+			if (isRateLimited && retries > 0) {
+				return this.get0xQuote(swapParams, retries - 1);
+			}
+			throw new Error(`Failed to get quote from 0x: ${err}`);
+		}
+	}
+
+	async get0xSwap(
+		swapParams: {
+			whChainId: number;
+			srcToken: string;
+			destToken: string;
+			amountIn: string;
+			slippagePercent: number;
+			timeout?: number;
+		},
+		retries: number = 7,
+	): Promise<{
+		tx: {
+			to: string;
+			data: string;
+			value: string;
+			gas: string;
+		};
+		gas: number;
+		toAmount: string;
+		approvalTarget: string | null;
+	}> {
+		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
+			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+		}
+		if (swapParams.destToken === '0x0000000000000000000000000000000000000000') {
+			swapParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
+		}
+
+		let swapDest = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
+
+		const timeout = swapParams.timeout || 1500;
+		const config: AxiosRequestConfig = {
+			timeout: timeout,
+			headers: {
+				'0x-api-key': process.env.ZEROX_API_KEY,
+				'0x-version': 'v2',
+			},
+			params: {
+				chainId: WhChainIdToEvm[swapParams.whChainId],
+				sellToken: swapParams.srcToken,
+				buyToken: swapParams.destToken,
+				sellAmount: swapParams.amountIn,
+				taker: swapDest,
+				slippageBps: swapParams.slippagePercent * 100,
+			},
+		};
+
+		try {
+			const res = await axios.get('https://api.0x.org/swap/allowance-holder/quote', config);
+			if (!res.data.liquidityAvailable) {
+				throw new Error('cant swap: liquidity not available');
+			}
+			if (res.data.transaction.to !== '0x0000000000001ff3684f28c67538d4d072c22734') {
+				throw new Error(`cant swap: settler address has changed to ${res.data.transaction.to}`);
+			}
+
+			return {
+				toAmount: res.data.buyAmount,
+				gas: Number(res.data.transaction.gas),
+				approvalTarget: res.data.issues.allowance?.spender,
+				tx: {
+					to: res.data.transaction.to,
+					data: res.data.transaction.data,
+					value: res.data.transaction.value,
+					gas: res.data.transaction.gas,
+				},
+			};
+		} catch (err: any) {
+			let isRateLimited = false;
+			if (err.response && err.response.status === 429) {
+				isRateLimited = true;
+				await delay(200);
+			}
+			if (isRateLimited && retries > 0) {
+				return this.get0xSwap(swapParams, retries - 1);
+			}
+			throw new Error(`Failed to get swap from 0x: ${err}`);
 		}
 	}
 }
