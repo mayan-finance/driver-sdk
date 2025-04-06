@@ -678,7 +678,8 @@ export class SwapRouters {
 			swapParams.destToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
 
-		let swapDest = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
+		const swapDest = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
+		const chainId = WhChainIdToEvm[swapParams.whChainId];
 
 		const timeout = swapParams.timeout || 1500;
 		const config: AxiosRequestConfig = {
@@ -688,7 +689,7 @@ export class SwapRouters {
 				'0x-version': 'v2',
 			},
 			params: {
-				chainId: WhChainIdToEvm[swapParams.whChainId],
+				chainId,
 				sellToken: swapParams.srcToken,
 				buyToken: swapParams.destToken,
 				sellAmount: swapParams.amountIn,
@@ -702,7 +703,12 @@ export class SwapRouters {
 			if (!res.data.liquidityAvailable) {
 				throw new Error('cant swap: liquidity not available');
 			}
-			if (res.data.transaction.to !== '0x0000000000001ff3684f28c67538d4d072c22734') {
+			if (
+				(chainId !== 59144 &&
+					res.data.transaction.to !== '0x0000000000001ff3684f28c67538d4d072c22734') ||
+				(chainId === 59144 &&
+					res.data.transaction.to !== '0x000000000000175a8b9bc6d539b3708eed92ea6c')
+			) {
 				throw new Error(`cant swap: settler address has changed to ${res.data.transaction.to}`);
 			}
 
