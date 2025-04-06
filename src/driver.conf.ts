@@ -11,6 +11,7 @@ import {
 } from './config/chains';
 
 export const driverConfig = {
+	maxPendingOrders: 10, // do not bid on anything else if you already have 10 pending orders. Try fulfilling them first
 	bidAggressionPercent: 0, // 0% above minamout out
 	fulfillAggressionPercent: 100, // take 0% of approximated available profit
 	volumeLimitUsd: 105_000, // 20k USD

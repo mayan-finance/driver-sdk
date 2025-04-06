@@ -10,10 +10,12 @@ import { StateCloser } from '../driver/state-closer';
 import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
+import { DriverService } from '../driver/driver';
 
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
 	private interval: NodeJS.Timeout | null = null;
+	private wonAuctionInterval: NodeJS.Timeout | null = null;
 	private auctionLock = false;
 	private stateLock = false;
 	private auctionInterval: NodeJS.Timeout | null = null;
@@ -26,6 +28,7 @@ export class MayanExplorerWatcher {
 		contracts: ContractsConfig,
 		private readonly tokenList: TokenList,
 		private readonly relayer: Relayer,
+		private readonly driver: DriverService,
 		private readonly stateCloser: StateCloser,
 	) {
 		this.initiateAddresses = [];
@@ -130,9 +133,31 @@ export class MayanExplorerWatcher {
 			logger.info('Disconnected from Explorer Socket');
 		});
 
+		this.wonAuctionInterval = setInterval(this.pollPendingWonSwapsCount.bind(this), 60 * 1000);
 		this.interval = setInterval(this.pollPendingSwaps.bind(this), this.gConf.pollExplorerInterval * 1000);
 		this.auctionInterval = setInterval(this.pollOpenAuctions.bind(this), 60 * 1000);
 		this.stateInterval = setInterval(this.pollOpenStates.bind(this), 60 * 1000);
+	}
+
+	async pollPendingWonSwapsCount(): Promise<void> {
+		try {
+			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swaps', {
+				params: {
+					format: 'raw',
+					status: 'ORDER_CREATED',
+					service: 'SWIFT_SWAP',
+					auctionInfo: 'true',
+					limit: 100,
+				},
+			});
+			let filteredResult = result.data.data.filter((s: any) => {
+				return s.auctionInfo?.winner === this.walletConf.solana.publicKey.toString();
+			});
+			logger.info(`Current pending won swaps count is: ${filteredResult.length}`);
+			this.driver.pendingAuctionCount = filteredResult.length;
+		} catch (err) {
+			logger.error(`error in polling pending won swaps ${err}`);
+		}
 	}
 
 	async pollPendingSwaps(): Promise<void> {
