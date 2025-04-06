@@ -79,13 +79,13 @@ export class SwapRouters {
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
 				throw err;
 			}
-
-			console.error(`Error using ${quotename} as swap ${err}. trying other`);
-			try {
-				return await this.getOkxQuote(swapParams, retries);
-			} catch (errrr) {
-				throw new Error(`${quotename} ${errrr}`);
-			}
+			throw new Error(`Error using ${quotename} as quote ${err}`);
+			// console.error(`Error using ${quotename} as swap ${err}. trying other`);
+			// try {
+			// 	return await this.getOkxQuote(swapParams, retries);
+			// } catch (errrr) {
+			// 	throw new Error(`${quotename} ${errrr}`);
+			// }
 		}
 	}
 
@@ -127,13 +127,13 @@ export class SwapRouters {
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
 				throw err;
 			}
-
-			console.error(`Error using ${quotename} as swap ${err}. trying other`);
-			try {
-				return await this.getOkxSwap(swapParams, retries);
-			} catch (errrr) {
-				throw errrr;
-			}
+			throw new Error(`Error using ${quotename} as swap ${err}`);
+			// console.error(`Error using ${quotename} as swap ${err}. trying other`);
+			// try {
+			// 	return await this.getOkxSwap(swapParams, retries);
+			// } catch (errrr) {
+			// 	throw errrr;
+			// }
 		}
 	}
 
@@ -702,7 +702,7 @@ export class SwapRouters {
 			if (!res.data.liquidityAvailable) {
 				throw new Error('cant swap: liquidity not available');
 			}
-			if (res.data.transaction.to !== "0x0000000000001ff3684f28c67538d4d072c22734") {
+			if (res.data.transaction.to !== '0x0000000000001ff3684f28c67538d4d072c22734') {
 				throw new Error(`cant swap: settler address has changed to ${res.data.transaction.to}`);
 			}
 
@@ -729,7 +729,6 @@ export class SwapRouters {
 			throw new Error(`Failed to get swap from 0x: ${err}`);
 		}
 	}
-
 }
 
 async function fetchUniswapV3PathFromApi(
