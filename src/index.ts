@@ -198,6 +198,7 @@ export async function main() {
 		contracts,
 		tokenList,
 		relayer,
+		driverSvc,
 		stateCloser,
 	);
 	watcher.init();

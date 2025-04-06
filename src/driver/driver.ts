@@ -5,12 +5,14 @@ import {
 	TOKEN_PROGRAM_ID,
 } from '@solana/spl-token';
 import { AddressLookupTableAccount, Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
+import axios from 'axios';
 import { AuctionFulfillerConfig } from '../auction';
 import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
+import { driverConfig } from '../driver.conf';
 import { SimpleFulfillerConfig } from '../simple';
 import { Swap } from '../swap.dto';
 import { tryNativeToUint8Array } from '../utils/buffer';
@@ -25,10 +27,13 @@ import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
+import { sendAlert } from '../utils/alert';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;
 	private readonly swiftAuctionProgram: PublicKey;
+	public pendingAuctionCount = 0;
+
 	constructor(
 		private readonly simpleFulfillerCfg: SimpleFulfillerConfig,
 		private readonly auctionFulfillerCfg: AuctionFulfillerConfig,
@@ -169,6 +174,11 @@ export class DriverService {
 	}
 
 	async bid(swap: Swap): Promise<void> {
+		if (this.pendingAuctionCount > driverConfig.maxPendingOrders) {
+			sendAlert('FILLED_PENDING', `Filled pending auction ${this.pendingAuctionCount}`);
+			throw new Error(`Not bidding ${swap.sourceTxHash} because we have too many pending orders`);
+		}
+
 		const srcChain = swap.sourceChain;
 		const dstChain = swap.destChain;
 
