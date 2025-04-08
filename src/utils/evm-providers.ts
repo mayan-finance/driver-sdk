@@ -5,9 +5,19 @@ import {
 	CHAIN_ID_BASE,
 	CHAIN_ID_BSC,
 	CHAIN_ID_ETH,
+	CHAIN_ID_MONAD,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_UNICHAIN,
+	NETWORK_ID_ARBITRUM,
+	NETWORK_ID_AVAX,
+	NETWORK_ID_BASE,
+	NETWORK_ID_BSC,
+	NETWORK_ID_ETH,
+	NETWORK_ID_MONAD,
+	NETWORK_ID_OPTIMISM,
+	NETWORK_ID_POLYGON,
+	NETWORK_ID_UNICHAIN,
 } from '../config/chains';
 import { RpcConfig } from '../config/rpc';
 
@@ -48,31 +58,33 @@ export async function makeEvmProviders(chainIds: number[], rpcConfig: RpcConfig)
 		let realChainId: number = -1;
 		let endpoints: string[] = [];
 		if (chainId === CHAIN_ID_BSC) {
-			realChainId = 56;
+			realChainId = NETWORK_ID_BSC;
 			endpoints = rpcConfig.evmEndpoints.bsc.split(',');
 		} else if (chainId === CHAIN_ID_POLYGON) {
-			realChainId = 137;
+			realChainId = NETWORK_ID_POLYGON;
 			endpoints = rpcConfig.evmEndpoints.polygon.split(',');
 		} else if (chainId === CHAIN_ID_ETH) {
-			realChainId = 1;
+			realChainId = NETWORK_ID_ETH;
 			endpoints = rpcConfig.evmEndpoints.ethereum.split(',');
 		} else if (chainId === CHAIN_ID_AVAX) {
-			realChainId = 43114;
+			realChainId = NETWORK_ID_AVAX;
 			endpoints = rpcConfig.evmEndpoints.avalanche.split(',');
 		} else if (chainId === CHAIN_ID_ARBITRUM) {
-			realChainId = 42161;
+			realChainId = NETWORK_ID_ARBITRUM;
 			endpoints = rpcConfig.evmEndpoints.arbitrum.split(',');
 		} else if (chainId === CHAIN_ID_OPTIMISM) {
-			realChainId = 10;
+			realChainId = NETWORK_ID_OPTIMISM;
 			endpoints = rpcConfig.evmEndpoints.optimism.split(',');
 		} else if (chainId === CHAIN_ID_BASE) {
-			realChainId = 8453;
+			realChainId = NETWORK_ID_BASE;
 			endpoints = rpcConfig.evmEndpoints.base.split(',');
 		} else if (chainId === CHAIN_ID_UNICHAIN) {
-			realChainId = 130;
+			realChainId = NETWORK_ID_UNICHAIN;
 			endpoints = rpcConfig.evmEndpoints.unichain.split(',');
+		} else if (chainId === CHAIN_ID_MONAD) {
+			realChainId = NETWORK_ID_MONAD;
+			endpoints = rpcConfig.evmEndpoints.monad.split(',');
 		}
-
 		for (let endpoint of endpoints) {
 			const provider = new ethers.JsonRpcProvider(endpoint, realChainId, {
 				staticNetwork: ethers.Network.from(realChainId),

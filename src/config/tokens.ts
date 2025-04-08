@@ -4,12 +4,14 @@ import axios from 'axios';
 import { getDecimals, getSymbol } from '../utils/erc20';
 import { EvmProviders } from '../utils/evm-providers';
 import logger from '../utils/logger';
+import { isTestNet } from '../utils/util';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
 	CHAIN_ID_BASE,
 	CHAIN_ID_BSC,
 	CHAIN_ID_ETH,
+	CHAIN_ID_MONAD,
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
@@ -71,7 +73,7 @@ export class TokenList {
 		}, this.endpoints.refreshTokenIntervalSeconds * 1000);
 		setInterval(() => {
 			this.updatePythPrices();
-		}, 3_000);
+		}, 30_000);
 		this.initialized = true;
 	}
 
@@ -177,9 +179,14 @@ export class TokenList {
 
 	getEth(chainId: number): Token | null {
 		if (
-			[CHAIN_ID_ETH, CHAIN_ID_ARBITRUM, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE, CHAIN_ID_UNICHAIN].includes(
-				chainId as any,
-			)
+			[
+				CHAIN_ID_ETH,
+				CHAIN_ID_ARBITRUM,
+				CHAIN_ID_OPTIMISM,
+				CHAIN_ID_BASE,
+				CHAIN_ID_UNICHAIN,
+				CHAIN_ID_MONAD,
+			].includes(chainId as any)
 		) {
 			return this.nativeTokens[chainId];
 		}
@@ -293,7 +300,7 @@ export class TokenList {
 	}
 }
 
-const UsdcContracts: { [key: number]: string } = {
+const MainNetUsdcContracts: { [key: number]: string } = {
 	[CHAIN_ID_SOLANA]: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
 	[CHAIN_ID_ETH]: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
 	[CHAIN_ID_POLYGON]: '0x3c499c542cef5e3811e1192ce70d8cc03d5c3359',
@@ -303,6 +310,19 @@ const UsdcContracts: { [key: number]: string } = {
 	[CHAIN_ID_BASE]: '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
 	[CHAIN_ID_UNICHAIN]: '0x078d782b760474a361dda0af3839290b0ef57ad6',
 };
+
+const TestNetUsdcContracts: { [chainId: number]: string } = {
+	[CHAIN_ID_SOLANA]: '4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU',
+	[CHAIN_ID_ETH]: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238',
+	[CHAIN_ID_POLYGON]: '0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582',
+	[CHAIN_ID_AVAX]: '0x5425890298aed601595a70ab815c96711a31bc65',
+	[CHAIN_ID_ARBITRUM]: '0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d',
+	[CHAIN_ID_OPTIMISM]: '0x5fd84259d66Cd46123540766Be93DFE6D43130D7',
+	[CHAIN_ID_BASE]: '0x036CbD53842c5426634e7929541eC2318f3dCF7e',
+	[CHAIN_ID_UNICHAIN]: '0x31d0220469e10c4E71834a79b1f276d740d3768F',
+};
+
+const UsdcContracts = isTestNet() ? TestNetUsdcContracts : MainNetUsdcContracts;
 
 const UsdtContracts: { [key: number]: string } = {
 	[CHAIN_ID_SOLANA]: 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',

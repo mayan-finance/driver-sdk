@@ -1,3 +1,4 @@
+import { isTestNet } from '../utils/util';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
@@ -20,13 +21,13 @@ export type ContractsConfig = {
 	feeCollectorSolana: string;
 };
 
-export const SolanaProgram = 'BLZRi6frs4X4DNLw56V4EXai1b6QVESN1BhHBTYM9VcY';
-export const AuctionAddressSolana = '9w1D9okTM8xNE7Ntb7LpaAaoLc6LfU9nHFs2h2KTpX1H';
+export const SolanaProgram = '92peaC8g5ANAxpK2aCfLTC12JgPncRKCGULQNB2DMvRH';
+export const AuctionAddressSolana = '8z33SsE1FWcbUv6qutYkXuFSB3AGBHUXF5Ytgnwij1rV';
 export const FeeCollectorSolana = 'pSwTTFE92RsRtvMCpb3mjruv5ww2KgBNVPscwdWwbxk';
 
 export const MayanForwarderAddress = '0x0654874eb7F59C6f5b39931FC45dC45337c967c3';
 
-export const fulfillHelpers: { [key: number]: string } = {
+const mainNetfulfillHelpers: { [key: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
 	[CHAIN_ID_BASE]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
 	[CHAIN_ID_ETH]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
@@ -36,6 +37,19 @@ export const fulfillHelpers: { [key: number]: string } = {
 	[CHAIN_ID_BSC]: '0xBC0663ef63ADD180609944c58BA7D4851890cA45',
 	[CHAIN_ID_UNICHAIN]: '0xAb7aC537D02003F148dc8e76873692c874Ec169b',
 };
+
+const testNetFulfillHelpers: { [key: number]: string } = {
+	[CHAIN_ID_ARBITRUM]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_BASE]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_ETH]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_AVAX]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_OPTIMISM]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_POLYGON]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_BSC]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+	[CHAIN_ID_UNICHAIN]: '0xa49aDdbBA028841132679064d0588Ecc9BEaE4F9',
+};
+
+export const fulfillHelpers: { [key: number]: string } = isTestNet() ? testNetFulfillHelpers : mainNetfulfillHelpers;
 
 export const okxSwapHelpers: { [key: number]: string } = {
 	[CHAIN_ID_ARBITRUM]: '0x5E18824Bb0e73BB9bd78E7B2D38a3289BcCdEe1D',

@@ -39,6 +39,9 @@ export class SwapRouters {
 		private readonly priceApiUri: string,
 	) {
 		for (let chainId in evmProviders) {
+			if (!this.routersConfig.uniswapContracts[+chainId]) {
+				continue;
+			}
 			this.uniswapQuoterV2Contracts[+chainId] = new ethers.Contract(
 				this.routersConfig.uniswapContracts[+chainId].quoterV2,
 				UniSwapV3QuoterV2ABI,

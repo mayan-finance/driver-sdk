@@ -27,6 +27,9 @@ export const uint8ArrayToHex = (a: Uint8Array): string => Buffer.from(a).toStrin
  * @throws if address is a malformed string for the given chain id
  */
 export const tryNativeToHexString = (address: string, chainId: number): string => {
+	if (address === '0x0000000000000000000000000000000000000000') {
+		return '0x' + Buffer.alloc(32).toString('hex');
+	}
 	if (supportedChainIds.includes(chainId) && chainId !== CHAIN_ID_SOLANA) {
 		return zeroPadValue(address, 32);
 	} else if (chainId === CHAIN_ID_SOLANA) {

@@ -27,6 +27,8 @@ export type RpcConfig = {
 		base2nd: string;
 		unichain: string;
 		unichain2nd: string;
+		monad: string;
+		monad2nd: string;
 	};
 	jupV6Endpoint: string;
 	oneInchApiKey: string;
@@ -67,6 +69,8 @@ export const rpcConfig: RpcConfig = {
 		polygon2nd: process.env.POLYGON_2ND_RPC || 'https://polygon-rpc.com/',
 		unichain: process.env.UNICHAIN_RPC || 'https://mainnet.unichain.org',
 		unichain2nd: process.env.UNICHAIN_2ND_RPC || 'https://mainnet.unichain.org',
+		monad: process.env.MONAD_RPC || 'https://testnet-rpc.monad.xyz',
+		monad2nd: process.env.MONAD_2ND_RPC || 'https://testnet-rpc.monad.xyz',
 	},
 	jupV6Endpoint: process.env.JUP_V6_ENDPOINT || 'https://quote-api.jup.ag/v6',
 	oneInchApiKey: process.env.ONE_INCH_API_KEY || '',

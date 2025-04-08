@@ -13,6 +13,22 @@
         "cwd": "${workspaceRoot}",
         "internalConsoleOptions": "openOnSessionStart",
         "skipFiles": ["<node_internals>/**", "node_modules/**"]
+      },
+      {
+        "name": "TS-Node testnet",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "ts-node",
+        "runtimeArgs": [
+            "."
+        ],
+        "outputCapture": "std",
+        "cwd": "${workspaceRoot}",
+        "internalConsoleOptions": "openOnSessionStart",
+        "skipFiles": ["<node_internals>/**", "node_modules/**"],
+        "env": {
+          "TESTNET": "true"
+        }
       }
     ]
   }

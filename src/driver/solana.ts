@@ -46,6 +46,9 @@ export class SolanaFulfiller {
 		tokenList: TokenList,
 	) {
 		for (let token of [tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!, tokenList.getWethSol()]) {
+			if (!token) {
+				continue;
+			}
 			this.wallets.push({
 				ass: getAssociatedTokenAddressSync(new PublicKey(token.contract), this.walletConfig.solana.publicKey),
 				mint: token.contract,

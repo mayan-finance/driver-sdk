@@ -574,7 +574,7 @@ export class EvmFulfiller {
 			availableAmountIn.toFixed(chosenDriverToken.decimals),
 			chosenDriverToken.decimals,
 		);
-		const callData = await this.swiftInterface.encodeFunctionData('fulfillSimple', [
+		const fulfillSimpleArgs = [
 			amountIn64,
 			orderHashHex,
 			srcChain,
@@ -597,7 +597,8 @@ export class EvmFulfiller {
 			},
 			unlockAddress32,
 			batch,
-		]);
+		];
+		const callData = await this.swiftInterface.encodeFunctionData('fulfillSimple', fulfillSimpleArgs);
 		const driverToken = chosenDriverToken;
 		let permit: Erc20Permit = {
 			owner: driverToken.contract,
@@ -625,32 +626,47 @@ export class EvmFulfiller {
 			);
 		}
 
-		const args = [
-			driverToken.contract,
-			amountIn64,
-			this.contractsConfig.contracts[swap.destChain],
-			callData,
-			{
-				value: permit.value,
-				deadline: permit.deadline,
-				r: permit.r,
-				s: permit.s,
-				v: permit.v,
-			},
-			overrides,
-		];
-		if (!overrides['gasLimit']) {
-			const estimatedGas = await this.walletHelper
+		let fulfillTx: ethers.TransactionResponse;
+		if (driverToken.contract === ethers.ZeroAddress) {
+			if (!overrides['gasLimit']) {
+				const estimatedGas = await this.walletHelper
+							.getWriteContract(swap.destChain)
+							.fulfillSimple.estimateGas(...fulfillSimpleArgs, overrides);
+				overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+				logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+			}
+			fulfillTx = await this.walletHelper
+				.getWriteContract(swap.destChain)
+				.fulfillSimple(...fulfillSimpleArgs, overrides);
+			logger.info(`Wait simple-fulfill on evm confirm with eth for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
+		} else {
+			const args = [
+				driverToken.contract,
+				amountIn64,
+				this.contractsConfig.contracts[swap.destChain],
+				callData,
+				{
+					value: permit.value,
+					deadline: permit.deadline,
+					r: permit.r,
+					s: permit.s,
+					v: permit.v,
+				},
+				overrides,
+			];
+			if (!overrides['gasLimit']) {
+				const estimatedGas = await this.walletHelper
+					.getFulfillHelperWriteContract(swap.destChain)
+					.directFulfill.estimateGas(...args);
+				overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
+				logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+			}
+			fulfillTx = await this.walletHelper
 				.getFulfillHelperWriteContract(swap.destChain)
-				.directFulfill.estimateGas(...args);
-			overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
-			logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
+				.directFulfill(...args);
+	
+			logger.info(`Wait simple-fulfill on evm confirm with erc20 for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
 		}
-		const fulfillTx: ethers.TransactionResponse = await this.walletHelper
-			.getFulfillHelperWriteContract(swap.destChain)
-			.directFulfill(...args);
-
-		logger.info(`Wait simple-fulfill on evm confirm for ${swap.sourceTxHash} via: ${fulfillTx.hash}`);
 		const tx = await this.evmProviders[targetChain].waitForTransaction(
 			fulfillTx.hash,
 			getTypicalBlocksToConfirm(targetChain),

@@ -165,8 +165,7 @@ export class Relayer {
 			}
 
 			if (!this.isInputTokenAcceptable(swap)) {
-				logger.warn(`input token is not acceptable for ${swap.sourceTxHash}. discarding...`);
-				return;
+				throw new Error(`input token is not acceptable for ${swap.sourceTxHash}. discarding...`);
 			}
 
 			if (!this.isMayanInitiatedSwap(swap)) {

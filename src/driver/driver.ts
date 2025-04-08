@@ -167,7 +167,7 @@ export class DriverService {
 		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
 			return this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!;
 		} else if (fromToken.contract === fromEth?.contract) {
-			return this.tokenList.getWethSol();
+			return this.tokenList.nativeTokens[CHAIN_ID_SOLANA]; // assume sol = eth
 		} else {
 			throw new Error(`Unsupported input token ${fromToken.contract} for driver! not bidding or swapping`);
 		}
