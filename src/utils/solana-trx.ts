@@ -372,7 +372,7 @@ export class SolanaMultiTxSender {
 }
 
 export class PriorityFeeHelper {
-	constructor(private rpcConfig: RpcConfig) {}
+	constructor(private rpcConfig: RpcConfig) { }
 
 	private async getPriorityFeeEstimate(priorityLevel: string, accountKeys: string[]): Promise<number | null> {
 		// const response = await axios.post(this.providersConfig.heliusRpc, {
@@ -467,6 +467,25 @@ async function getBundleStatuses(bundleIds: string[], jitoApiUrl: string): Promi
 	return response.data.result;
 }
 
+const RPC_TIMEOUT = parseInt(process.env.RPC_TIMEOUT_MS || '30000');
+async function fetchWithTimeout(
+	input: URL | RequestInfo,
+	init?: RequestInit & { timeout?: number }
+): Promise<Response> {
+	const { timeout = RPC_TIMEOUT, ...rest } = init || {};
+	const controller = new AbortController();
+	const id = setTimeout(() => controller.abort(), timeout);
+
+	try {
+		return await fetch(input, {
+			...rest,
+			signal: controller.signal
+		});
+	} finally {
+		clearTimeout(id);
+	}
+}
+
 export class FailsafeSolanaConnectionHandler {
 	private connections: Connection[];
 	private activeConnection: Connection;
@@ -482,7 +501,10 @@ export class FailsafeSolanaConnectionHandler {
 	constructor(rpcUrls: string) {
 		this.connections = [];
 		for (let rpcUrl of rpcUrls.split(',')) {
-			this.connections.push(new Connection(rpcUrl, 'confirmed'));
+			this.connections.push(new Connection(rpcUrl, {
+				commitment: 'confirmed',
+				fetch: fetchWithTimeout,
+			}));
 		}
 
 		this.activeConnection = this.connections[0];
