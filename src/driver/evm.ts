@@ -4,9 +4,11 @@ import { abi as SwiftAbi } from '../abis/swift.abi';
 import {
 	CHAIN_ID_BSC,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
 	ETH_CHAINS,
 	WORMHOLE_DECIMALS,
 	WhChainIdToEvm,
+	isEvmChainId,
 	supportedChainIds,
 } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
@@ -15,7 +17,7 @@ import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { SWAP_STATUS, Swap } from '../swap.dto';
-import { tryNativeToHexString, tryNativeToUint8Array } from '../utils/buffer';
+import { hexToUint8Array, tryNativeToHexString, tryNativeToUint8Array } from '../utils/buffer';
 import { getErc20Allowance, getErc20Balance, getEthBalance, giveErc20Allowance } from '../utils/erc20';
 import { EvmProviders } from '../utils/evm-providers';
 import { getSuggestedOverrides, getTypicalBlocksToConfirm } from '../utils/evm-trx';
@@ -44,8 +46,15 @@ export class EvmFulfiller {
 		for (let chainId of supportedChainIds) {
 			if (chainId === CHAIN_ID_SOLANA) {
 				this.unlockWallets32.set(chainId, this.walletConfig.solana.publicKey.toBuffer());
-			} else {
+			} else if (isEvmChainId(chainId)) {
 				this.unlockWallets32.set(chainId, Buffer.from(tryNativeToUint8Array(evmWalletAddr, chainId)));
+			} else if (chainId === CHAIN_ID_SUI) {
+				this.unlockWallets32.set(
+					chainId,
+					Buffer.from(hexToUint8Array(this.walletConfig.sui.getPublicKey().toSuiAddress())),
+				);
+			} else {
+				throw new Error(`Can not determine evm unlock addr for ${chainId}`);
 			}
 		}
 	}
@@ -61,7 +70,7 @@ export class EvmFulfiller {
 	private async lazySetAllowances() {
 		let promises = [];
 		for (let chainId of supportedChainIds) {
-			if (chainId === CHAIN_ID_SOLANA) {
+			if (!isEvmChainId(chainId)) {
 				continue;
 			}
 			let networkFeeData = await this.evmProviders[chainId].getFeeData();
@@ -81,7 +90,7 @@ export class EvmFulfiller {
 						this.walletHelper.getDriverWallet(chainId),
 						driverToken.contract,
 						this.walletHelper.getDriverWallet(chainId).address,
-						this.contractsConfig.contracts[chainId],
+						this.contractsConfig.evmContractsV2Dst[chainId],
 					);
 					console.log(`Current allowance for ${driverToken.contract} on chain ${chainId}: ${current}`);
 
@@ -90,7 +99,7 @@ export class EvmFulfiller {
 						await giveErc20Allowance(
 							this.walletHelper.getDriverWallet(chainId),
 							driverToken.contract,
-							this.contractsConfig.contracts[chainId],
+							this.contractsConfig.evmContractsV2Dst[chainId],
 							ethers.MaxUint256,
 							chainId,
 							networkFeeData,
@@ -291,17 +300,17 @@ export class EvmFulfiller {
 				const args = [amountIn64, Buffer.from(postAuctionSignedVaa!), unlockAddress32, batch, overrides];
 				if (!overrides['gasLimit']) {
 					const estimatedGas = await this.walletHelper
-						.getWriteContract(swap.destChain)
+						.getDestWriteContract(swap.destChain)
 						.fulfillOrder.estimateGas(...args);
 					overrides['gasLimit'] = (estimatedGas * BigInt(130)) / BigInt(100);
 					logger.info(`gasLimit increased 30% for fulfill ${swap.sourceTxHash}`);
 				}
-				fulfillTx = await this.walletHelper.getWriteContract(swap.destChain).fulfillOrder(...args);
+				fulfillTx = await this.walletHelper.getDestWriteContract(swap.destChain).fulfillOrder(...args);
 			} else {
 				const args = [
 					driverToken.contract,
 					amountIn64,
-					this.contractsConfig.contracts[swap.destChain],
+					this.contractsConfig.evmContractsV2Dst[swap.destChain],
 					swiftCallData,
 					{
 						value: permit.value,
@@ -346,7 +355,7 @@ export class EvmFulfiller {
 					toToken.contract,
 					swapParams.evmRouterAddress,
 					swapParams.evmRouterCalldata,
-					this.contractsConfig.contracts[targetChain],
+					this.contractsConfig.evmContractsV2Dst[targetChain],
 					swiftCallData,
 					overrides,
 				];
@@ -368,7 +377,7 @@ export class EvmFulfiller {
 					toToken.contract,
 					swapParams.evmRouterAddress,
 					swapParams.evmRouterCalldata,
-					this.contractsConfig.contracts[targetChain],
+					this.contractsConfig.evmContractsV2Dst[targetChain],
 					swiftCallData,
 					{
 						value: permit.value,
@@ -628,7 +637,7 @@ export class EvmFulfiller {
 		const args = [
 			driverToken.contract,
 			amountIn64,
-			this.contractsConfig.contracts[swap.destChain],
+			this.contractsConfig.evmContractsV2Dst[swap.destChain],
 			callData,
 			{
 				value: permit.value,

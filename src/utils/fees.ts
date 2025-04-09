@@ -9,6 +9,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
+	CHAIN_ID_SUI,
 	CHAIN_ID_UNICHAIN,
 	isEvmChainId,
 } from '../config/chains';
@@ -88,8 +89,8 @@ export class FeeService {
 		const isSingleUnlock = qr.toChainId === CHAIN_ID_ETH;
 
 		const [srcFeeData, dstFeeData] = await Promise.all([
-			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
-			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
+			isEvmChainId(qr.fromChainId) ? this.evmProviders[qr.fromChainId].getFeeData() : null,
+			isEvmChainId(qr.toChainId) ? this.evmProviders[qr.toChainId].getFeeData() : null,
 		]);
 		const srcGasPrice = srcFeeData?.gasPrice!;
 		const dstGasPrice = dstFeeData?.gasPrice!;
@@ -110,7 +111,7 @@ export class FeeService {
 		}
 
 		let fulfillCost = 0;
-		if (qr.toChainId !== CHAIN_ID_SOLANA) {
+		if (isEvmChainId(qr.toChainId)) {
 			fulfillCost = await this.calculateSolanaFee(
 				postAuctionCost,
 				solPrice,
@@ -142,6 +143,9 @@ export class FeeService {
 				qr.gasDrop,
 				overallMultiplier,
 			);
+		} else if (qr.toChainId === CHAIN_ID_SUI) {
+			// TODO. assume input is always usdc
+			fulfillCost = 0.5 + qr.gasDrop * nativeToPrice * overallMultiplier;
 		} else {
 			let fulfillSolCost = solTxCost + additionalSolfulfillCost; // base tx fees;
 			fulfillSolCost += shrinkedStateCost;
@@ -205,7 +209,37 @@ export class FeeService {
 
 				unlockFee = (unlockForAll + batchPostCost) / estimatedBatchCount;
 			}
-		} else {
+		} else if (qr.fromChainId === CHAIN_ID_SUI) {
+			// TODO assumes usdc input
+			let batchPostCost = 0;
+			if (isSingleUnlock) {
+				batchPostCost = 0;
+			} else if (qr.toChainId === CHAIN_ID_SOLANA) {
+				const batchPostSolUsage = batchPostBaseCost + batchPostAdddedCost * realBatchCount + solTxCost;
+				batchPostCost = await this.calculateSolanaFee(
+					batchPostSolUsage,
+					solPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+				batchPostCost /= estimatedBatchCount;
+			} else if (isEvmChainId(qr.toChainId)) {
+				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
+				batchPostCost = await this.calculateGenericEvmFee(
+					batchPostGas,
+					dstGasPrice,
+					nativeToPrice,
+					fromTokenPrice,
+					0,
+					overallMultiplier,
+				);
+				batchPostCost /= estimatedBatchCount;
+			} else {
+				throw new Error('Unsupported destination chain for fee');
+			}
+			unlockFee = 0.1 + batchPostCost;
+		} else if (isEvmChainId(qr.fromChainId)) {
 			let batchPostCost = 0;
 			if (isSingleUnlock) {
 				estimatedBatchCount = 1; // we do not batch on ethereum because eth storage is more expensive than source compute
@@ -219,6 +253,9 @@ export class FeeService {
 					overallMultiplier,
 				);
 				batchPostCost /= estimatedBatchCount;
+			} else if (qr.toChainId === CHAIN_ID_SUI) {
+				// TODO assumes usdc input
+				batchPostCost = 0.2;
 			} else {
 				let batchPostGas = baseBatchPostGas * this.getChainPriceFactor(qr.toChainId);
 				batchPostCost = await this.calculateGenericEvmFee(
@@ -243,6 +280,8 @@ export class FeeService {
 				overallMultiplier,
 			);
 			unlockFee = unlock + batchPostCost;
+		} else {
+			throw new Error('Unsupported source chain for fee 2');
 		}
 
 		const compensationsSol = {
