@@ -1,4 +1,4 @@
-import { ethers } from 'ethers6';
+import { ethers, FetchRequest } from 'ethers6';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
@@ -10,6 +10,9 @@ import {
 	CHAIN_ID_UNICHAIN,
 } from '../config/chains';
 import { RpcConfig } from '../config/rpc';
+
+// Default timeout of 30 seconds if not specified in env
+const RPC_TIMEOUT = parseInt(process.env.RPC_TIMEOUT_MS || '30000');
 
 export type EvmProviders = { [evmNetworkId: number | string]: ethers.JsonRpcProvider };
 
@@ -74,8 +77,10 @@ export async function makeEvmProviders(chainIds: number[], rpcConfig: RpcConfig)
 		}
 
 		for (let endpoint of endpoints) {
-			const provider = new ethers.JsonRpcProvider(endpoint, realChainId, {
-				staticNetwork: ethers.Network.from(realChainId),
+			const fetchRequest = new FetchRequest(endpoint);
+			fetchRequest.timeout = RPC_TIMEOUT;
+			const provider = new ethers.JsonRpcProvider(fetchRequest, realChainId, {
+				staticNetwork: ethers.Network.from(realChainId)
 			});
 			allProviders[chainId].push(provider);
 		}
@@ -135,8 +140,10 @@ export async function makeSecondEvmProviders(chainIds: number[], rpcConfig: RpcC
 		}
 
 		for (let endpoint of endpoints) {
-			const provider = new ethers.JsonRpcProvider(endpoint, realChainId, {
-				staticNetwork: ethers.Network.from(realChainId),
+			const fetchRequest = new FetchRequest(endpoint);
+			fetchRequest.timeout = RPC_TIMEOUT;
+			const provider = new ethers.JsonRpcProvider(fetchRequest, realChainId, {
+				staticNetwork: ethers.Network.from(realChainId)
 			});
 			all2ndProviders[chainId] = [provider];
 		}
