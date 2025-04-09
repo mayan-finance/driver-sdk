@@ -151,6 +151,8 @@ export class DriverService {
 			return (destUsdc || destUsdt)!;
 		} else if (fromToken.contract === fromEth?.contract || fromToken.contract === fromSolWeth?.contract) {
 			return this.tokenList.getEth(destChain)!;
+		} else if (srcChain === CHAIN_ID_SOLANA && fromToken.contract === this.tokenList.nativeTokens[CHAIN_ID_SOLANA].contract) {
+			return this.tokenList.getEth(destChain)!;
 		} else {
 			throw new Error(
 				`Unsupported input token ${fromToken.contract} on

@@ -48,7 +48,7 @@ export class Relayer {
 		private readonly solanaConnection: Connection,
 		private readonly driverService: DriverService,
 		private readonly chainFinality: ChainFinality,
-	) {}
+	) { }
 
 	private async tryProgressFulfill(swap: Swap) {
 		const isSolDst = swap.destChain === CHAIN_ID_SOLANA;
@@ -514,6 +514,7 @@ export class Relayer {
 	private isInputTokenAcceptable(swap: Swap) {
 		// We only accept ETH and USDC as input tokens (except for bsc) in our quote API so we are ignoring anything
 		let acceptedTokens = [
+			this.tokenList.nativeTokens[CHAIN_ID_SOLANA],
 			this.tokenList.getEth(swap.sourceChain),
 			this.tokenList.getNativeUsdc(swap.sourceChain),
 			this.tokenList.getWethSol(),
