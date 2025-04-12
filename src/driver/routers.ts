@@ -64,13 +64,12 @@ export class SwapRouters {
 		let quotename = '1inch';
 
 		try {
-			let quoteFunction = this.get1InchQuote.bind(this);
-			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
+			let quoteFunction = this.get0xQuote.bind(this);
+			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				quoteFunction = this.getUniswapQuote.bind(this);
-			}
-			if (swapRetries % 2 === 1) {
-				quoteFunction = this.get0xQuote.bind(this);
+			} else if (swapRetries % 2 === 1) {
+				quoteFunction = this.get1InchQuote.bind(this);
 				quotename = '0x';
 			}
 
@@ -112,14 +111,13 @@ export class SwapRouters {
 	}> {
 		let quotename = '1inch';
 		try {
-			let swapFunction = this.get1InchSwap.bind(this);
-			if (swapParams.whChainId === CHAIN_ID_UNICHAIN) {
+			let swapFunction = this.get0xSwap.bind(this);
+			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				swapFunction = this.getUniswapSwap.bind(this);
-			}
-			if (swapRetries % 2 === 1) {
+			} else if (swapRetries % 2 === 1) {
 				quotename = '0x';
-				swapFunction = this.get0xSwap.bind(this);
+				swapFunction = this.get1InchSwap.bind(this);
 			}
 
 			return await swapFunction(swapParams, retries);
@@ -669,7 +667,7 @@ export class SwapRouters {
 		};
 		gas: number;
 		toAmount: string;
-		approvalTarget: string | null;
+		// approvalTarget: string | null;
 	}> {
 		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
 			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
@@ -715,7 +713,7 @@ export class SwapRouters {
 			return {
 				toAmount: res.data.buyAmount,
 				gas: Number(res.data.transaction.gas),
-				approvalTarget: res.data.issues.allowance?.spender,
+				// approvalTarget: res.data.issues.allowance?.spender,
 				tx: {
 					to: res.data.transaction.to,
 					data: res.data.transaction.data,
