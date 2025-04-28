@@ -140,6 +140,85 @@ export type SwiftAuction = {
 			];
 		},
 		{
+			name: 'postAuctionShim';
+			accounts: [
+				{
+					name: 'auction';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'driver';
+					isMut: true;
+					isSigner: true;
+				},
+				{
+					name: 'emitter';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'config';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'emitterSequence';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'feeCollector';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'message';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'coreBridgeProgram';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'systemProgram';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'clock';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'shimEventAuth';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'shimProgram';
+					isMut: false;
+					isSigner: false;
+				},
+			];
+			args: [
+				{
+					name: 'order';
+					type: {
+						defined: 'OrderInfo';
+					};
+				},
+				{
+					name: 'foreignDriver';
+					type: {
+						array: ['u8', 32];
+					};
+				},
+			];
+		},
+		{
 			name: 'closeAuction';
 			accounts: [
 				{
@@ -501,6 +580,85 @@ export const IDL: SwiftAuction = {
 				},
 				{
 					name: 'rent',
+					isMut: false,
+					isSigner: false,
+				},
+			],
+			args: [
+				{
+					name: 'order',
+					type: {
+						defined: 'OrderInfo',
+					},
+				},
+				{
+					name: 'foreignDriver',
+					type: {
+						array: ['u8', 32],
+					},
+				},
+			],
+		},
+		{
+			name: 'postAuctionShim',
+			accounts: [
+				{
+					name: 'auction',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'driver',
+					isMut: true,
+					isSigner: true,
+				},
+				{
+					name: 'emitter',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'config',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'emitterSequence',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'feeCollector',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'message',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'coreBridgeProgram',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'systemProgram',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'clock',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'shimEventAuth',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'shimProgram',
 					isMut: false,
 					isSigner: false,
 				},

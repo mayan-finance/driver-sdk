@@ -53,6 +53,7 @@ export async function main() {
 	}
 
 	const globalConfig: GlobalConfig = {
+		postAuctionMode: process.env.POST_AUCTION_MODE === 'SHIM' ? 'SHIM' : 'NORMAL',
 		ignoreReferrers: new Set(initialDynamicConfig.ignoreReferrers),
 		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
 		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,
@@ -158,6 +159,7 @@ export async function main() {
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
 		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters),
+		globalConfig,
 		solanaConnection,
 		walletConf,
 		rpcConfig,

@@ -25,6 +25,7 @@ export interface SwiftFeeParams {
 }
 
 export type GlobalConfig = {
+	postAuctionMode: 'NORMAL' | 'SHIM';
 	ignoreReferrers: Set<string>;
 	blackListedReferrerAddresses: Set<string>;
 	whiteListedReferrerAddresses: Set<string>;
