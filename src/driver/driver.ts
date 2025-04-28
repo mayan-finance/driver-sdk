@@ -20,7 +20,7 @@ import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
 import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
-import { AUCTION_MODES } from '../utils/state-parser';
+import { AUCTION_MODES, getAuctionState } from '../utils/state-parser';
 import { delay } from '../utils/util';
 import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from '../utils/wormhole';
 import { EvmFulfiller } from './evm';
@@ -28,6 +28,7 @@ import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 import { sendAlert } from '../utils/alert';
+import { GlobalConfig } from '../config/global';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;
@@ -37,6 +38,7 @@ export class DriverService {
 	constructor(
 		private readonly simpleFulfillerCfg: SimpleFulfillerConfig,
 		private readonly auctionFulfillerCfg: AuctionFulfillerConfig,
+		private readonly globalConfig: GlobalConfig,
 		private readonly solanaConnection: Connection,
 		private readonly walletConfig: WalletConfig,
 		private readonly rpcConfig: RpcConfig,
@@ -286,6 +288,8 @@ export class DriverService {
 
 		let instructions: TransactionInstruction[] = [];
 		let newMessageAccount: Keypair | null = null;
+		const signers = [this.walletConfig.solana];
+
 		if (!postAuction && swap.auctionMode === AUCTION_MODES.ENGLISH && !alreadyRegisteredWinner) {
 			if (!alreadyRegisteredOrder) {
 				instructions.push(await this.getRegisterOrderFromSwap(swap));
@@ -298,21 +302,38 @@ export class DriverService {
 			)[0];
 
 			const wormholeAccs = get_wormhole_core_accounts(auctionEmitter);
-			newMessageAccount = Keypair.generate();
 
-			const postAuctionIx = await this.solanaIxService.getPostAuctionIx(
-				this.walletConfig.solana.publicKey,
-				new PublicKey(swap.auctionStateAddr),
-				wormholeAccs.bridge_config,
-				wormholeAccs.coreBridge,
-				auctionEmitter,
-				wormholeAccs.fee_collector,
-				wormholeAccs.sequence_key,
-				newMessageAccount.publicKey,
-				swap,
-				swap.fromToken.decimals,
-				tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
-			);
+			let postAuctionIx: TransactionInstruction;
+			if (this.globalConfig.postAuctionMode === 'SHIM') {
+				postAuctionIx = await this.solanaIxService.getPostAuctionShimIx(
+					this.walletConfig.solana.publicKey,
+					new PublicKey(swap.auctionStateAddr),
+					wormholeAccs.bridge_config,
+					wormholeAccs.coreBridge,
+					auctionEmitter,
+					wormholeAccs.fee_collector,
+					wormholeAccs.sequence_key,
+					swap,
+					swap.fromToken.decimals,
+					tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
+				);
+			} else {
+				newMessageAccount = Keypair.generate();
+				postAuctionIx = await this.solanaIxService.getPostAuctionIx(
+					this.walletConfig.solana.publicKey,
+					new PublicKey(swap.auctionStateAddr),
+					wormholeAccs.bridge_config,
+					wormholeAccs.coreBridge,
+					auctionEmitter,
+					wormholeAccs.fee_collector,
+					wormholeAccs.sequence_key,
+					newMessageAccount.publicKey,
+					swap,
+					swap.fromToken.decimals,
+					tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
+				);
+				signers.push(newMessageAccount!);
+			}
 			instructions.push(postAuctionIx);
 		}
 
@@ -336,10 +357,8 @@ export class DriverService {
 			instructions.unshift(createdAtaIx);
 		}
 
-		const signers = [this.walletConfig.solana];
 		if (postAuction) {
 			computeUnits = 80_000;
-			signers.push(newMessageAccount!);
 		}
 
 		if (!!onlyTxData) {
@@ -357,14 +376,14 @@ export class DriverService {
 		logger.info(`Sent post bid transaction for ${swap.sourceTxHash} with ${hash}`);
 
 		if (postAuction) {
-			let whMessageInfo = await this.solanaConnection.getAccountInfo(newMessageAccount!.publicKey);
+			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 
-			while (!whMessageInfo || !whMessageInfo.data) {
+			while ((!auctionState || !auctionState.sequence)) {
 				await delay(1500);
-				whMessageInfo = await this.solanaConnection.getAccountInfo(newMessageAccount!.publicKey);
+				auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			}
 
-			return { sequence: getWormholeSequenceFromPostedMessage(whMessageInfo.data) };
+			return { sequence: auctionState.sequence - 1n };
 		}
 		return null;
 	}

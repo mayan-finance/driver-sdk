@@ -17,6 +17,7 @@ import { IDL as SwiftIdl, Swift as SwiftT } from '../abis/swift.idl';
 import { WORMHOLE_DECIMALS } from '../config/chains';
 import { Swap } from '../swap.dto';
 import { hexToUint8Array, tryNativeToUint8Array } from '../utils/buffer';
+import { WORMHOLE_SHIM_EVENT_AUTH, WORMHOLE_SHIM_PROGRAM } from '../utils/wormhole';
 
 export class NewSolanaIxHelper {
 	private readonly swiftProgram: Program<SwiftT>;
@@ -205,6 +206,40 @@ export class NewSolanaIxHelper {
 				systemProgram: SystemProgram.programId,
 				driver: driver,
 				auctionState: auctionState,
+			})
+			.instruction();
+	}
+
+	async getPostAuctionShimIx(
+		driver: PublicKey,
+		auctionState: PublicKey,
+		whConf: PublicKey,
+		whCore: PublicKey,
+		whEmitter: PublicKey,
+		whFee: PublicKey,
+		whSeq: PublicKey,
+
+		swap: Swap,
+		fromTokenDecimals: number,
+		driverDestChainAddress: Uint8Array,
+	): Promise<TransactionInstruction> {
+		const [message] = PublicKey.findProgramAddressSync([whEmitter.toBuffer()], WORMHOLE_SHIM_PROGRAM);
+
+		return this.auctionProgram.methods
+			.postAuctionShim(this.createOrderParams(swap, fromTokenDecimals), Array.from(driverDestChainAddress))
+			.accounts({
+				auction: auctionState,
+				clock: SYSVAR_CLOCK_PUBKEY,
+				config: whConf,
+				coreBridgeProgram: whCore,
+				emitter: whEmitter,
+				emitterSequence: whSeq,
+				feeCollector: whFee,
+				message: message,
+				driver: driver,
+				shimEventAuth: WORMHOLE_SHIM_EVENT_AUTH,
+				shimProgram: WORMHOLE_SHIM_PROGRAM,
+				systemProgram: SystemProgram.programId,
 			})
 			.instruction();
 	}

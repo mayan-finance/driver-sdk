@@ -10,6 +10,8 @@ import { delay } from './util';
 const { GrpcWebImpl, PublicRPCServiceClientImpl } = publicrpc;
 
 export const WORMHOLE_CORE_BRIDGE = new PublicKey('worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth');
+export const WORMHOLE_SHIM_PROGRAM = new PublicKey('EtZMZM22ViKMo4r5y4Anovs3wKQ2owUmDpjygnMMcdEX');
+export const WORMHOLE_SHIM_EVENT_AUTH = new PublicKey('HQS31aApX3DDkuXgSpV9XyDUNtFgQ31pUn5BNWHG2PSp');
 
 function serializePayload(parsedVaa: any) {
 	const x = Buffer.alloc(51 + parsedVaa.payload.length);
