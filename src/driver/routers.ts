@@ -11,6 +11,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_UNICHAIN,
+	CHAIN_ID_LINEA,
 	WhChainIdToEvm,
 } from '../config/chains';
 import { ContractsConfig, okxSwapHelpers } from '../config/contracts';
@@ -85,16 +86,16 @@ export class SwapRouters {
 		swapRetries: number,
 		retries: number = 3,
 	): Promise<EVMQuoteResponse> {
-		let quotename = '1inch';
+		let quotename = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? '0x' : 'best';
 
 		try {
-			let quoteFunction = this.getBestOKX0xQuote.bind(this);
+			let quoteFunction = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? this.get0xQuote.bind(this) : this.getBestOKX0xQuote.bind(this);
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				quoteFunction = this.getUniswapQuote.bind(this);
 			} else if (swapRetries % 2 === 1) {
+				quotename = '1inch';
 				quoteFunction = this.get1InchQuote.bind(this);
-				quotename = '0x';
 			}
 
 			return await quoteFunction(swapParams, retries);
@@ -117,15 +118,30 @@ export class SwapRouters {
 		swapRetries: number,
 		retries: number = 3,
 	): Promise<EVMSwapResponse> {
-		let quotename = '1inch';
+		let quotename = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? '0x' : 'best';
 		try {
-			let swapFunction = this.getBestOKX0xSwap.bind(this);
+			let swapFunction = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? this.get0xSwap.bind(this) : this.getBestOKX0xSwap.bind(this);
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				swapFunction = this.getUniswapSwap.bind(this);
-			} else if (swapRetries % 2 === 1) {
-				quotename = '0x';
+			} else if (swapParams.whChainId === CHAIN_ID_LINEA && swapRetries % 2 === 1) {
+				quotename = '1inch';
 				swapFunction = this.get1InchSwap.bind(this);
+			} else {
+				switch (swapRetries % 4) {
+					case 1:
+						quotename = '0x';
+						swapFunction = this.get0xSwap.bind(this);
+						break;
+					case 2:
+						quotename = 'okx';
+						swapFunction = this.getOkxSwap.bind(this);
+						break;
+					case 3:
+						quotename = '1inch';
+						swapFunction = this.get1InchSwap.bind(this);
+						break;
+				}
 			}
 
 			return await swapFunction(swapParams, retries);
