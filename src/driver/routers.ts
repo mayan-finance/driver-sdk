@@ -565,6 +565,9 @@ export class SwapRouters {
 
 		try {
 			const res = await axios.get('https://api.0x.org/swap/allowance-holder/price', config);
+			if (!res.data.buyAmount || res.data.liquidityAvailable === false) {
+				throw new Error(`Failed to get quote from 0x: ${res.data}`);
+			}
 
 			return {
 				toAmount: res.data.buyAmount,
