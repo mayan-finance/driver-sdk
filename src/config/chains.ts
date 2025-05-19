@@ -8,6 +8,7 @@ export const CHAIN_ID_ARBITRUM = 23;
 export const CHAIN_ID_OPTIMISM = 24;
 export const CHAIN_ID_BASE = 30;
 export const CHAIN_ID_UNICHAIN = 44;
+export const CHAIN_ID_LINEA = 38;
 
 export function mapNameToWormholeChainId(name: string): number | null {
 	if (!(name in chainMap)) {

@@ -11,6 +11,7 @@ import {
 	CHAIN_ID_OPTIMISM,
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_UNICHAIN,
+	CHAIN_ID_LINEA,
 	WhChainIdToEvm,
 } from '../config/chains';
 import { ContractsConfig, okxSwapHelpers } from '../config/contracts';
@@ -23,6 +24,39 @@ import { hmac256base64 } from '../utils/hmac';
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const okxWebsite = 'https://www.okx.com';
 const apiBasePath = '/api/v5/dex/aggregator';
+
+type EVMQuoteParams = {
+	whChainId: number;
+	srcToken: string;
+	destToken: string;
+	amountIn: string;
+	timeout?: number;
+}
+
+type EVMQuoteResponse = {
+	toAmount: string;
+	gas: number;
+}
+
+type EVMSwapParams = {
+	whChainId: number;
+	srcToken: string;
+	destToken: string;
+	amountIn: string;
+	slippagePercent: number;
+	timeout?: number;
+}
+
+type EVMSwapResponse = {
+	tx: {
+		to: string;
+		data: string;
+		value: string;
+		gas: string;
+	};
+	gas: number;
+	toAmount: string;
+}
 
 export class SwapRouters {
 	private readonly uniswapQuoterV2Contracts: {
@@ -48,29 +82,20 @@ export class SwapRouters {
 	}
 
 	async getQuote(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			timeout?: number;
-		},
+		swapParams: EVMQuoteParams,
 		swapRetries: number,
 		retries: number = 3,
-	): Promise<{
-		toAmount: string;
-		gas: number;
-	}> {
-		let quotename = '1inch';
+	): Promise<EVMQuoteResponse> {
+		let quotename = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? '0x' : 'best';
 
 		try {
-			let quoteFunction = this.get0xQuote.bind(this);
+			let quoteFunction = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? this.get0xQuote.bind(this) : this.getBestOKX0xQuote.bind(this);
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				quoteFunction = this.getUniswapQuote.bind(this);
 			} else if (swapRetries % 2 === 1) {
+				quotename = '1inch';
 				quoteFunction = this.get1InchQuote.bind(this);
-				quotename = '0x';
 			}
 
 			return await quoteFunction(swapParams, retries);
@@ -89,35 +114,34 @@ export class SwapRouters {
 	}
 
 	async getSwap(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			slippagePercent: number;
-			timeout?: number;
-		},
+		swapParams: EVMSwapParams,
 		swapRetries: number,
 		retries: number = 3,
-	): Promise<{
-		tx: {
-			to: string;
-			data: string;
-			value: string;
-			gas: string;
-		};
-		gas: number;
-		toAmount: string;
-	}> {
-		let quotename = '1inch';
+	): Promise<EVMSwapResponse> {
+		let quotename = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? '0x' : 'best';
 		try {
-			let swapFunction = this.get0xSwap.bind(this);
+			let swapFunction = [CHAIN_ID_LINEA, CHAIN_ID_UNICHAIN].includes(swapParams.whChainId) ? this.get0xSwap.bind(this) : this.getBestOKX0xSwap.bind(this);
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				swapFunction = this.getUniswapSwap.bind(this);
-			} else if (swapRetries % 2 === 1) {
-				quotename = '0x';
+			} else if (swapParams.whChainId === CHAIN_ID_LINEA && swapRetries % 2 === 1) {
+				quotename = '1inch';
 				swapFunction = this.get1InchSwap.bind(this);
+			} else {
+				switch (swapRetries % 4) {
+					case 1:
+						quotename = '0x';
+						swapFunction = this.get0xSwap.bind(this);
+						break;
+					case 2:
+						quotename = 'okx';
+						swapFunction = this.getOkxSwap.bind(this);
+						break;
+					case 3:
+						quotename = '1inch';
+						swapFunction = this.get1InchSwap.bind(this);
+						break;
+				}
 			}
 
 			return await swapFunction(swapParams, retries);
@@ -136,18 +160,9 @@ export class SwapRouters {
 	}
 
 	async getUniswapQuote(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			timeout?: number;
-		},
+		swapParams: EVMQuoteParams,
 		retries: number = 3,
-	): Promise<{
-		toAmount: string;
-		gas: number;
-	}> {
+	): Promise<EVMQuoteResponse> {
 		const apiUrl = `${this.priceApiUri}/v3/quote/on-chain`;
 
 		const timeout = swapParams.timeout || 3000;
@@ -181,25 +196,9 @@ export class SwapRouters {
 	}
 
 	async getUniswapSwap(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			slippagePercent: number;
-			timeout?: number;
-		},
+		swapParams: EVMSwapParams,
 		retries: number = 3,
-	): Promise<{
-		tx: {
-			to: string;
-			data: string;
-			value: string;
-			gas: string;
-		};
-		gas: number;
-		toAmount: string;
-	}> {
+	): Promise<EVMSwapResponse> {
 		const apiUrl = `${this.priceApiUri}/v3/quote/on-chain`;
 
 		const timeout = swapParams.timeout || 3000;
@@ -288,18 +287,9 @@ export class SwapRouters {
 	// }
 
 	async get1InchQuote(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			timeout?: number;
-		},
+		swapParams: EVMQuoteParams,
 		retries: number = 3,
-	): Promise<{
-		toAmount: string;
-		gas: number;
-	}> {
+	): Promise<EVMQuoteResponse> {
 		const apiUrl = `https://api.1inch.dev/swap/v6.0/${WhChainIdToEvm[swapParams.whChainId]}/quote`;
 
 		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
@@ -346,25 +336,9 @@ export class SwapRouters {
 	}
 
 	async get1InchSwap(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			slippagePercent: number;
-			timeout?: number;
-		},
+		swapParams: EVMSwapParams,
 		retries: number = 3,
-	): Promise<{
-		tx: {
-			to: string;
-			data: string;
-			value: string;
-			gas: string;
-		};
-		gas: number;
-		toAmount: string;
-	}> {
+	): Promise<EVMSwapResponse> {
 		const apiUrl = `https://api.1inch.dev/swap/v6.0/${WhChainIdToEvm[swapParams.whChainId]}/swap`;
 
 		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
@@ -415,18 +389,9 @@ export class SwapRouters {
 	}
 
 	async getOkxQuote(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			timeout?: number;
-		},
+		swapParams: EVMQuoteParams,
 		retries: number = 3,
-	): Promise<{
-		toAmount: string;
-		gas: number;
-	}> {
+	): Promise<EVMQuoteResponse> {
 		const apiUrl = `${okxWebsite}${apiBasePath}/quote`;
 
 		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
@@ -486,25 +451,9 @@ export class SwapRouters {
 	}
 
 	async getOkxSwap(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			slippagePercent: number;
-			timeout?: number;
-		},
+		swapParams: EVMSwapParams,
 		retries: number = 7,
-	): Promise<{
-		tx: {
-			to: string;
-			data: string;
-			value: string;
-			gas: string;
-		};
-		gas: number;
-		toAmount: string;
-	}> {
+	): Promise<EVMSwapResponse> {
 		const apiUrl = `${okxWebsite}${apiBasePath}/swap`;
 
 		let swapDest = this.contractsConfig.evmFulfillHelpers[swapParams.whChainId];
@@ -589,18 +538,9 @@ export class SwapRouters {
 	}
 
 	async get0xQuote(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			timeout?: number;
-		},
+		swapParams: EVMQuoteParams,
 		retries: number = 3,
-	): Promise<{
-		toAmount: string;
-		gas: number;
-	}> {
+	): Promise<EVMQuoteResponse> {
 		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
 			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
@@ -625,6 +565,9 @@ export class SwapRouters {
 
 		try {
 			const res = await axios.get('https://api.0x.org/swap/allowance-holder/price', config);
+			if (!res.data.buyAmount || res.data.liquidityAvailable === false) {
+				throw new Error(`Failed to get quote from 0x: ${res.data}`);
+			}
 
 			return {
 				toAmount: res.data.buyAmount,
@@ -649,26 +592,9 @@ export class SwapRouters {
 	}
 
 	async get0xSwap(
-		swapParams: {
-			whChainId: number;
-			srcToken: string;
-			destToken: string;
-			amountIn: string;
-			slippagePercent: number;
-			timeout?: number;
-		},
+		swapParams: EVMSwapParams,
 		retries: number = 7,
-	): Promise<{
-		tx: {
-			to: string;
-			data: string;
-			value: string;
-			gas: string;
-		};
-		gas: number;
-		toAmount: string;
-		// approvalTarget: string | null;
-	}> {
+	): Promise<EVMSwapResponse> {
 		if (swapParams.srcToken === '0x0000000000000000000000000000000000000000') {
 			swapParams.srcToken = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 		}
@@ -732,6 +658,50 @@ export class SwapRouters {
 			}
 			throw new Error(`Failed to get swap from 0x: ${err}`);
 		}
+	}
+
+	async getBestOKX0xQuote(params: EVMQuoteParams, retries?: number): Promise<EVMQuoteResponse> {
+		const results = await Promise.allSettled([
+			this.getOkxQuote(params, retries),
+			this.get0xQuote(params, retries),
+		]);
+
+		const quoteRess = results
+			.filter(
+				(result): result is PromiseFulfilledResult<EVMQuoteResponse> =>
+					result.status === 'fulfilled',
+			)
+			.map((result) => result.value);
+		if (quoteRess.length === 0) {
+			throw new Error('Best quote attempts failed');
+		}
+
+		return quoteRess.reduce(
+			(best, current) => (current.toAmount > best.toAmount ? current : best),
+			quoteRess[0],
+		);
+	}
+
+	async getBestOKX0xSwap(params: EVMSwapParams, retries?: number): Promise<EVMSwapResponse> {
+		const results = await Promise.allSettled([
+			this.getOkxSwap(params, retries),
+			this.get0xSwap(params, retries),
+		]);
+
+		const swapRess = results
+			.filter(
+				(result): result is PromiseFulfilledResult<EVMSwapResponse> =>
+					result.status === 'fulfilled',
+			)
+			.map((result) => result.value);
+		if (swapRess.length === 0) {
+			throw new Error('Best swap attempts failed');
+		}
+
+		return swapRess.reduce(
+			(best, current) => (current.toAmount > best.toAmount ? current : best),
+			swapRess[0],
+		);
 	}
 }
 
@@ -817,12 +787,12 @@ const tokenApprovalContracts: { [chainId: number]: string } = {
 };
 
 const OkxDexRouterContracts: { [chainId: number]: string } = {
-	[CHAIN_ID_ETH]: '0x1ef032a3c471a99cc31578c8007f256d95e89896',
-	[CHAIN_ID_BSC]: '0x9333C74BDd1E118634fE5664ACA7a9710b108Bab',
-	[CHAIN_ID_POLYGON]: '0xA748D6573acA135aF68F2635BE60CB80278bd855',
-	[CHAIN_ID_AVAX]: '0x1daC23e41Fc8ce857E86fD8C1AE5b6121C67D96d',
-	[CHAIN_ID_ARBITRUM]: '0xf332761c673b59B21fF6dfa8adA44d78c12dEF09',
-	[CHAIN_ID_OPTIMISM]: '0xf332761c673b59B21fF6dfa8adA44d78c12dEF09',
-	[CHAIN_ID_BASE]: '0x6b2C0c7be2048Daa9b5527982C29f48062B34D58',
+	[CHAIN_ID_ETH]: '0x156ACd2bc5fC336D59BAAE602a2BD9b5e20D6672',
+	[CHAIN_ID_BSC]: '0xc44Ad35B5A41C428c0eAE842F20F84D1ff6ed917',
+	[CHAIN_ID_POLYGON]: '0x5E8DF5b010D57e525562791717011D496676552A',
+	[CHAIN_ID_AVAX]: '0x38575264810371c15f0e5744fa2ab29cdef7245d',
+	[CHAIN_ID_ARBITRUM]: '0x01D8EDB8eF96119d6Bada3F50463DeE6fe863B4C',
+	[CHAIN_ID_OPTIMISM]: '0x88156aAe243D7E2f8D92965581Ff169183D8355e',
+	[CHAIN_ID_BASE]: '0x3D98f6F05E7940c056788Ff8492A943A0904240D',
 	[CHAIN_ID_UNICHAIN]: '',
 };
