@@ -33,7 +33,8 @@ import {
 } from './utils/state-parser';
 import { delay } from './utils/util';
 import { getSignedVaa } from './utils/wormhole';
-
+import { DB_PATH, getRebalanceAmount, getRebalanceIsCreated, setRebalanceIsCreated } from './utils/sqlite3';
+import { Rebalancer } from './rebalancer';
 export class Relayer {
 	public relayingSwaps: Swap[] = [];
 
@@ -48,7 +49,8 @@ export class Relayer {
 		private readonly solanaConnection: Connection,
 		private readonly driverService: DriverService,
 		private readonly chainFinality: ChainFinality,
-	) {}
+		private readonly rebalancer: Rebalancer,
+	) { }
 
 	private async tryProgressFulfill(swap: Swap) {
 		const isSolDst = swap.destChain === CHAIN_ID_SOLANA;
@@ -129,8 +131,9 @@ export class Relayer {
 			}
 
 			if (
-				this.gConf.ignoreReferrers.has(swap.referrerAddress) ||
-				this.gConf.blackListedReferrerAddresses.has(swap.referrerAddress)
+				(this.gConf.ignoreReferrers.has(swap.referrerAddress) ||
+					this.gConf.blackListedReferrerAddresses.has(swap.referrerAddress)) &&
+				!this.gConf.whiteListedReferrerAddresses.has(swap.referrerAddress)
 			) {
 				logger.warn(`Referrer address is blacklisted/ignored for ${swap.sourceTxHash}. discarding...`);
 				return;
@@ -290,6 +293,13 @@ export class Relayer {
 			logger.info(`Got auction signed VAA for ${swap.sourceTxHash}. Fulfilling...`);
 		} else {
 			logger.info(`Simple mode evm fulfilling ${swap.sourceTxHash}...`);
+		}
+
+		if (!getRebalanceIsCreated(DB_PATH, swap.orderId)) {
+			const amount = getRebalanceAmount(DB_PATH, swap.orderId);
+			this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
+			setRebalanceIsCreated(DB_PATH, swap.orderId, true);
+			await delay(10000);
 		}
 
 		await this.driverService.fulfill(swap, auctionSignedVaa);

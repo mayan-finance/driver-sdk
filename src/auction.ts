@@ -15,6 +15,8 @@ import { EvmProviders } from './utils/evm-providers';
 import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
 import { AUCTION_MODES } from './utils/state-parser';
+import { Rebalancer } from './rebalancer';
+import { createRebalance, DB_PATH } from './utils/sqlite3';
 
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
@@ -38,6 +40,7 @@ export class AuctionFulfillerConfig {
 		private readonly walletConfig: WalletConfig,
 		private readonly swapRouters: SwapRouters,
 		private readonly tokenList: TokenList,
+		private readonly rebalancer: Rebalancer,
 	) { }
 
 	async normalizedBidAmount(
@@ -45,12 +48,24 @@ export class AuctionFulfillerConfig {
 		effectiveAmountIn: number,
 		swap: Swap,
 		costs: SwiftCosts,
+		context: {
+			isDriverTokenUSDC: boolean,
+			isDstChainValidForRebalance: boolean,
+		},
 	): Promise<bigint> {
 		const balance = await this.getTokenBalance(driverToken);
-		if (balance < effectiveAmountIn) {
+		let balanceWithRebalance = 0;
+		if (context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
+			balanceWithRebalance = balance + await this.rebalancer.fetchSolanaUsdcBalance();
+		}
+
+		if (balanceWithRebalance < effectiveAmountIn) {
 			throw new Error(`Insufficient 1x balance for ${swap.sourceTxHash}. Dropping bid`);
-		} else {
+		} else if (balance >= effectiveAmountIn) {
 			logger.info(`Balance is ${balance} for ${swap.sourceTxHash}`);
+		} else {
+			createRebalance(DB_PATH, swap.orderId, effectiveAmountIn - balance + 5);
+			logger.info(`Balance is ${balance} and After pull from Solana is ${balanceWithRebalance} for ${swap.sourceTxHash} which is enough for bid`);
 		}
 
 		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
@@ -413,7 +428,7 @@ export class AuctionFulfillerConfig {
 		}
 	}
 
-	private async getTokenBalance(token: Token): Promise<number> {
+	async getTokenBalance(token: Token): Promise<number> {
 		if (token.wChainId === CHAIN_ID_SOLANA) {
 			if (token.contract === ethers.ZeroAddress) {
 				const balance = await this.connection.getBalance(this.walletConfig.solana.publicKey);

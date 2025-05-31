@@ -7,7 +7,7 @@ import {
 import { AddressLookupTableAccount, Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import axios from 'axios';
 import { AuctionFulfillerConfig } from '../auction';
-import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
+import { CHAIN_ID_ARBITRUM, CHAIN_ID_AVAX, CHAIN_ID_BASE, CHAIN_ID_ETH, CHAIN_ID_OPTIMISM, CHAIN_ID_POLYGON, CHAIN_ID_SOLANA, CHAIN_ID_UNICHAIN, WORMHOLE_DECIMALS } from '../config/chains';
 import { ContractsConfig } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
@@ -29,6 +29,7 @@ import { NewSolanaIxHelper } from './solana-ix';
 import { WalletsHelper } from './wallet-helper';
 import { GlobalConfig } from '../config/global';
 import { sendAlert, sendLossAlert } from '../utils/alert';
+import { REBALANCE_ENABLED_CHAIN_IDS } from '../rebalancer';
 
 export class DriverService {
 	private readonly swiftProgram: PublicKey;
@@ -212,11 +213,19 @@ export class DriverService {
 		} else {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
 		}
+
+		let isDriverTokenUSDC = driverToken.contract === this.tokenList.getNativeUsdc(dstChain)?.contract;
+		let isDstChainValidForRebalance = REBALANCE_ENABLED_CHAIN_IDS.includes(dstChain);
+		let context = {
+			isDriverTokenUSDC,
+			isDstChainValidForRebalance,
+		};
 		let normalizedBidAmount = await this.auctionFulfillerCfg.normalizedBidAmount(
 			driverToken,
 			effectiveAmountIn,
 			swap,
 			expenses,
+			context,
 		);
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
@@ -450,6 +459,11 @@ export class DriverService {
 			swap,
 			expenses,
 		);
+		if (await this.auctionFulfillerCfg.getTokenBalance(driverToken) < fulfillAmount) {
+			logger.error(`Not enough balance for fulfill ${swap.sourceTxHash}`);
+			throw new Error(`Not enough balance for fulfill ${swap.sourceTxHash}`);
+		}
+
 		logger.info(`Fulfilling ${swap.sourceTxHash} with ${fulfillAmount} other: effective: ${effectiveAmntIn}, fromprice: ${expenses.fromTokenPrice}`);
 
 		if (fulfillAmount > effectiveAmntIn) {

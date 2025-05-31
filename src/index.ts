@@ -9,7 +9,7 @@ import {
 	fulfillHelpers,
 	SolanaProgram,
 } from './config/contracts';
-import { mayanEndpoints } from './config/endpoints';
+import { mayanEndpoints, treasuryEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
 import { fetchDynamicSdkParams, refershAndPatchConfigs } from './config/init';
 import { routersConfig } from './config/routers';
@@ -25,6 +25,7 @@ import { NewSolanaIxHelper } from './driver/solana-ix';
 import { StateCloser } from './driver/state-closer';
 import { Unlocker } from './driver/unlocker';
 import { WalletsHelper } from './driver/wallet-helper';
+import { Rebalancer } from './rebalancer';
 import { Relayer } from './relayer';
 import { SimpleFulfillerConfig } from './simple';
 import { makeEvmProviders, makeSecondEvmProviders, refreshEvmProvidersPeriodically } from './utils/evm-providers';
@@ -97,6 +98,8 @@ export async function main() {
 	const tokenList = new TokenList(mayanEndpoints, evmProviders, solanaConnection);
 	await tokenList.init();
 
+	const rebalancer = new Rebalancer(treasuryEndpoints, tokenList);
+
 	const solanaIxHelper = new NewSolanaIxHelper(
 		new PublicKey(contracts.contracts[CHAIN_ID_SOLANA]),
 		new PublicKey(contracts.auctionAddr),
@@ -158,7 +161,7 @@ export async function main() {
 	await evmFulFiller.init();
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters, tokenList),
+		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters, tokenList, rebalancer),
 		globalConfig,
 		solanaConnection,
 		walletConf,
@@ -190,6 +193,7 @@ export async function main() {
 		solanaConnection,
 		driverSvc,
 		chainFinalitySvc,
+		rebalancer,
 	);
 
 	const stateCloser = new StateCloser(walletConf, solanaConnection, solanaIxHelper, solanaTxSender);
