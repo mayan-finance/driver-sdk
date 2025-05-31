@@ -57,7 +57,12 @@ export class AuctionFulfillerConfig {
 		const balance = await this.getTokenBalance(driverToken);
 		let balanceWithRebalance = 0;
 		if (context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
-			balanceWithRebalance = balance + await this.rebalancer.fetchSolanaUsdcBalance();
+			try {
+				balanceWithRebalance = balance + await this.rebalancer.fetchSolanaUsdcBalance();
+			} catch (error) {
+				logger.error(`Error fetching solana usdc balance ${error}`);
+				balanceWithRebalance = balance;
+			}
 		}
 
 		if (balanceWithRebalance < effectiveAmountIn) {
