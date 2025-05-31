@@ -15,3 +15,11 @@ export const mayanEndpoints: MayanEndpoints = {
 	lutApiUrl: process.env.LUT_API_URL || 'https://lut-api.mayan.finance',
 	refreshTokenIntervalSeconds: Number(process.env.REFRESH_TOKEN_INTERVAL_SECONDS) || 600,
 };
+
+export type TreasuryEndpoints = {
+	rebalancerApiUrl: string;
+}
+
+export const treasuryEndpoints: TreasuryEndpoints = {
+	rebalancerApiUrl: process.env.REBALANCER_API_URL || 'http://localhost:8000',
+}
