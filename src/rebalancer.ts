@@ -46,17 +46,27 @@ interface FeasibilityResponse {
     balance_status: BalanceStatus;
 }
 
+interface ChainConfig {
+    chain_id: number;
+    chain_name: string;
+    minimum_threshold: string;
+    normal_threshold: string;
+    maximum_threshold: string;
+}
+
 const SOLANA_CCTP_CHAIN_ID = 0;
+export const MIN_PULL_AMOUNT = process.env.MIN_PULL_AMOUNT ? parseInt(process.env.MIN_PULL_AMOUNT) : 500;
 
 export const REBALANCE_ENABLED_CHAIN_IDS = [CHAIN_ID_ETH, CHAIN_ID_AVAX, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE, CHAIN_ID_UNICHAIN, CHAIN_ID_POLYGON, CHAIN_ID_ARBITRUM, CHAIN_ID_SOLANA];
 
 export class Rebalancer {
+    private chainConfigCache: Map<number, { config: ChainConfig; timestamp: number }> = new Map();
+    private readonly CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
     constructor(
         private readonly endpoints: TreasuryEndpoints,
         private readonly tokenList: TokenList,
     ) { }
-
 
     private async fetchBalances(): Promise<BalanceInfo[]> {
         try {
@@ -145,7 +155,6 @@ export class Rebalancer {
         }
     }
 
-
     async forceRebalance(chainId: number, amount: number, orderId: string): Promise<void> {
         const cctpChainId = this.getCCTPChainId(chainId);
         const request: RebalanceRequest = {
@@ -177,4 +186,35 @@ export class Rebalancer {
         return 0;
     }
 
+    async getChainConfig(chainId: number): Promise<ChainConfig> {
+        const cctpChainId = this.getCCTPChainId(chainId);
+        const cacheKey = cctpChainId;
+        const cachedConfig = this.chainConfigCache.get(cacheKey);
+
+        if (cachedConfig && Date.now() - cachedConfig.timestamp < this.CACHE_TTL_MS) {
+            logger.info(`Using cached chain config for chain ${cctpChainId}`);
+            return cachedConfig.config;
+        }
+
+        try {
+            logger.info(`Fetching chain config for chain ${cctpChainId}`);
+            const response = await axios.get(`${this.endpoints.rebalancerApiUrl}/api/threshold-config`, {
+                params: { chain_id: cctpChainId },
+                timeout: 10000,
+            });
+
+            if (response.status !== 200) {
+                throw new Error(`Chain config API returned status ${response.status}`);
+            }
+
+            const config = response.data as ChainConfig;
+            this.chainConfigCache.set(cacheKey, { config, timestamp: Date.now() });
+
+            logger.info(`Cached chain config for chain ${cctpChainId}: ${config.chain_name}`);
+            return config;
+        } catch (error) {
+            logger.error(`Failed to fetch chain config for chain ${cctpChainId}: ${error}`);
+            throw error;
+        }
+    }
 }
