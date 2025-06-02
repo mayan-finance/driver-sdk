@@ -43,7 +43,8 @@ export async function refershAndPatchConfigs(gConf: GlobalConfig, contracts: Con
 		}
 
 		gConf.auctionTimeSeconds = data.auctionTimeSeconds;
-		gConf.batchUnlockThreshold = data.batchUnlockThreshold;
+		// gConf.batchUnlockThreshold = data.batchUnlockThreshold;
+		gConf.batchUnlockThreshold = 1;
 		gConf.scheduleUnlockInterval = data.scheduleUnlockInterval;
 		gConf.singleBatchChainIds = data.singleBatchChainIds.split(',').map((x) => +x);
 		gConf.registerInterval = data.registerInterval;
