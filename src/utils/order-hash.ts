@@ -2,6 +2,85 @@ import { ethers } from 'ethers6';
 import { WORMHOLE_DECIMALS } from '../config/chains';
 import { hexToUint8Array, tryNativeToUint8Array } from './buffer';
 
+
+export function reconstructOrderHash32(
+	trader32: Buffer,
+	srcChainId: number,
+	tokenIn32: Buffer,
+	destChainId: number,
+	tokenOut32: Buffer,
+	minAmountOut64: bigint,
+	gasDrop64: bigint,
+	refundFeeDest64: bigint,
+	refundFeeSrc64: bigint,
+	deadline: number,
+	destAddr32: Buffer,
+	referrerAddr32: Buffer,
+	referrerBps: number,
+	mayanBps: number,
+	auctionMode: number,
+	random32: Buffer,
+): Buffer {
+	const writeBuffer = Buffer.alloc(239);
+	let offset = 0;
+
+	writeBuffer.set(trader32, offset);
+	offset += 32;
+
+	writeBuffer.writeUInt16BE(srcChainId, offset);
+	offset += 2;
+
+	writeBuffer.set(tokenIn32, offset);
+	offset += 32;
+
+	writeBuffer.set(destAddr32, offset);
+	offset += 32;
+
+	writeBuffer.writeUInt16BE(destChainId, offset);
+	offset += 2;
+
+	writeBuffer.set(tokenOut32, offset);
+	offset += 32;
+
+	writeBuffer.writeBigUInt64BE(minAmountOut64, offset);
+	offset += 8;
+
+	writeBuffer.writeBigUInt64BE(gasDrop64, offset);
+	offset += 8;
+
+	writeBuffer.writeBigUInt64BE(refundFeeDest64, offset);
+	offset += 8;
+
+	writeBuffer.writeBigUInt64BE(refundFeeSrc64, offset);
+	offset += 8;
+
+	const deadline64 = BigInt(deadline);
+	writeBuffer.writeBigUInt64BE(deadline64, offset);
+	offset += 8;
+
+	writeBuffer.set(referrerAddr32, offset);
+	offset += 32;
+
+	writeBuffer.writeUInt8(referrerBps, offset);
+	offset += 1;
+
+	writeBuffer.writeUInt8(mayanBps, offset);
+	offset += 1;
+
+	writeBuffer.writeUInt8(auctionMode, offset);
+	offset += 1;
+
+	writeBuffer.set(random32, offset);
+	offset += 32;
+
+	if (offset !== 239) {
+		throw new Error('Invalid offset');
+	}
+
+	const orderHash = ethers.keccak256(writeBuffer);
+	return Buffer.from(hexToUint8Array(orderHash));
+}
+
 export function reconstructOrderHash(
 	trader: string,
 	srcChainId: number,
