@@ -36,6 +36,7 @@ import { FailsafeSolanaConnectionHandler, PriorityFeeHelper, SolanaMultiTxSender
 import { createDatabase, DB_PATH } from './utils/sqlite3';
 import { VaaPoster } from './utils/vaa-poster';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
+import { ReBidListener } from './rebid';
 
 export async function main() {
 	createDatabase(DB_PATH);
@@ -53,6 +54,7 @@ export async function main() {
 	}
 
 	const globalConfig: GlobalConfig = {
+		rebidEnabled: process.env.REBID_ENABLED === 'true',
 		postAuctionMode: process.env.POST_AUCTION_MODE === 'SHIM' ? 'SHIM' : 'NORMAL',
 		ignoreReferrers: new Set(initialDynamicConfig.ignoreReferrers),
 		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
@@ -203,6 +205,14 @@ export async function main() {
 		driverSvc,
 		stateCloser,
 	);
+	const rebidListener = new ReBidListener(
+		walletConf.solana.publicKey.toString(),
+		globalConfig,
+		rpcConfig,
+		watcher,
+		driverSvc,
+	);
+	rebidListener.start();
 	watcher.init();
 }
 

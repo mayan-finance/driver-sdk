@@ -13,6 +13,21 @@
         "cwd": "${workspaceRoot}",
         "internalConsoleOptions": "openOnSessionStart",
         "skipFiles": ["<node_internals>/**", "node_modules/**"]
+      },
+      {
+
+        "name": "TS-Node swc",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "ts-node",
+        "runtimeArgs": [
+            "--swc",
+            "."
+        ],
+        "outputCapture": "std",
+        "cwd": "${workspaceRoot}",
+        "internalConsoleOptions": "openOnSessionStart",
+        "skipFiles": ["<node_internals>/**", "node_modules/**"]
       }
     ]
   }

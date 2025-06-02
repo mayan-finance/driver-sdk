@@ -45,6 +45,7 @@ export class AuctionFulfillerConfig {
 		effectiveAmountIn: number,
 		swap: Swap,
 		costs: SwiftCosts,
+		lastBid?: bigint,
 	): Promise<bigint> {
 		const balance = await this.getTokenBalance(driverToken);
 		if (balance < effectiveAmountIn) {

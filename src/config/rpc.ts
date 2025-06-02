@@ -8,6 +8,10 @@ export type RpcConfig = {
 		sendInterval: number;
 		otherSendInterval: number;
 		priorityFee: number | null;
+		geyser: {
+			endpoint: string;
+			apiKey: string;
+		};
 	};
 	evmEndpoints: {
 		ethereumFlashBot: string;
@@ -48,6 +52,10 @@ export const rpcConfig: RpcConfig = {
 			'https://api.tatum.io/v3/blockchain/node/solana-mainnet',
 		],
 		priorityFee: parseInt(process.env.SOLANA_PRIORITY_FEE || '') || null,
+		geyser: {
+			endpoint: process.env.GEYSER_ENDPOINT || '',
+			apiKey: process.env.GEYSER_API_KEY || '',
+		},
 	},
 	evmEndpoints: {
 		avalanche: process.env.AVALANCHE_RPC || 'https://1rpc.io/avax/c',
