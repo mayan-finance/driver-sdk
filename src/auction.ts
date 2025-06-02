@@ -71,7 +71,9 @@ export class AuctionFulfillerConfig {
 		} else if (balance >= effectiveAmountIn) {
 			logger.info(`Balance is ${balance} for ${swap.sourceTxHash}`);
 		} else {
-			createRebalance(DB_PATH, swap.orderId, effectiveAmountIn - balance + 5);
+			if ((await this.rebalancer.checkFeasibility(swap.destChain, effectiveAmountIn - balance + 5)).feasible) {
+				createRebalance(DB_PATH, swap.orderId, effectiveAmountIn - balance + 5);
+			}
 			logger.info(`Balance is ${balance} and After pull from Solana is ${balanceWithRebalance} for ${swap.sourceTxHash} which is enough for bid`);
 		}
 
