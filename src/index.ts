@@ -75,7 +75,7 @@ export async function main() {
 		}, new Set<string>()),
 
 		whiteListedReferrerAddresses: whiteListedReferrerAddresses,
-		isRebalancerEnabled: process.env.REBALANCE_ENABLED === 'true',
+		isRebalancerEnabled: process.env.IS_REBALANCER_ENABLED === 'true',
 	};
 
 	const contracts: ContractsConfig = {
