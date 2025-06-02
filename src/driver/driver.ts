@@ -216,6 +216,11 @@ export class DriverService {
 
 		let isDriverTokenUSDC = driverToken.contract === this.tokenList.getNativeUsdc(dstChain)?.contract;
 		let isDstChainValidForRebalance = REBALANCE_ENABLED_CHAIN_IDS.includes(dstChain);
+
+		if (process.env.BATTLE_TEST === 'true' && (!isDriverTokenUSDC || !isDstChainValidForRebalance)) {
+			throw new Error('Shall not bid on tx because driver token is not USDC or dst chain is not valid for rebalance in development mode');
+		}
+
 		let context = {
 			isDriverTokenUSDC,
 			isDstChainValidForRebalance,

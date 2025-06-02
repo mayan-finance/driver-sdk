@@ -16,6 +16,36 @@ interface RebalanceRequest {
     unique_id: string;
 }
 
+interface FeasibilityRequest {
+    chain_id: number;
+    amount: string;
+}
+
+interface QueueStatus {
+    total_ongoing: number;
+    per_chain_ongoing: number;
+    max_total: number;
+    max_per_chain: number;
+    can_accept: boolean;
+}
+
+interface BalanceStatus {
+    current_solana_balance: string;
+    requested_amount: string;
+    total_committed_amount: string;
+    effective_available_balance: string;
+    balance_after_transfer: string;
+    normal_threshold: string;
+    sufficient_balance: boolean;
+}
+
+interface FeasibilityResponse {
+    feasible: boolean;
+    reason: string | null;
+    queue_status: QueueStatus;
+    balance_status: BalanceStatus;
+}
+
 const SOLANA_CCTP_CHAIN_ID = 0;
 
 export const REBALANCE_ENABLED_CHAIN_IDS = [CHAIN_ID_ETH, CHAIN_ID_AVAX, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE, CHAIN_ID_UNICHAIN, CHAIN_ID_POLYGON, CHAIN_ID_ARBITRUM];
@@ -58,6 +88,38 @@ export class Rebalancer {
         }
 
         return parseInt(balance.balance, 16) / (10 ** usdc.decimals);
+    }
+
+    async checkFeasibility(chainId: number, amount: number): Promise<FeasibilityResponse> {
+        try {
+            const cctpChainId = this.getCCTPChainId(chainId);
+            const request: FeasibilityRequest = {
+                chain_id: cctpChainId,
+                amount: amount.toFixed(6),
+            };
+
+            logger.info(`Checking feasibility for ${amount} USDC to chain ${chainId} (CCTP: ${cctpChainId})`);
+
+            const response = await axios.post(`${this.endpoints.rebalancerApiUrl}/api/feasibility`, request, {
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                timeout: 10000,
+            });
+
+            if (response.status !== 200) {
+                throw new Error(`Feasibility API returned status ${response.status}`);
+            }
+
+            const feasibilityResponse = response.data as FeasibilityResponse;
+
+            logger.info(`Feasibility check result: feasible=${feasibilityResponse.feasible}, reason=${feasibilityResponse.reason}`);
+
+            return feasibilityResponse;
+        } catch (error) {
+            logger.error(`Failed to check feasibility for chain ${chainId} amount ${amount}: ${error}`);
+            throw error;
+        }
     }
 
     private async executeRebalance(request: RebalanceRequest): Promise<void> {
