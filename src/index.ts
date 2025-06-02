@@ -72,6 +72,7 @@ export async function main() {
 		}, new Set<string>()),
 
 		whiteListedReferrerAddresses: whiteListedReferrerAddresses,
+		isRebalancerEnabled: process.env.REBALANCE_ENABLED === 'true',
 	};
 
 	const contracts: ContractsConfig = {
@@ -161,7 +162,7 @@ export async function main() {
 	await evmFulFiller.init();
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters, tokenList, rebalancer),
+		new AuctionFulfillerConfig(globalConfig, rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters, tokenList, rebalancer),
 		globalConfig,
 		solanaConnection,
 		walletConf,
