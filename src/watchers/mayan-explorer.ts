@@ -40,6 +40,19 @@ export class MayanExplorerWatcher {
 		}
 	}
 
+	async fetchFromExplorerByHash(orderHash: string, retries: number = 2): Promise<Swap> {
+		try {
+			const { data } = await axios.get(`${this.endpoints.explorerApiUrl}/v3/swap/order-id/SWIFT_0x${orderHash}?format=raw`);
+			return this.createSwapFromJson(data);
+		} catch (err) {
+			if (retries > 0) {
+				await new Promise((resolve) => setTimeout(resolve, 500));
+				return this.fetchFromExplorerByHash(orderHash, retries - 1);
+			}
+			throw err;
+		}
+	}
+
 	private async createSwapFromJson(rawSwap: any) {
 		const fromToken = await this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
 		const toToken = await this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
