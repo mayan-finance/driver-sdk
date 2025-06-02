@@ -17,7 +17,7 @@ import logger from './utils/logger';
 import { AUCTION_MODES } from './utils/state-parser';
 import { Rebalancer } from './rebalancer';
 import { createRebalance, DB_PATH } from './utils/sqlite3';
-
+import { GlobalConfig } from './config/global';
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
@@ -34,6 +34,7 @@ export class AuctionFulfillerConfig {
 	private readonly forceBid = false;
 
 	constructor(
+		private readonly gConf: GlobalConfig,
 		private readonly rpcConfig: RpcConfig,
 		private readonly connection: Connection,
 		private readonly evmProviders: EvmProviders,
@@ -55,8 +56,8 @@ export class AuctionFulfillerConfig {
 		},
 	): Promise<bigint> {
 		const balance = await this.getTokenBalance(driverToken);
-		let balanceWithRebalance = 0;
-		if (context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
+		let balanceWithRebalance = balance;
+		if (this.gConf.isRebalancerEnabled && context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
 			try {
 				balanceWithRebalance = balance + await this.rebalancer.fetchSolanaUsdcBalance();
 			} catch (error) {

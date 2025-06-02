@@ -22,6 +22,8 @@ export interface SwiftFeeParams {
 	baseBatchPostGas: number;
 	ethSubmitGas: number;
 	erc20SubmitGas: number;
+
+	isRebalancerEnabled: boolean;
 }
 
 export type GlobalConfig = {
@@ -41,4 +43,5 @@ export type GlobalConfig = {
 	closeLutsInterval: number;
 	disableUnlocker: boolean;
 	feeParams: SwiftFeeParams;
+	isRebalancerEnabled: boolean;
 };
