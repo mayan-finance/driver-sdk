@@ -15,7 +15,7 @@ import { EvmProviders } from './utils/evm-providers';
 import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
 import { AUCTION_MODES } from './utils/state-parser';
-import { Rebalancer } from './rebalancer';
+import { MIN_PULL_AMOUNT, Rebalancer } from './rebalancer';
 import { createRebalance, DB_PATH } from './utils/sqlite3';
 import { GlobalConfig } from './config/global';
 export class AuctionFulfillerConfig {
@@ -59,7 +59,7 @@ export class AuctionFulfillerConfig {
 		let balanceWithRebalance = balance;
 		if (this.gConf.isRebalancerEnabled && context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
 			try {
-				balanceWithRebalance = balance + await this.rebalancer.fetchSolanaUsdcBalance();
+				balanceWithRebalance = balance + Math.max(await this.rebalancer.fetchSolanaUsdcBalance(), MIN_PULL_AMOUNT);
 			} catch (error) {
 				logger.error(`Error fetching solana usdc balance ${error}`);
 				balanceWithRebalance = balance;
@@ -71,10 +71,14 @@ export class AuctionFulfillerConfig {
 		} else if (balance >= effectiveAmountIn) {
 			logger.info(`Balance is ${balance} for ${swap.sourceTxHash}`);
 		} else {
-			if ((await this.rebalancer.checkFeasibility(swap.destChain, effectiveAmountIn - balance + 5)).feasible) {
-				createRebalance(DB_PATH, swap.orderId, effectiveAmountIn - balance + 5);
+			const normalThreshold = Number((await this.rebalancer.getChainConfig(swap.destChain)).normal_threshold) / 10 ** 6;
+			const rebalanceAmount = Math.max(effectiveAmountIn - balance + 5 + normalThreshold, MIN_PULL_AMOUNT);
+			if ((await this.rebalancer.checkFeasibility(swap.destChain, rebalanceAmount)).feasible) {
+				createRebalance(DB_PATH, swap.orderId, rebalanceAmount);
+				logger.info(`Balance is ${balance} and After pull from Solana is ${balanceWithRebalance} for ${swap.sourceTxHash} which is enough for bid`);
+			} else {
+				throw new Error(`Insufficient 1x balance for ${swap.sourceTxHash}. Dropping bid`);
 			}
-			logger.info(`Balance is ${balance} and After pull from Solana is ${balanceWithRebalance} for ${swap.sourceTxHash} which is enough for bid`);
 		}
 
 		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
