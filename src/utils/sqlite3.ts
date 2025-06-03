@@ -63,10 +63,22 @@ export function setRebalanceIsCreated(dbFile: string, orderId: string, isCreated
 	execSync(`sqlite3 ${dbFile} "${query}"`);
 }
 
-export function getRebalanceIsCreated(dbFile: string, orderId: string): boolean {
+export enum RebalanceStatus {
+	IS_CREATED = 'isCreated',
+	IS_NOT_CREATED = 'isNotCreated',
+	IS_NOT_EXIST = 'isNotExist',
+}
+
+export function getRebalanceIsCreated(dbFile: string, orderId: string): RebalanceStatus {
 	const query = `select isCreated from rebalances where orderId = '${orderId}';`;
 	const res = execSync(`sqlite3 ${dbFile} "${query}"`, { encoding: 'utf8' });
-	return res.trim() === '1';
+	if (res.trim() === '1') {
+		return RebalanceStatus.IS_CREATED;
+	} else if (res.trim() === '0') {
+		return RebalanceStatus.IS_NOT_CREATED;
+	} else {
+		return RebalanceStatus.IS_NOT_EXIST;
+	}
 }
 
 export function getRebalanceAmount(dbFile: string, orderId: string): number {
