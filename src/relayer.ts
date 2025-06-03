@@ -33,7 +33,7 @@ import {
 } from './utils/state-parser';
 import { delay } from './utils/util';
 import { getSignedVaa } from './utils/wormhole';
-import { DB_PATH, getRebalanceAmount, getRebalanceIsCreated, setRebalanceIsCreated } from './utils/sqlite3';
+import { DB_PATH, getRebalanceAmount, getRebalanceIsCreated, RebalanceStatus, setRebalanceIsCreated } from './utils/sqlite3';
 import { Rebalancer } from './rebalancer';
 export class Relayer {
 	public relayingSwaps: Swap[] = [];
@@ -302,7 +302,7 @@ export class Relayer {
 			logger.info(`Simple mode evm fulfilling ${swap.sourceTxHash}...`);
 		}
 
-		if (!getRebalanceIsCreated(DB_PATH, swap.orderId)) {
+		if (getRebalanceIsCreated(DB_PATH, swap.orderId) === RebalanceStatus.IS_NOT_CREATED) {
 			const amount = getRebalanceAmount(DB_PATH, swap.orderId);
 			this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
 			setRebalanceIsCreated(DB_PATH, swap.orderId, true);
