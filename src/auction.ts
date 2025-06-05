@@ -73,7 +73,7 @@ export class AuctionFulfillerConfig {
 		} else {
 			const normalThreshold = Number((await this.rebalancer.getChainConfig(swap.destChain)).normal_threshold) / 10 ** 6;
 			const rebalanceAmount = Math.max(effectiveAmountIn - balance + 5 + normalThreshold, MIN_PULL_AMOUNT);
-			if ((await this.rebalancer.checkFeasibility(swap.destChain, rebalanceAmount)).feasible) {
+			if ((await this.rebalancer.checkFeasibility(swap.destChain, rebalanceAmount, swap.orderId)).feasible) {
 				createRebalance(DB_PATH, swap.orderId, rebalanceAmount);
 				logger.info(`Balance is ${balance} and After pull from Solana is ${balanceWithRebalance} for ${swap.sourceTxHash} which is enough for bid`);
 			} else {
