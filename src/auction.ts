@@ -100,6 +100,8 @@ export class AuctionFulfillerConfig {
 			);
 		}
 
+		logger.info(`in bid : output: ${output} for effectiveAmountIn: ${effectiveAmountIn} for swap ${swap.sourceTxHash}`);
+
 		const bpsFees = await this.calcProtocolAndRefBps(
 			swap.fromAmount64,
 			swap.fromToken,
@@ -143,6 +145,8 @@ export class AuctionFulfillerConfig {
 
 		const mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
 		swap.bidAmountIn = Math.max(marginFinalBidIn, finalFullAmountIn + mappedBpsAmountIn);
+		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
+		logger.info(`in bid: mappedAmountOut ${mappedAmountOut} for swap ${swap.sourceTxHash}`);
 		let normalizedAmountOut;
 		if (swap.toToken.decimals > 8) {
 			normalizedAmountOut = BigInt(Math.floor(mappedAmountOut * 10 ** 8));
@@ -260,6 +264,8 @@ export class AuctionFulfillerConfig {
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
 
+		logger.info(`in fulfil: output: ${output} for effectiveAmountIn: ${effectiveAmountIn} for swap ${swap.sourceTxHash}`);
+
 		const bpsFees = await this.calcProtocolAndRefBps(
 			swap.fromAmount64,
 			swap.fromToken,
@@ -276,14 +282,20 @@ export class AuctionFulfillerConfig {
 
 		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
 
+		logger.info(`mappedMinAmountIn ${mappedMinAmountIn} for swap ${swap.sourceTxHash}`);
+
 		if (!swap.bidAmountIn) {
+			logger.info(`swap.bidAmountIn is not set for swap ${swap.sourceTxHash}`);
 			if (swap.bidAmount64) {
 				const bidOut = Number(swap.bidAmount64) / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
 				swap.bidAmountIn = (1.000001 * bidOut * (effectiveAmountIn / output)) / (1 - Number(bpsFees) / 10000);
 			}
 		}
 
+		logger.info(`bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
+
 		const minFulfillAmount = Math.max(mappedMinAmountIn, swap.bidAmountIn || 0);
+		logger.info(`minFulfillAmount ${minFulfillAmount} for swap ${swap.sourceTxHash}`);
 		// for simple mode without auction, do not pay any loss
 		if (swap.auctionMode === AUCTION_MODES.ENGLISH && (minFulfillAmount > effectiveAmountIn || swap.retries > 1)) {
 			if (swap.lastloss && swap.lastloss > 0) {
