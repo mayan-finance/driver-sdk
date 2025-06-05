@@ -11,10 +11,10 @@ import {
 } from './config/chains';
 
 export const driverConfig = {
-	maxPendingOrders: 10, // do not bid on anything else if you already have 10 pending orders. Try fulfilling them first
+	maxPendingOrders: 5, // do not bid on anything else if you already have 5 pending orders. Try fulfilling them first
 	bidAggressionPercent: 0, // 0% above minamout out
 	fulfillAggressionPercent: 100, // take 0% of approximated available profit
-	volumeLimitUsd: 255_000, // 20k USD
+	volumeLimitUsd: 5000, // 5k USD
 	acceptedInputChains: new Set([
 		// CHAIN_ID_BSC,
 		CHAIN_ID_AVAX,

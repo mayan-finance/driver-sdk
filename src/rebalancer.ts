@@ -19,6 +19,7 @@ interface RebalanceRequest {
 interface FeasibilityRequest {
     chain_id: number;
     amount: string;
+    unique_id: string;
 }
 
 interface QueueStatus {
@@ -100,15 +101,16 @@ export class Rebalancer {
         return parseInt(balance.balance, 16) / (10 ** usdc.decimals);
     }
 
-    async checkFeasibility(chainId: number, amount: number): Promise<FeasibilityResponse> {
+    async checkFeasibility(chainId: number, amount: number, orderId: string): Promise<FeasibilityResponse> {
         try {
             const cctpChainId = this.getCCTPChainId(chainId);
             const request: FeasibilityRequest = {
                 chain_id: cctpChainId,
                 amount: amount.toFixed(6),
+                unique_id: orderId,
             };
 
-            logger.info(`Checking feasibility for ${amount} USDC to chain ${chainId} (CCTP: ${cctpChainId})`);
+            logger.info(`Checking feasibility for ${amount} USDC to chain ${chainId} (CCTP: ${cctpChainId}) for order ${orderId}`);
 
             const response = await axios.post(`${this.endpoints.rebalancerApiUrl}/api/feasibility`, request, {
                 headers: {
