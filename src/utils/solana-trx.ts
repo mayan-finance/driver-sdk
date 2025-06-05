@@ -359,7 +359,11 @@ export class SolanaMultiTxSender {
 			console.error(
 				`Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)} logs: ${rpcResponse.value.logs}`,
 			);
-			return null;
+			throw {
+				message: `Simulation error: ${JSON.stringify(rpcResponse.value.err, null, 2)} logs: ${rpcResponse.value.logs}`,
+				solError: rpcResponse.value.err,
+				solLogs: rpcResponse.value.logs,
+			};
 		}
 
 		return rpcResponse.value.unitsConsumed || null;

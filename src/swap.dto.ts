@@ -52,6 +52,7 @@ export type Swap = {
 	createTxHash: string;
 
 	retries: number;
+	invalidAmountRetires: number;
 
 	bidAmount64?: bigint;
 	lastloss?: number;
