@@ -235,8 +235,8 @@ export class DriverService {
 			effectiveAmountIn,
 			swap,
 			expenses,
-			lastBid,
 			context,
+			lastBid,
 		);
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {

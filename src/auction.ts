@@ -49,11 +49,11 @@ export class AuctionFulfillerConfig {
 		effectiveAmountIn: number,
 		swap: Swap,
 		costs: SwiftCosts,
-		lastBid?: bigint,
 		context: {
 			isDriverTokenUSDC: boolean,
 			isDstChainValidForRebalance: boolean,
 		},
+		lastBid?: bigint,
 	): Promise<bigint> {
 		const balance = await this.getTokenBalance(driverToken);
 		let balanceWithRebalance = balance;
