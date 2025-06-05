@@ -221,6 +221,11 @@ export class DriverService {
 			throw new Error('Shall not bid on tx because driver token is not USDC or dst chain is not valid for rebalance in development mode');
 		}
 
+		if (this.globalConfig.minUsdcOrderAmount && effectiveAmountIn < this.globalConfig.minUsdcOrderAmount && isDriverTokenUSDC) {
+			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because effectiveAmountIn ${effectiveAmountIn} is less than minUsdcOrderAmount ${this.globalConfig.minUsdcOrderAmount}`);
+			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because effectiveAmountIn ${effectiveAmountIn} is less than minUsdcOrderAmount ${this.globalConfig.minUsdcOrderAmount}`);
+		}
+
 		let context = {
 			isDriverTokenUSDC,
 			isDstChainValidForRebalance,

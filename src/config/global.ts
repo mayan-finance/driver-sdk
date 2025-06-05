@@ -44,4 +44,5 @@ export type GlobalConfig = {
 	disableUnlocker: boolean;
 	feeParams: SwiftFeeParams;
 	isRebalancerEnabled: boolean;
+	minUsdcOrderAmount: number | undefined;
 };

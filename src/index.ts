@@ -76,6 +76,7 @@ export async function main() {
 
 		whiteListedReferrerAddresses: whiteListedReferrerAddresses,
 		isRebalancerEnabled: process.env.IS_REBALANCER_ENABLED === 'true',
+		minUsdcOrderAmount: process.env.MIN_USDC_ORDER_AMOUNT ? parseInt(process.env.MIN_USDC_ORDER_AMOUNT) : undefined,
 	};
 
 	const contracts: ContractsConfig = {
