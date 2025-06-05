@@ -57,6 +57,7 @@ export class MayanExplorerWatcher {
 		const fromToken = await this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
 		const toToken = await this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
 		const swap: Swap = {
+			invalidAmountRetires: 0,
 			retries: 0,
 			trader: rawSwap.trader,
 			orderId: rawSwap.orderId,

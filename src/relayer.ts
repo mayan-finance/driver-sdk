@@ -180,7 +180,7 @@ export class Relayer {
 				try {
 					logger.info(`In while-switch ${swap.sourceTxHash} with status: ${swap.status} ${swap.retries}`);
 					await this.tryProgressFulfill(swap);
-				} catch (err) {
+				} catch (err: any) {
 					logger.error(`error in main while for tx: ${swap.sourceTxHash} ${err}`);
 					let backoff = 500;
 					switch (swap.retries) {
@@ -205,6 +205,13 @@ export class Relayer {
 							break;
 					}
 					swap.retries++;
+					const isLowAmountOutSolana = err?.solError?.InstructionError?.[1]?.Custom === 6014; // solana calldata for InvalidAmountOut()
+					const isLowAmountOutEvm = err?.data === '0x2c5211c6'; // evm calldata for InvalidAmountOut()
+					if (isLowAmountOutSolana || isLowAmountOutEvm) {
+						logger.warn(`Invalid amount out for ${swap.sourceTxHash}. Increasing retries`);
+						swap.invalidAmountRetires++;
+					}
+
 					await delay(backoff);
 				} finally {
 					await delay(500);
