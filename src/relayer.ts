@@ -275,6 +275,12 @@ export class Relayer {
 				// wasting afew seconds on waiting for auction state update...
 				if (!sequence || sequence < 1n) {
 					sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
+
+					if (getRebalanceIsCreated(DB_PATH, swap.orderId) === RebalanceStatus.IS_NOT_CREATED) {
+						const amount = getRebalanceAmount(DB_PATH, swap.orderId);
+						this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
+						setRebalanceIsCreated(DB_PATH, swap.orderId, true);
+					}
 				} else {
 					sequence = sequence - 1n;
 				}
@@ -300,13 +306,6 @@ export class Relayer {
 			logger.info(`Got auction signed VAA for ${swap.sourceTxHash}. Fulfilling...`);
 		} else {
 			logger.info(`Simple mode evm fulfilling ${swap.sourceTxHash}...`);
-		}
-
-		if (getRebalanceIsCreated(DB_PATH, swap.orderId) === RebalanceStatus.IS_NOT_CREATED) {
-			const amount = getRebalanceAmount(DB_PATH, swap.orderId);
-			this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
-			setRebalanceIsCreated(DB_PATH, swap.orderId, true);
-			await delay(10000);
 		}
 
 		await this.driverService.fulfill(swap, auctionSignedVaa);
