@@ -251,8 +251,9 @@ export class Relayer {
 			// 	new PublicKey(this.contractsConfig.auctionAddr),
 			// )[0].toString();
 			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+			let openToBid = false;
 			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
-				const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
+				openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
 				if (!openToBid) {
 					logger.warn(
 						`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
@@ -262,12 +263,16 @@ export class Relayer {
 				}
 			}
 
-			if (!auctionState) {
+			if (!auctionState || openToBid) {
 				logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-				await this.driverService.bid(swap);
-				logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
-				await delay(this.gConf.auctionTimeSeconds * 1000);
-				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
+				try {
+					await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+					logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
+				} catch (err) {
+					logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+				}
+				// await delay(this.gConf.auctionTimeSeconds * 1000);
+				// logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
@@ -331,8 +336,9 @@ export class Relayer {
 				getCurrentSolanaTimeMS(this.solanaConnection),
 				getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr)),
 			]);
+			let openToBid = false;
 			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-				const openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
+				openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
 				if (!openToBid) {
 					logger.info(
 						`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
@@ -342,12 +348,16 @@ export class Relayer {
 				}
 			}
 
-			if (!auctionState) {
+			if (!auctionState || openToBid) {
 				logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
-				await this.driverService.bid(swap);
-				logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
-				await delay(this.gConf.auctionTimeSeconds * 1000);
-				logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
+				try {
+					await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+					logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
+				} catch (err) {
+					logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+				}
+				// await delay(this.gConf.auctionTimeSeconds * 1000);
+				// logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));

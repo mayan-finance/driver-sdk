@@ -176,7 +176,7 @@ export class DriverService {
 		}
 	}
 
-	async bid(swap: Swap, lastBid?: bigint): Promise<void> {
+	async bid(swap: Swap, lastBid: bigint = 0n): Promise<void> {
 		if (this.pendingAuctionCount > driverConfig.maxPendingOrders) {
 			sendAlert('FILLED_PENDING', `Filled pending auction ${this.pendingAuctionCount}`);
 			throw new Error(`Not bidding ${swap.sourceTxHash} because we have too many pending orders`);
