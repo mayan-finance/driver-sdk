@@ -264,8 +264,8 @@ export class Unlocker {
 				throw new Error(`Too many orderHashes might not fit into block...`);
 			}
 
-			let volumeStep = 60;
-			let desiredUnlockValue = 13000;
+			let volumeStep = 50;
+			let desiredUnlockValue = 400;
 			// switch (sourceChainId) {
 			// 	case CHAIN_ID_ARBITRUM:
 			// 	case CHAIN_ID_BASE:
