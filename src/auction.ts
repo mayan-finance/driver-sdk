@@ -170,11 +170,20 @@ export class AuctionFulfillerConfig {
 		}
 		const finalFullAmountIn = (1 - bidBpsMargin / 10000) * (effectiveAmountIn - mappedBpsAmountIn);
 		const fullMappedAmountOut = (finalFullAmountIn * Number(output)) / effectiveAmountIn; // 20 bps test for now
+		const lastBidOut = Number(lastBid) / 10 ** Math.min(WORMHOLE_DECIMALS, swap.toToken.decimals);
+		const lastBidIn = mappedBpsAmountIn + (lastBidOut * effectiveAmountIn) / output;
+		let lastBidOutUsable = effectiveAmountIn > lastBidIn;
 
-		const mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
+		let mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
 		swap.bidAmountIn = Math.max(marginFinalBidIn, finalFullAmountIn + mappedBpsAmountIn);
-		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
-		logger.info(`in bid: mappedAmountOut ${mappedAmountOut} for swap ${swap.sourceTxHash}`);
+
+		if (lastBidOutUsable) {
+			mappedAmountOut = Math.max(mappedAmountOut, lastBidOut);
+			swap.bidAmountIn = Math.max(swap.bidAmountIn, lastBidIn);
+		} else {
+			throw new Error(`Last bid is not usable for ${swap.sourceTxHash}. someone else has bid more`);
+		}
+
 		let normalizedAmountOut;
 		if (swap.toToken.decimals > 8) {
 			normalizedAmountOut = BigInt(Math.floor(mappedAmountOut * 10 ** 8));
