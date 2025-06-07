@@ -11,6 +11,7 @@ import { GlobalConfig } from './config/global';
 import { reconstructOrderHash32 } from './utils/order-hash';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
 import { DriverService } from './driver/driver';
+import { driverConfig } from './driver.conf';
 
 const coder = new BorshInstructionCoder(SwiftAuction);
 
@@ -21,7 +22,7 @@ export class ReBidListener {
 		private readonly rpcConfig: RpcConfig,
 		private readonly mayanExplorerWatcher: MayanExplorerWatcher,
 		private readonly driverService: DriverService,
-	) {}
+	) { }
 
 	public async start() {
 		if (!this.globalConfig.rebidEnabled) {
@@ -129,6 +130,11 @@ export class ReBidListener {
 								orderHash.toString('hex'),
 								2,
 							);
+							if (!driverConfig.acceptedInputChains.has(swap.sourceChain) ||
+								!driverConfig.acceptedOutputChains.has(swap.destChain)) {
+								logger.info(`Rebid detected on order-id ${orderId} with amount ${amountBid64} but not accepted`);
+								return;
+							}
 							await this.driverService.bid(swap, BigInt(amountBid64));
 							logger.info(`Rebid done on order-id: ${orderId} trx: ${swap.sourceTxHash}`);
 						}
