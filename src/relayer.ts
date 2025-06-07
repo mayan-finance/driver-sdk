@@ -179,34 +179,34 @@ export class Relayer {
 
 			logger.info(`Started relaying ${swap.sourceTxHash}`);
 
-			while (!this.finished(swap) && swap.retries < 7) {
+			while (!this.finished(swap) && swap.retries < 15) {
 				try {
 					logger.info(`In while-switch ${swap.sourceTxHash} with status: ${swap.status} ${swap.retries}`);
 					await this.tryProgressFulfill(swap);
 				} catch (err: any) {
 					logger.error(`error in main while for tx: ${swap.sourceTxHash} ${err}`);
 					let backoff = 500;
-					switch (swap.retries) {
-						case 1:
-							backoff = 1_000;
-							break;
-						case 2:
-							backoff = 2_000;
-							break;
-						case 3:
-							backoff = 5_000;
-							break;
-						case 4:
-							backoff = 10_000;
-						case 5:
-							backoff = 20_000;
-							break;
-						case 6:
-							backoff = 30_000;
-							break;
-						default:
-							break;
-					}
+					// switch (swap.retries) {
+					// 	case 1:
+					// 		backoff = 1_000;
+					// 		break;
+					// 	case 2:
+					// 		backoff = 2_000;
+					// 		break;
+					// 	case 3:
+					// 		backoff = 5_000;
+					// 		break;
+					// 	case 4:
+					// 		backoff = 10_000;
+					// 	case 5:
+					// 		backoff = 20_000;
+					// 		break;
+					// 	case 6:
+					// 		backoff = 30_000;
+					// 		break;
+					// 	default:
+					// 		break;
+					// }
 					swap.retries++;
 					const isLowAmountOutSolana = err?.solError?.InstructionError?.[1]?.Custom === 6014; // solana calldata for InvalidAmountOut()
 					const isLowAmountOutEvm = err?.data === '0x2c5211c6'; // evm calldata for InvalidAmountOut()
