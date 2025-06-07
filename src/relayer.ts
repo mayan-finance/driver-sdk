@@ -207,6 +207,9 @@ export class Relayer {
 					// 	default:
 					// 		break;
 					// }
+					if (swap.retries > 6) {
+						backoff = 1_500;
+					}
 					swap.retries++;
 					const isLowAmountOutSolana = err?.solError?.InstructionError?.[1]?.Custom === 6014; // solana calldata for InvalidAmountOut()
 					const isLowAmountOutEvm = err?.data === '0x2c5211c6'; // evm calldata for InvalidAmountOut()
