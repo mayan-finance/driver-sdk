@@ -171,7 +171,7 @@ export class AuctionFulfillerConfig {
 		const finalFullAmountIn = (1 - bidBpsMargin / 10000) * (effectiveAmountIn - mappedBpsAmountIn);
 		const fullMappedAmountOut = (finalFullAmountIn * Number(output)) / effectiveAmountIn; // 20 bps test for now
 		const lastBidOut = Number(lastBid) / 10 ** Math.min(WORMHOLE_DECIMALS, swap.toToken.decimals);
-		const lastBidIn = mappedBpsAmountIn + (lastBidOut * effectiveAmountIn) / output;
+		const lastBidIn = mappedBpsAmountIn + (lastBidOut * effectiveAmountIn) / output + 10;
 		let lastBidOutUsable = effectiveAmountIn > lastBidIn;
 
 		let mappedAmountOut = Math.max(marginAmountOut, fullMappedAmountOut);
