@@ -26,13 +26,13 @@ export class ReBidListener {
 
 	public async start() {
 		if (!this.globalConfig.rebidEnabled) {
-			logger.info('Rebid is not enabled');
+			logger.info('[Rebid] Rebid is not enabled');
 			return;
 		}
 
 		try {
 			if (!this.rpcConfig.solana.geyser.endpoint) {
-				logger.error('Geyser endpoint is not configured');
+				logger.error('[Rebid] Geyser endpoint is not configured');
 				return;
 			}
 
@@ -43,7 +43,7 @@ export class ReBidListener {
 			);
 
 			const version = await client.getVersion(); // gets the version information
-			logger.info('solana geyserversion', version);
+			logger.info('[Rebid] solana geyserversion', version);
 			const stream = await client.subscribe();
 			const auctionProgram = AuctionAddressSolana;
 			const [auctionConfig] = PublicKey.findProgramAddressSync(
@@ -129,22 +129,41 @@ export class ReBidListener {
 								orderHash.toString('hex'),
 								2,
 							);
+
+							if (!swap) {
+								logger.error(`[Rebid] No swap data found for order-id ${orderId}`);
+								return;
+							}
+
 							if (!driverConfig.acceptedInputChains.has(swap.sourceChain) ||
 								!driverConfig.acceptedOutputChains.has(swap.destChain)) {
 								logger.info(`Rebid detected on order-id ${orderId} with amount ${amountBid64} but not accepted`);
 								return;
 							}
-							logger.info(`Rebid detected on order-id ${orderId} with amount ${amountBid64}`);
-							await this.driverService.bid(swap, BigInt(amountBid64));
-							logger.info(`Rebid done on order-id: ${orderId} trx: ${swap.sourceTxHash}`);
+
+							logger.info(`[Rebid] detected on order-id ${orderId} with amount ${amountBid64}`);
+							logger.info(`[Rebid] Swap data: sourceChain=${swap.sourceChain}, destChain=${swap.destChain}, sourceTxHash=${swap.sourceTxHash}`);
+
+							if (!amountBid64 || isNaN(Number(amountBid64))) {
+								logger.error(`[Rebid] Invalid amountBid64 value: ${amountBid64} for order-id ${orderId}`);
+								return;
+							}
+
+							try {
+								await this.driverService.bid(swap, BigInt(amountBid64));
+								logger.info(`[Rebid] Bid done on order-id: ${orderId} trx: ${swap.sourceTxHash}`);
+							} catch (bidError: any) {
+								logger.error(`[Rebid] Error during bid for order-id ${orderId}: ${bidError.message || bidError}`);
+								logger.error(`[Rebid] Bid error stack: ${bidError.stack}`);
+							}
 						}
 					}
 				} catch (err: any) {
-					logger.error(`Error processing streamed bid: ${err} ${err.stack}`);
+					logger.error(`[Rebid] Error processing streamed bid: ${err} ${err.stack}`);
 				}
 			});
 		} catch (error) {
-			logger.error(`Error starting ReBidListener: ${error}`);
+			logger.error(`[Rebid] Error starting ReBidListener: ${error}`);
 		}
 	}
 }
