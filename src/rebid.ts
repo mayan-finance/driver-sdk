@@ -124,7 +124,6 @@ export class ReBidListener {
 								Buffer.from(new Uint8Array(order.keyRnd)),
 							);
 							const orderId = `SWIFT_0x${orderHash.toString('hex')}`;
-							logger.info(`Rebid detected on order-id ${orderId} with amount ${amountBid64}`);
 
 							const swap = await this.mayanExplorerWatcher.fetchFromExplorerByHash(
 								orderHash.toString('hex'),
@@ -135,6 +134,7 @@ export class ReBidListener {
 								logger.info(`Rebid detected on order-id ${orderId} with amount ${amountBid64} but not accepted`);
 								return;
 							}
+							logger.info(`Rebid detected on order-id ${orderId} with amount ${amountBid64}`);
 							await this.driverService.bid(swap, BigInt(amountBid64));
 							logger.info(`Rebid done on order-id: ${orderId} trx: ${swap.sourceTxHash}`);
 						}
