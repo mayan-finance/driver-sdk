@@ -162,7 +162,7 @@ export class AuctionFulfillerConfig {
 		const marginFinalBidIn = mappedMinAmountIn + (profitMargin * bidAggressionPercent) / 100;
 		const marginAmountOut = (marginFinalBidIn * Number(output)) / effectiveAmountIn;
 
-		let bidBpsMargin = 3; // 11 bps
+		let bidBpsMargin = 1; // 11 bps
 		if (swap.toToken.contract === driverToken.contract) {
 			bidBpsMargin = 3; // 5 bps if no swap is included
 		} else if (!swap.toToken.pythUsdPriceId) {
