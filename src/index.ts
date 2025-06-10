@@ -216,11 +216,9 @@ export async function main() {
 		walletConf.solana.publicKey.toString(),
 		globalConfig,
 		rpcConfig,
-		watcher,
-		driverSvc,
 	);
 	rebidListener.start();
-	watcher.init();
+	// watcher.init();
 }
 
 main().catch((err) => {
