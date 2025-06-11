@@ -37,7 +37,7 @@ import { FailsafeSolanaConnectionHandler, PriorityFeeHelper, SolanaMultiTxSender
 import { createDatabase, DB_PATH } from './utils/sqlite3';
 import { VaaPoster } from './utils/vaa-poster';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
-import { ReBidListener } from './rebid';
+import { AuctionListener } from './auction-listener';
 
 export async function main() {
 	createDatabase(DB_PATH);
@@ -212,7 +212,7 @@ export async function main() {
 		driverSvc,
 		stateCloser,
 	);
-	const rebidListener = new ReBidListener(
+	const rebidListener = new AuctionListener(
 		walletConf.solana.publicKey.toString(),
 		globalConfig,
 		rpcConfig,

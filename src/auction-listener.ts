@@ -23,7 +23,7 @@ export interface BidState {
 	order: any;
 }
 
-export class ReBidListener {
+export class AuctionListener {
 	private bidStatesMap: Map<string, BidState> = new Map();
 	private bidOrder: string[] = [];
 
