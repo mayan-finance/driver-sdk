@@ -12,13 +12,14 @@ import { reconstructOrderHash32 } from './utils/order-hash';
 
 const coder = new BorshInstructionCoder(SwiftAuction);
 
-interface BidState {
+export interface BidState {
 	orderHash: string;
 	orderId: string;
 	amountBid: string;
 	driver: string;
 	signature: string;
 	timestamp: number;
+	firstBidTime: number;
 	order: any;
 }
 
@@ -30,7 +31,7 @@ export class ReBidListener {
 		private readonly driverSolanaAddress: string,
 		private readonly globalConfig: GlobalConfig,
 		private readonly rpcConfig: RpcConfig,
-		private readonly bidStateThreshold: number = 500,
+		private readonly bidStateThreshold: number = 100,
 	) { }
 
 	/**
@@ -69,16 +70,35 @@ export class ReBidListener {
 	}
 
 	private storeBidState(bidState: BidState): void {
-		const isUpdate = this.bidStatesMap.has(bidState.orderHash);
+		const existingState = this.bidStatesMap.get(bidState.orderHash);
 
-		if (isUpdate) {
-			this.bidStatesMap.set(bidState.orderHash, bidState);
-			logger.debug(`[ReBidListener] Updated existing bid state for order: ${bidState.orderId}, driver: ${bidState.driver}`);
+		if (existingState) {
+			// Parse bid amounts for comparison (assuming they are numeric strings)
+			const existingAmount = BigInt(existingState.amountBid);
+			const newAmount = BigInt(bidState.amountBid);
+
+			// Only update if the new bid amount is larger than the existing one
+			if (newAmount > existingAmount) {
+				// Keep the original first bid time but update other fields
+				const updatedBidState: BidState = {
+					...bidState,
+					firstBidTime: existingState.firstBidTime
+				};
+				this.bidStatesMap.set(bidState.orderHash, updatedBidState);
+				logger.info(`[ReBidListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountBid} > previous: ${existingState.amountBid}, driver: ${bidState.driver}`);
+			} else {
+				logger.debug(`[ReBidListener] Skipping bid update for order: ${bidState.orderId}, new amount: ${bidState.amountBid} <= existing: ${existingState.amountBid}`);
+			}
 			return;
 		}
 
-		// Add new bid state
-		this.bidStatesMap.set(bidState.orderHash, bidState);
+		// Add new bid state - set both timestamp and firstBidTime to current time
+		const newBidState: BidState = {
+			...bidState,
+			firstBidTime: bidState.timestamp
+		};
+
+		this.bidStatesMap.set(bidState.orderHash, newBidState);
 		this.bidOrder.push(bidState.orderHash);
 
 		// Remove oldest entries if we exceed the threshold
@@ -95,7 +115,7 @@ export class ReBidListener {
 			}
 		}
 
-		logger.info(`[ReBidListener] Stored new bid state for order: ${bidState.orderId}, driver: ${bidState.driver}, total states: ${this.bidStatesMap.size}${removedCount > 0 ? `, removed ${removedCount} old states` : ''}`);
+		logger.info(`[ReBidListener] Stored new bid state for order: ${bidState.orderId}, driver: ${bidState.driver}, amount: ${bidState.amountBid}, total states: ${this.bidStatesMap.size}${removedCount > 0 ? `, removed ${removedCount} old states` : ''}`);
 	}
 
 	private async processBidInstruction(
@@ -145,6 +165,7 @@ export class ReBidListener {
 			driver,
 			signature,
 			timestamp: Date.now(),
+			firstBidTime: Date.now(),
 			order: decodeData.order,
 		};
 
