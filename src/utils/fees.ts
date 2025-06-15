@@ -301,13 +301,13 @@ export class FeeService {
 	private getChainPriceFactor(chainId: number): number {
 		switch (chainId) {
 			case CHAIN_ID_ARBITRUM:
-				return 4;
+				return 1;
 			case CHAIN_ID_POLYGON:
 				return 2;
 			case CHAIN_ID_OPTIMISM:
 			case CHAIN_ID_BASE:
 			case CHAIN_ID_UNICHAIN:
-				return 2;
+				return 1;
 			default:
 				return 1;
 		}
