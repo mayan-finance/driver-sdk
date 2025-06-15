@@ -123,6 +123,10 @@ export class SolanaMultiTxSender {
 		}
 
 		logger.info(`Posting ${txs.length} transactions to jito`);
+		let headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+		if (this.rpcConfig.solana.jitoUUID) {
+			headers['x-jito-auth'] = this.rpcConfig.solana.jitoUUID;
+		}
 		const res = await axios.post(
 			`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
 			{
@@ -132,7 +136,7 @@ export class SolanaMultiTxSender {
 				params: [txs],
 			},
 			{
-				headers: { 'Content-Type': 'application/json' },
+				headers: headers,
 			},
 		);
 		const bundleId = res.data.result;

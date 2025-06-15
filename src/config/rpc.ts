@@ -2,6 +2,7 @@ export type RpcConfig = {
 	solana: {
 		fulfillTxMode: 'NORMAL' | 'JITO';
 		jitoEndpoint: string;
+		jitoUUID?: string;
 		sendCount: number;
 		solanaMainRpc: string;
 		solanaSendRpcs: string[];
@@ -52,6 +53,7 @@ export const rpcConfig: RpcConfig = {
 			'https://api.tatum.io/v3/blockchain/node/solana-mainnet',
 		],
 		priorityFee: parseInt(process.env.SOLANA_PRIORITY_FEE || '') || null,
+		jitoUUID: process.env.JITO_UUID || '',
 		geyser: {
 			endpoint: process.env.GEYSER_ENDPOINT || '',
 			apiKey: process.env.GEYSER_API_KEY || '',
