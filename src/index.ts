@@ -214,6 +214,7 @@ export async function main() {
 	);
 	const rebidListener = new AuctionListener(
 		walletConf.solana.publicKey.toString(),
+		solanaConnection,
 		globalConfig,
 		rpcConfig,
 	);
