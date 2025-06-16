@@ -6,9 +6,10 @@ import { IDL as SwiftAuction } from './abis/swift-auction.idl';
 import { RpcConfig } from './config/rpc';
 import logger from './utils/logger';
 import { AuctionAddressSolana } from './config/contracts';
-import { PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import { GlobalConfig } from './config/global';
 import { reconstructOrderHash32 } from './utils/order-hash';
+import { getAuctionState as getAuctionStateFromSolana } from './utils/state-parser';
 
 const coder = new BorshInstructionCoder(SwiftAuction);
 
@@ -29,6 +30,7 @@ export class AuctionListener {
 
 	constructor(
 		private readonly driverSolanaAddress: string,
+		private readonly solanaConnection: Connection,
 		private readonly globalConfig: GlobalConfig,
 		private readonly rpcConfig: RpcConfig,
 		private readonly bidStateThreshold: number = 100,
@@ -39,12 +41,27 @@ export class AuctionListener {
 	 * @param orderHash The order hash to lookup
 	 * @returns BidState if found, null otherwise
 	 */
-	public getAuctionState(orderHash: string): BidState | null {
-		const state = this.bidStatesMap.get(orderHash) || null;
+	public async getAuctionState(orderHash: string): Promise<BidState | null> {
+		let state = this.bidStatesMap.get(orderHash) || null;
 		if (state) {
-			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state.orderId}`);
+			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
-			logger.debug(`[ReBidListener] No auction state found for order hash: ${orderHash}`);
+			logger.debug(`[ReBidListener] No auction state found for order hash: ${orderHash}. Getting from solana ...`);
+			const auctionState = await getAuctionStateFromSolana(this.solanaConnection, new PublicKey(orderHash));
+			if (auctionState) {
+				state = {
+					orderHash,
+					orderId: `SWIFT_0x${orderHash}`,
+					amountBid: auctionState?.amountPromised.toString() || '0',
+					driver: this.driverSolanaAddress,
+					signature: '',
+					timestamp: Date.now(),
+					firstBidTime: Date.now(),
+					order: null,
+					sequence: auctionState?.sequence || BigInt(0),
+				};
+			}
+			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state?.orderId} from solana`);
 		}
 		return state;
 	}
