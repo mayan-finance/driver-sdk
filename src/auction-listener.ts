@@ -58,7 +58,6 @@ export class AuctionListener {
 					timestamp: Date.now(),
 					firstBidTime: Date.now(),
 					order: null,
-					sequence: auctionState?.sequence || BigInt(0),
 				};
 			}
 			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state?.orderId} from solana`);
