@@ -66,6 +66,9 @@ export class AuctionListener {
 					sequence: auctionState?.sequence || BigInt(0),
 				};
 			}
+			if (state) {
+				this.storeBidState(state);
+			}
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state?.orderId} from solana`);
 		}
 		return state;

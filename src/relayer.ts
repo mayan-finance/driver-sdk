@@ -248,33 +248,48 @@ export class Relayer {
 
 		let auctionSignedVaa: Uint8Array | undefined;
 		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
-			const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
+			let winner = null;
+			let lastBidTimestamp = null;
+			while (winner === null) {
+				const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
+				const auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
+				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
+						return;
+					} else {
+						if (auctionState.timestamp == lastBidTimestamp) {
+							await delay(100);
+							continue;
+						}
+						try {
+							logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
+							await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
+							logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
+							lastBidTimestamp = auctionState.timestamp;
+						} catch (err) {
+							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+						}
+						await delay(100);
+					}
+				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
+						winner = auctionState.winner;
+						await delay(100);
+						break;
+					}
+				} else {
+					try {
+						logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
+						await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
+						logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
+					} catch (err) {
+						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+					}
+					await delay(500);
+				}
+			}
+
 			let auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
-			// let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-			let openToBid = false;
-			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
-				openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
-				if (!openToBid) {
-					logger.warn(
-						`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
-					);
-					await delay(5000);
-					return;
-				}
-			}
-
-			if (!auctionState || openToBid) {
-				logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-				try {
-					await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
-					logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
-				} catch (err) {
-					logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
-				}
-			}
-
-			// auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-			auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
 			swap.bidAmount64 = auctionState?.amountPromised;
 			let sequence: bigint | undefined = auctionState?.sequence;
 			try {
@@ -290,7 +305,6 @@ export class Relayer {
 					sequence = sequence - 1n;
 				}
 			} catch (err) {
-				// auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 				auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
 				if (!!auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
 					logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
@@ -298,7 +312,6 @@ export class Relayer {
 				}
 			}
 
-			// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 			await this.waitForFinalizeOnSource(swap);
 
 			logger.info(`Got sequence ${sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
