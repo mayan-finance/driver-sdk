@@ -251,8 +251,10 @@ export class Relayer {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
-				const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-				const auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
+				let [solanaTime, auctionState] = await Promise.all([
+					getCurrentSolanaTimeMS(this.solanaConnection),
+					this.auctionListener.getAuctionState(swap.auctionStateAddr),
+				]);
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						return;
@@ -289,7 +291,7 @@ export class Relayer {
 				}
 			}
 
-			let auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
+			let auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 			swap.bidAmount64 = auctionState?.amountPromised;
 			let sequence: bigint | undefined = auctionState?.sequence;
 			try {
@@ -305,7 +307,7 @@ export class Relayer {
 					sequence = sequence - 1n;
 				}
 			} catch (err) {
-				auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
+				auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 				if (!!auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
 					logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
 					return;
