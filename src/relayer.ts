@@ -246,10 +246,6 @@ export class Relayer {
 		let auctionSignedVaa: Uint8Array | undefined;
 		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-			// swap.auctionStateAddr = PublicKey.findProgramAddressSync(
-			// 	[Buffer.from('AUCTION'), hexToUint8Array(swap.orderHash)],
-			// 	new PublicKey(this.contractsConfig.auctionAddr),
-			// )[0].toString();
 			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			let openToBid = false;
 			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
@@ -271,16 +267,12 @@ export class Relayer {
 				} catch (err) {
 					logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 				}
-				// await delay(this.gConf.auctionTimeSeconds * 1000);
-				// logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
 			}
 
 			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			swap.bidAmount64 = auctionState?.amountPromised;
 			let sequence: bigint | undefined = auctionState?.sequence;
 			try {
-				// because validators fall behind, we will always send postBid regardless to avoid
-				// wasting afew seconds on waiting for auction state update...
 				if (!sequence || sequence < 1n) {
 					sequence = (await this.driverService.postBid(swap, false, true))!.sequence!;
 

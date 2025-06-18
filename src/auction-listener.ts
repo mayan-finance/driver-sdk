@@ -22,6 +22,7 @@ export interface BidState {
 	timestamp: number;
 	firstBidTime: number;
 	order: any;
+	validFrom: number;
 }
 
 export class AuctionListener {
@@ -58,6 +59,7 @@ export class AuctionListener {
 					timestamp: Date.now(),
 					firstBidTime: Date.now(),
 					order: null,
+					validFrom: auctionState?.validFrom || 0,
 				};
 			}
 			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state?.orderId} from solana`);
@@ -183,6 +185,7 @@ export class AuctionListener {
 			timestamp: Date.now(),
 			firstBidTime: Date.now(),
 			order: decodeData.order,
+			validFrom: decodeData.validFrom,
 		};
 
 		this.storeBidState(bidState);
