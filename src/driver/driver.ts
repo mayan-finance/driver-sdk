@@ -1,3 +1,4 @@
+import { CHAIN_ID_SUI } from '@certusone/wormhole-sdk';
 import {
 	createAssociatedTokenAccountIdempotentInstruction,
 	getAssociatedTokenAddressSync,
@@ -7,8 +8,8 @@ import {
 import { AddressLookupTableAccount, Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 import axios from 'axios';
 import { AuctionFulfillerConfig } from '../auction';
-import { CHAIN_ID_SOLANA, WORMHOLE_DECIMALS } from '../config/chains';
-import { ContractsConfig } from '../config/contracts';
+import { CHAIN_ID_SOLANA, isEvmChainId, WORMHOLE_DECIMALS } from '../config/chains';
+import { ContractsConfig, SolanaProgramV2 } from '../config/contracts';
 import { RpcConfig } from '../config/rpc';
 import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
@@ -22,10 +23,11 @@ import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
 import { AUCTION_MODES, getAuctionState } from '../utils/state-parser';
 import { delay } from '../utils/util';
-import { get_wormhole_core_accounts, getWormholeSequenceFromPostedMessage } from '../utils/wormhole';
+import { get_wormhole_core_accounts } from '../utils/wormhole';
 import { EvmFulfiller } from './evm';
 import { SolanaFulfiller } from './solana';
 import { NewSolanaIxHelper } from './solana-ix';
+import { SuiFulfiller } from './sui';
 import { WalletsHelper } from './wallet-helper';
 import { sendAlert } from '../utils/alert';
 import { GlobalConfig } from '../config/global';
@@ -48,11 +50,12 @@ export class DriverService {
 		private readonly solanaFulfiller: SolanaFulfiller,
 		private readonly walletsHelper: WalletsHelper,
 		private readonly evmFulFiller: EvmFulfiller,
+		private readonly suiFulfiller: SuiFulfiller,
 		private readonly tokenList: TokenList,
 		private readonly solanaSender: SolanaMultiTxSender,
 	) {
-		this.swiftProgram = new PublicKey(contractsConfig.contracts[CHAIN_ID_SOLANA]);
-		this.swiftAuctionProgram = new PublicKey(contractsConfig.auctionAddr);
+		this.swiftProgram = new PublicKey(SolanaProgramV2);
+		this.swiftAuctionProgram = new PublicKey(contractsConfig.auctionAddrV2);
 	}
 
 	getStateAddr(swap: Swap): PublicKey {
@@ -126,13 +129,10 @@ export class DriverService {
 	}
 
 	async getRegisterOrderFromSwap(swap: Swap): Promise<TransactionInstruction> {
-		const fromToken = swap.fromToken;
-
 		const instruction = await this.solanaIxService.getRegisterOrderIx(
 			this.walletConfig.solana.publicKey,
 			new PublicKey(swap.stateAddr),
 			swap,
-			fromToken.decimals,
 		);
 		return instruction;
 	}
@@ -175,6 +175,17 @@ export class DriverService {
 		}
 	}
 
+	getDriverSuiTokenForBidAndSwap(srcChain: number, fromToken: Token): Token {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
+		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
+
+		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
+			return this.tokenList.getNativeUsdc(CHAIN_ID_SUI)!;
+		} else {
+			throw new Error(`Unsupported input token ${fromToken.contract} for sui driver! not bidding or swapping`);
+		}
+	}
+
 	async bid(swap: Swap, lastBid?: bigint): Promise<void> {
 		if (this.pendingAuctionCount > driverConfig.maxPendingOrders) {
 			sendAlert('FILLED_PENDING', `Filled pending auction ${this.pendingAuctionCount}`);
@@ -209,9 +220,14 @@ export class DriverService {
 		let driverToken: Token;
 		if (dstChain === CHAIN_ID_SOLANA) {
 			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-		} else {
+		} else if (isEvmChainId(dstChain)) {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		} else if (dstChain === CHAIN_ID_SUI) {
+			driverToken = this.getDriverSuiTokenForBidAndSwap(srcChain, fromToken);
+		} else {
+			throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
 		}
+
 		let normalizedBidAmount = await this.auctionFulfillerCfg.normalizedBidAmount(
 			driverToken,
 			effectiveAmountIn,
@@ -232,7 +248,6 @@ export class DriverService {
 			new PublicKey(swap.auctionStateAddr),
 			normalizedBidAmount,
 			swap,
-			fromToken.decimals,
 		);
 
 		let instructions = [bidIx];
@@ -263,8 +278,6 @@ export class DriverService {
 			[],
 			this.rpcConfig.solana.sendCount,
 			true,
-			undefined,
-			50_000,
 		);
 		logger.info(`Sent  register-order for ${swap.sourceTxHash} with ${hash}`);
 	}
@@ -303,6 +316,17 @@ export class DriverService {
 			)[0];
 
 			const wormholeAccs = get_wormhole_core_accounts(auctionEmitter);
+			let remoteDriverWallet32: Uint8Array;
+			if (isEvmChainId(dstChain)) {
+				remoteDriverWallet32 = tryNativeToUint8Array(
+					this.walletsHelper.getDriverWallet(dstChain).address,
+					dstChain,
+				);
+			} else if (dstChain === CHAIN_ID_SUI) {
+				remoteDriverWallet32 = Buffer.from(this.walletConfig.sui.getPublicKey().toSuiAddress().slice(2), 'hex');
+			} else {
+				throw new Error(`Unsupported dest chain ${dstChain} for driver! not bidding or swapping`);
+			}
 
 			let postAuctionIx: TransactionInstruction;
 			if (this.globalConfig.postAuctionMode === 'SHIM') {
@@ -315,25 +339,12 @@ export class DriverService {
 					wormholeAccs.fee_collector,
 					wormholeAccs.sequence_key,
 					swap,
-					swap.fromToken.decimals,
-					tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
+					remoteDriverWallet32,
 				);
 			} else {
 				newMessageAccount = Keypair.generate();
-				postAuctionIx = await this.solanaIxService.getPostAuctionIx(
-					this.walletConfig.solana.publicKey,
-					new PublicKey(swap.auctionStateAddr),
-					wormholeAccs.bridge_config,
-					wormholeAccs.coreBridge,
-					auctionEmitter,
-					wormholeAccs.fee_collector,
-					wormholeAccs.sequence_key,
-					newMessageAccount.publicKey,
-					swap,
-					swap.fromToken.decimals,
-					tryNativeToUint8Array(this.walletsHelper.getDriverWallet(dstChain).address, dstChain),
-				);
-				signers.push(newMessageAccount!);
+				signers.push(newMessageAccount);
+				throw new Error(`Not implemented NON SHIM AUCTIO FOR SWIFT V2`)
 			}
 			instructions.push(postAuctionIx);
 		}
@@ -379,7 +390,7 @@ export class DriverService {
 		if (postAuction) {
 			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 
-			while ((!auctionState || !auctionState.sequence)) {
+			while (!auctionState || !auctionState.sequence) {
 				await delay(1500);
 				auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			}
@@ -441,8 +452,12 @@ export class DriverService {
 		let driverToken: Token;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
-		} else {
+		} else if (isEvmChainId(swap.destChain)) {
 			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			driverToken = this.getDriverSuiTokenForBidAndSwap(srcChain, fromToken);
+		} else {
+			throw new Error(`Unable to determine driver token for chain ${swap.destChain}`);
 		}
 
 		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(
@@ -498,7 +513,7 @@ export class DriverService {
 				true,
 			);
 			logger.info(`Sent fulfill transaction for ${swap.sourceTxHash} with ${hash}`);
-		} else {
+		} else if (isEvmChainId(swap.destChain)) {
 			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
 			const realMinAmountOut =
 				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
@@ -513,6 +528,20 @@ export class DriverService {
 				expenses.dstGasPrice,
 				postAuctionSignedVaa,
 			);
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			const normalizeMinAmountOut = BigInt(swap.minAmountOut64);
+			const realMinAmountOut =
+				normalizeMinAmountOut * BigInt(Math.ceil(10 ** Math.max(0, toToken.decimals - WORMHOLE_DECIMALS)));
+
+			await this.suiFulfiller.fulfillAuctionOrSimple(
+				swap,
+				fulfillAmount,
+				driverToken,
+				realMinAmountOut,
+				postAuctionSignedVaa,
+			);
+		} else {
+			throw new Error(`Unsupported dest chain ${swap.destChain} for driver! not bidding or swapping`);
 		}
 	}
 
@@ -523,19 +552,19 @@ export class DriverService {
 		const toToken = swap.toToken;
 		const toMint = new PublicKey(toToken.mint);
 
-		const mayanAndReferrerAssInfo = this.getMayanAndReferrerFeeAssesInstructions(
-			swap.mayanBps,
-			swap.referrerBps,
-			swap.referrerAddress,
-			swap.destChain,
-			toMint,
-			toToken.standard === 'spl2022',
-		);
+		// const mayanAndReferrerAssInfo = this.getMayanAndReferrerFeeAssesInstructions(
+		// 	swap.mayanBps,
+		// 	swap.referrerBps,
+		// 	swap.referrerAddress,
+		// 	swap.destChain,
+		// 	toMint,
+		// 	toToken.standard === 'spl2022',
+		// );
 
 		let instructions: TransactionInstruction[] = [];
-		for (let ix of mayanAndReferrerAssInfo.ixs) {
-			instructions.push(ix);
-		}
+		// for (let ix of mayanAndReferrerAssInfo.ixs) {
+		// 	instructions.push(ix);
+		// }
 
 		const stateToAss = getAssociatedTokenAddressSync(
 			toMint,
@@ -570,11 +599,7 @@ export class DriverService {
 			stateToAss,
 			to,
 			toAss,
-			mayanAndReferrerAssInfo.mayan,
-			mayanAndReferrerAssInfo.mayanAss,
 			toMint,
-			new PublicKey(swap.referrerAddress),
-			mayanAndReferrerAssInfo.referrerAss,
 			toToken.standard === 'spl2022',
 			!toToken.hasTransferFee,
 		);
@@ -620,33 +645,38 @@ export class DriverService {
 
 	async solanaFulfillAndSettleJitoBundle(swap: Swap) {
 		logger.info(`Getting jito fulfill-settle package for ${swap.sourceTxHash}`);
+		let isCustomPayload =
+			swap.payloadId === 2 &&
+			swap.customPayload &&
+			swap.customPayload !== '0x0000000000000000000000000000000000000000000000000000000000000000';
+
 		const [postBidData, fulfillData, settleData] = await Promise.all([
 			this.postBid(swap, true, false, true),
 			this.fulfill(swap, undefined, true),
-			this.settle(swap, true),
+			isCustomPayload ? null : this.settle(swap, true),
 		]);
 
 		logger.info(`Sending jito fulfill-settle package for ${swap.sourceTxHash}`);
-		await this.solanaSender.createAndSendJitoBundle(
-			[
-				{
-					instructions: postBidData!.instructions!,
-					signers: postBidData!.signers!,
-					lookupTables: [],
-				},
-				{
-					instructions: fulfillData!.instructions!,
-					signers: fulfillData!.signers!,
-					lookupTables: fulfillData!.lookupTables,
-				},
-				{
-					instructions: [...settleData!.instructions!],
-					signers: [],
-					lookupTables: [],
-				},
-			],
-			4,
-		);
+		let bundles = [
+			{
+				instructions: postBidData!.instructions!,
+				signers: postBidData!.signers!,
+				lookupTables: [],
+			},
+			{
+				instructions: fulfillData!.instructions!,
+				signers: fulfillData!.signers!,
+				lookupTables: fulfillData!.lookupTables,
+			},
+		];
+		if (!isCustomPayload) {
+			bundles.push({
+				instructions: [...settleData!.instructions!],
+				signers: [],
+				lookupTables: [],
+			});
+		}
+		await this.solanaSender.createAndSendJitoBundle(bundles, 4);
 		logger.info(`Sent jito fulfill-settle package for ${swap.sourceTxHash}`);
 	}
 }

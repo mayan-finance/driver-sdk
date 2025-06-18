@@ -1,4 +1,5 @@
 export type RpcConfig = {
+	suiFullNode: string;
 	solana: {
 		fulfillTxMode: 'NORMAL' | 'JITO';
 		jitoEndpoint: string;
@@ -41,6 +42,7 @@ export type RpcConfig = {
 };
 
 export const rpcConfig: RpcConfig = {
+	suiFullNode: process.env.SUI_FULL_NODE || 'https://fullnode.mainnet.sui.io:443',
 	solana: {
 		fulfillTxMode: process.env.SOLANA_TX_MODE === 'JITO' ? 'JITO' : 'NORMAL',
 		jitoEndpoint: process.env.JITO_ENDPOINT || 'https://frankfurt.mainnet.block-engine.jito.wtf',

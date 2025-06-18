@@ -2,6 +2,7 @@ import axios, { AxiosRequestConfig } from 'axios';
 import { ethers } from 'ethers6';
 import { abi as OkxHelperAbi } from '../abis/okx-helper.abi';
 import { abi as UniSwapV3QuoterV2ABI } from '../abis/uniswap-QuoterV2.abi';
+import * as SuiTx from '@mysten/sui/transactions';
 import {
 	CHAIN_ID_ARBITRUM,
 	CHAIN_ID_AVAX,
@@ -20,6 +21,11 @@ import { RpcConfig } from '../config/rpc';
 import { writeUint24BE } from '../utils/buffer';
 import { EvmProviders } from '../utils/evm-providers';
 import { hmac256base64 } from '../utils/hmac';
+import { Transaction, TransactionObjectArgument } from '@mysten/sui/transactions';
+import { Aftermath, Router, RouterCompleteTradeRoute } from 'aftermath-ts-sdk';
+import { buildSwapPTBFromQuote, generateRefId, getQuote, NAVISDKClient } from 'navi-sdk';
+import logger from '../utils/logger';
+let aftermathRouter: Router;
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const okxWebsite = 'https://www.okx.com';
@@ -59,6 +65,8 @@ type EVMSwapResponse = {
 }
 
 export class SwapRouters {
+	private naviSdkClient: NAVISDKClient | undefined;
+	private aftermathRouter: Router | undefined;
 	private readonly uniswapQuoterV2Contracts: {
 		[chainId: number]: ethers.Contract;
 	} = {};
@@ -73,11 +81,210 @@ export class SwapRouters {
 		private readonly priceApiUri: string,
 	) {
 		for (let chainId in evmProviders) {
-			this.uniswapQuoterV2Contracts[+chainId] = new ethers.Contract(
-				this.routersConfig.uniswapContracts[+chainId].quoterV2,
-				UniSwapV3QuoterV2ABI,
-				evmProviders[chainId],
+			// this.uniswapQuoterV2Contracts[+chainId] = new ethers.Contract(
+			// 	this.routersConfig.uniswapContracts[+chainId].quoterV2,
+			// 	UniSwapV3QuoterV2ABI,
+			// 	evmProviders[chainId],
+			// );
+		}
+	}
+
+	async getSuiQuote(amountIn64: bigint, cointInType: string, cointOutType: string, swapRetries?: number) {
+		if (swapRetries && swapRetries % 2 === 1) {
+			return this.getSuiSwapQuoteNavi({
+				coinInType: cointInType,
+				coinOutType: cointOutType,
+				coinInAmount: amountIn64,
+			});
+		}
+
+		return this.getSuiSwapQuoteAfterMath({
+			coinInType: cointInType,
+			coinOutType: cointOutType,
+			coinInAmount: amountIn64,
+		});
+	}
+
+	async getSuiSwap(
+		amountIn64: bigint,
+		cointInType: string,
+		cointOutType: string,
+		tx: SuiTx.Transaction,
+		slippage: number,
+		walletAddress: string,
+		withCoinIn?: SuiTx.TransactionObjectArgument,
+		swapRetries?: number,
+	) {
+		if (swapRetries && swapRetries % 2 === 1) {
+			return this.getSuiSwapTxNavi(
+				amountIn64,
+				cointInType,
+				cointOutType,
+				tx,
+				slippage,
+				walletAddress,
+				withCoinIn,
 			);
+		}
+
+		return this.getSuiSwapTxAfterMath(
+			amountIn64,
+			cointInType,
+			cointOutType,
+			tx,
+			slippage,
+			walletAddress,
+			withCoinIn,
+		);
+	}
+
+	async getSuiSwapTxNavi(
+		amountIn64: bigint,
+		cointInType: string,
+		cointOutType: string,
+		tx: SuiTx.Transaction,
+		slippage: number,
+		walletAddress: string,
+		withCoinIn?: SuiTx.TransactionObjectArgument,
+	) {
+		if (!this.naviSdkClient) {
+			this.naviSdkClient = new NAVISDKClient({ networkType: process.env.SUI_FULLNODE_ENDPOINT });
+		}
+
+		const quote = await getQuote(cointInType, cointOutType, amountIn64, process.env.SUI_NAVI_API_KEY, {
+			byAmountIn: true,
+		});
+
+		const minAmountOut = Math.floor(Number(quote.amount_out) * (1 - slippage / 100));
+
+		const finalCoinB = await buildSwapPTBFromQuote(
+			walletAddress,
+			tx,
+			minAmountOut,
+			withCoinIn as any,
+			quote,
+			generateRefId(process.env.SUI_NAVI_API_KEY!),
+		);
+
+		return {
+			newTx: tx,
+			outCoin: finalCoinB,
+		};
+	}
+
+	async getSuiSwapTxAfterMath(
+		amountIn64: bigint,
+		cointInType: string,
+		cointOutType: string,
+		tx: SuiTx.Transaction,
+		slippage: number,
+		walletAddress: string,
+		withCoinIn?: SuiTx.TransactionObjectArgument,
+	) {
+		if (!this.aftermathRouter) {
+			this.aftermathRouter = new Aftermath('MAINNET').Router();
+		}
+
+		const { route } = await this.getSuiSwapQuoteAfterMath({
+			coinInAmount: amountIn64,
+			coinInType: cointInType,
+			coinOutType: cointOutType,
+		});
+
+		const controller = new globalThis.AbortController();
+		let timeoutId = setTimeout(() => controller.abort(), 8000);
+
+		const res = await this.aftermathRouter.addTransactionForCompleteTradeRoute({
+			tx: tx,
+			completeRoute: route,
+			slippage,
+			walletAddress,
+			coinInId: withCoinIn,
+		});
+
+		return {
+			newTx: res.tx,
+			outCoin: res.coinOutId,
+		};
+	}
+
+	async getSuiSwapQuoteNavi(
+		params: {
+			coinInType: string;
+			coinOutType: string;
+			coinInAmount: bigint;
+		},
+		config?: {
+			timeout?: number;
+			retries?: number;
+		},
+	): Promise<{
+		outAmount: bigint;
+	}> {
+		const quote = await getQuote(
+			params.coinInType,
+			params.coinOutType,
+			params.coinInAmount,
+			process.env.SUI_NAVI_API_KEY,
+			{
+				byAmountIn: true,
+			},
+		);
+
+		return {
+			outAmount: BigInt(quote.amount_out),
+		};
+	}
+
+	async getSuiSwapQuoteAfterMath(
+		params: {
+			coinInType: string;
+			coinOutType: string;
+			coinInAmount: bigint;
+		},
+		config?: {
+			timeout?: number;
+			retries?: number;
+		},
+	): Promise<{
+		outAmount: bigint;
+		route: RouterCompleteTradeRoute;
+	}> {
+		let timeoutId: NodeJS.Timeout | undefined;
+
+		try {
+			if (!this.aftermathRouter) {
+				this.aftermathRouter = new Aftermath('MAINNET').Router();
+			}
+
+			const controller = new globalThis.AbortController();
+			timeoutId = setTimeout(() => controller.abort(), config?.timeout || 5000);
+
+			const route = await this.aftermathRouter.getCompleteTradeRouteGivenAmountIn(
+				{
+					coinInType: params.coinInType,
+					coinOutType: params.coinOutType,
+					coinInAmount: params.coinInAmount,
+				},
+				controller.signal,
+			);
+			return {
+				outAmount: route.coinOut.amount,
+				route,
+			};
+		} catch (err) {
+			logger.warn(`Failed to fetch Sui swap quote with aftermath: ${params} ${err}`);
+			if (config?.retries && config.retries > 0) {
+				return this.getSuiSwapQuoteAfterMath(params, {
+					...config,
+					retries: config.retries - 1,
+				});
+			}
+			throw err;
+		} finally {
+			if (timeoutId) {
+				clearTimeout(timeoutId);
+			}
 		}
 	}
 
@@ -628,10 +835,8 @@ export class SwapRouters {
 				throw new Error('cant swap: liquidity not available');
 			}
 			if (
-				(chainId !== 59144 &&
-					res.data.transaction.to !== '0x0000000000001ff3684f28c67538d4d072c22734') ||
-				(chainId === 59144 &&
-					res.data.transaction.to !== '0x000000000000175a8b9bc6d539b3708eed92ea6c')
+				(chainId !== 59144 && res.data.transaction.to !== '0x0000000000001ff3684f28c67538d4d072c22734') ||
+				(chainId === 59144 && res.data.transaction.to !== '0x000000000000175a8b9bc6d539b3708eed92ea6c')
 			) {
 				throw new Error(`cant swap: settler address has changed to ${res.data.transaction.to}`);
 			}
@@ -796,3 +1001,84 @@ const OkxDexRouterContracts: { [chainId: number]: string } = {
 	[CHAIN_ID_BASE]: '0x9b9efa5Efa731EA9Bbb0369E91fA17Abf249CFD4',
 	[CHAIN_ID_UNICHAIN]: '',
 };
+
+export async function getSuiSwapQuote(
+	params: {
+		coinInType: string;
+		coinOutType: string;
+		coinInAmount: bigint;
+	},
+	config?: {
+		timeout?: number;
+		retries?: number;
+	},
+): Promise<{
+	outAmount: bigint;
+	route: RouterCompleteTradeRoute;
+}> {
+	let timeoutId: NodeJS.Timeout | null = null;
+
+	try {
+		if (!aftermathRouter) {
+			aftermathRouter = new Aftermath('MAINNET').Router();
+		}
+
+		const controller = new globalThis.AbortController();
+		timeoutId = setTimeout(() => controller.abort(), config?.timeout || 5000);
+
+		const route = await aftermathRouter.getCompleteTradeRouteGivenAmountIn(
+			{
+				coinInType: params.coinInType,
+				coinOutType: params.coinOutType,
+				coinInAmount: params.coinInAmount,
+			},
+			controller.signal,
+		);
+		return {
+			outAmount: route.coinOut.amount,
+			route: route,
+		};
+	} catch (err) {
+		logger.warn(`Failed to fetch Sui swap quote: ${params} ${err}`);
+		if (!!config?.retries && config?.retries > 0) {
+			return getSuiSwapQuote(params, {
+				...config,
+				retries: config.retries - 1,
+			});
+		}
+		throw err;
+	} finally {
+		if (timeoutId) {
+			clearTimeout(timeoutId);
+		}
+	}
+}
+
+export async function addSuiSwapTx(
+	tx: Transaction,
+	wallet: string,
+	route: RouterCompleteTradeRoute,
+): Promise<[TransactionObjectArgument, Transaction]> {
+	const router = new Aftermath('MAINNET').Router();
+	const res = await router.addTransactionForCompleteTradeRoute({
+		completeRoute: route,
+		slippage: 0.01,
+		tx,
+		walletAddress: wallet,
+	});
+	return [res.coinOutId!, res.tx];
+}
+
+export async function getAftermathSuiTx(swapParams: {
+	route: RouterCompleteTradeRoute;
+	walletAddress: string;
+	slippageBps: number;
+}): Promise<Transaction> {
+	const router = new Aftermath('MAINNET').Router();
+	const tx = await router.getTransactionForCompleteTradeRoute({
+		walletAddress: swapParams.walletAddress,
+		completeRoute: swapParams.route,
+		slippage: swapParams.slippageBps / 10000,
+	});
+	return tx;
+}

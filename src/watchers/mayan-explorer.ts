@@ -1,7 +1,9 @@
 import axios from 'axios';
 import Decimal from 'decimal.js';
+import { ethers } from 'ethers6';
 import * as io from 'socket.io-client';
-import { ContractsConfig, MayanForwarderAddress } from '../config/contracts';
+import { WORMHOLE_DECIMALS } from '../config/chains';
+import { AuctionAddressV2Solana, ContractsConfig, MayanForwarderAddress, SolanaProgramV2 } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
 import { TokenList } from '../config/tokens';
@@ -9,8 +11,11 @@ import { WalletConfig } from '../config/wallet';
 import { StateCloser } from '../driver/state-closer';
 import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
+import { tryNativeToUint8ArrayGeneral } from '../utils/buffer';
 import logger from '../utils/logger';
 import { DriverService } from '../driver/driver';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { binary_to_base58 } from '../utils/base58';
 
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
@@ -20,7 +25,8 @@ export class MayanExplorerWatcher {
 	private stateLock = false;
 	private auctionInterval: NodeJS.Timeout | null = null;
 	private stateInterval: NodeJS.Timeout | null = null;
-
+	private unlockCompactInterval: NodeJS.Timeout | null = null;
+	private unlockCompactLock = false;
 	constructor(
 		private readonly gConf: GlobalConfig,
 		private readonly endpoints: MayanEndpoints,
@@ -30,13 +36,14 @@ export class MayanExplorerWatcher {
 		private readonly relayer: Relayer,
 		private readonly driver: DriverService,
 		private readonly stateCloser: StateCloser,
+		private readonly solanaConnection: Connection,
 	) {
 		this.initiateAddresses = [];
 		this.initiateAddresses.push(MayanForwarderAddress);
 		this.initiateAddresses.push(MayanForwarderAddress.toLowerCase());
-		for (let chainId of Object.keys(contracts.contracts)) {
-			this.initiateAddresses.push(contracts.contracts[+chainId]);
-			this.initiateAddresses.push(contracts.contracts[+chainId].toLowerCase());
+		for (let chainId of Object.keys(contracts.evmContractsV2Src)) {
+			this.initiateAddresses.push(contracts.evmContractsV2Src[+chainId]);
+			this.initiateAddresses.push(contracts.evmContractsV2Src[+chainId].toLowerCase());
 		}
 	}
 
@@ -56,10 +63,24 @@ export class MayanExplorerWatcher {
 	private async createSwapFromJson(rawSwap: any) {
 		const fromToken = await this.tokenList.getTokenData(+rawSwap.sourceChain, rawSwap.fromTokenAddress);
 		const toToken = await this.tokenList.getTokenData(+rawSwap.destChain, rawSwap.toTokenAddress);
+		const trader32 = Buffer.from(tryNativeToUint8ArrayGeneral(rawSwap.trader, +rawSwap.sourceChain));
+		const dest32 = Buffer.from(tryNativeToUint8ArrayGeneral(rawSwap.destAddress, +rawSwap.destChain));
+		const ref32 = Buffer.from(tryNativeToUint8ArrayGeneral(rawSwap.referrerAddress, +rawSwap.sourceChain));
+
+		const refundFeeDest64 = ethers.parseUnits(
+			rawSwap.redeemRelayerFee,
+			Math.min(fromToken.decimals, WORMHOLE_DECIMALS),
+		);
+		const refundFeeSrc64 = ethers.parseUnits(
+			rawSwap.refundRelayerFee,
+			Math.min(fromToken.decimals, WORMHOLE_DECIMALS),
+		);
+
 		const swap: Swap = {
 			invalidAmountRetires: 0,
 			retries: 0,
 			trader: rawSwap.trader,
+			trader32: trader32,
 			orderId: rawSwap.orderId,
 			sourceTxHash: rawSwap.sourceTxHash,
 			gasless: !!rawSwap.gasless,
@@ -71,6 +92,7 @@ export class MayanExplorerWatcher {
 			createTxHash: rawSwap.createTxHash,
 			deadline: new Date(rawSwap.deadline),
 			destAddress: rawSwap.destAddress,
+			destAddress32: dest32,
 			destChain: Number(rawSwap.destChain),
 			driverAddress: rawSwap.driverAddress,
 			fromToken: fromToken,
@@ -90,9 +112,12 @@ export class MayanExplorerWatcher {
 			posAddress: rawSwap.posAddress,
 			randomKey: rawSwap.randomKey,
 			redeemRelayerFee: new Decimal(rawSwap.redeemRelayerFee),
+			redeemRelayerFee64: refundFeeDest64,
 			referrerAddress: rawSwap.referrerAddress,
+			referrerAddress32: ref32,
 			referrerBps: Number(rawSwap.referrerBps),
 			refundRelayerFee: new Decimal(rawSwap.refundRelayerFee),
+			refundRelayerFee64: refundFeeSrc64,
 			service: rawSwap.service,
 			sourceChain: Number(rawSwap.sourceChain),
 			stateAddr: rawSwap.stateAddr,
@@ -103,6 +128,12 @@ export class MayanExplorerWatcher {
 			toTokenAddress: rawSwap.toTokenAddress,
 			toTokenSymbol: rawSwap.toTokenSymbol,
 			unlockRecipient: rawSwap.unlockRecipient,
+			penaltyPeriod: rawSwap.penaltyPeriod ? Number(rawSwap.penaltyPeriod) : 0,
+			baseBond: rawSwap.baseBond ? BigInt(rawSwap.baseBond) : 0n,
+			perBpsBond: rawSwap.perBpsBond ? BigInt(rawSwap.perBpsBond) : 0n,
+
+			payloadId: rawSwap.payloadId ? Number(rawSwap.payloadId) : 0,
+			customPayload: rawSwap.customPayload ? rawSwap.customPayload : '0x' + Buffer.alloc(32).toString('hex'),
 		};
 
 		return swap;
@@ -120,7 +151,7 @@ export class MayanExplorerWatcher {
 			socket.on('SWAP_CREATED', async (data) => {
 				try {
 					const rawSwap = JSON.parse(data);
-					if (!rawSwap.orderHash || !['SWIFT_NFT', 'SWIFT_SWAP'].includes(rawSwap.service)) {
+					if (!rawSwap.orderHash || !['SWIFT_SWAP_V2'].includes(rawSwap.service)) {
 						return;
 					}
 
@@ -151,6 +182,7 @@ export class MayanExplorerWatcher {
 		this.interval = setInterval(this.pollPendingSwaps.bind(this), this.gConf.pollExplorerInterval * 1000);
 		this.auctionInterval = setInterval(this.pollOpenAuctions.bind(this), 60 * 1000);
 		this.stateInterval = setInterval(this.pollOpenStates.bind(this), 60 * 1000);
+		this.unlockCompactInterval = setInterval(this.pollUnlockCompacts.bind(this), 1 * 1000);
 	}
 
 	async pollPendingWonSwapsCount(): Promise<void> {
@@ -182,7 +214,7 @@ export class MayanExplorerWatcher {
 					params: {
 						format: 'raw',
 						status: 'ORDER_CREATED,ORDER_FULFILLED',
-						service: 'SWIFT_SWAP',
+						service: 'SWIFT_SWAP_V2',
 						// initiateContractAddresses: this.initiateAddresses.join(','),
 						limit: 100,
 						offset: page * 100,
@@ -195,7 +227,7 @@ export class MayanExplorerWatcher {
 				}
 
 				for (let s of swaps) {
-					if (!s.orderHash || !['SWIFT_SWAP'].includes(s.service)) {
+					if (!s.orderHash || !['SWIFT_SWAP_V2'].includes(s.service)) {
 						continue;
 					}
 
@@ -232,15 +264,70 @@ export class MayanExplorerWatcher {
 			}
 			this.auctionLock = true;
 
-			const result = await axios.get(this.endpoints.explorerApiUrl + '/v3/swift-state/auctions', {
-				params: { driver: this.walletConf.solana.publicKey.toString() },
+			// fetch current solana epoch:
+			const epochInfo = await this.solanaConnection.getEpochInfo('confirmed');
+			const currentEpoch = epochInfo.epoch;
+			// const epochBuffer = Buffer.alloc(8);
+			// epochBuffer.writeBigUInt64LE(BigInt(771));
+
+			const auctions = await this.solanaConnection.getProgramAccounts(new PublicKey(AuctionAddressV2Solana), {
+				encoding: 'base64',
+				filters: [
+					{
+						memcmp: {
+							offset: 41,
+							bytes: binary_to_base58(this.walletConf.solana.publicKey.toBytes()),
+						},
+					},
+					// {
+					// 	memcmp: {
+					// 		offset: 73,
+					// 		bytes: binary_to_base58(epochBuffer),
+					// 	},
+					// },
+				],
 			});
 
-			await this.stateCloser.closeAuctionStates(result.data.map((item: any) => item.auctionState));
+			const closableAuctions = auctions
+				.filter((auction) => {
+					const epoch = auction.account.data.readBigUint64LE(73);
+					return epoch <= currentEpoch - 2;
+				})
+				.map((x) => x.pubkey.toString());
+
+			await this.stateCloser.closeAuctionStates(closableAuctions);
 		} catch (err) {
 			logger.error(`error in polling auciotns ${err}`);
 		} finally {
 			this.auctionLock = false;
+		}
+	}
+
+	async pollUnlockCompacts(): Promise<void> {
+		try {
+			if (this.unlockCompactLock) {
+				return;
+			}
+			this.unlockCompactLock = true;
+
+			const accounts = await this.solanaConnection.getProgramAccounts(new PublicKey(SolanaProgramV2), {
+				filters: [
+					{
+						memcmp: {
+							offset: 41,
+							bytes: this.walletConf.solana.publicKey.toBase58(),
+						},
+					},
+				],
+			});
+
+			for (let account of accounts) {
+				await this.stateCloser.closeUnlockCompacts([account.pubkey.toString()]);
+			}
+			this.unlockCompactLock = false;
+		} catch (err) {
+			logger.error(`error in polling unlock compacats ${err}`);
+			this.unlockCompactLock = false;
 		}
 	}
 
