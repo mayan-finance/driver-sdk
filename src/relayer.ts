@@ -35,6 +35,8 @@ import { delay } from './utils/util';
 import { getSignedVaa } from './utils/wormhole';
 import { DB_PATH, getRebalanceAmount, getRebalanceIsCreated, RebalanceStatus, setRebalanceIsCreated } from './utils/sqlite3';
 import { Rebalancer } from './rebalancer';
+import { AuctionListener, BidState } from './auction-listener';
+
 export class Relayer {
 	public relayingSwaps: Swap[] = [];
 
@@ -50,6 +52,7 @@ export class Relayer {
 		private readonly driverService: DriverService,
 		private readonly chainFinality: ChainFinality,
 		private readonly rebalancer: Rebalancer,
+		private readonly auctionListener: AuctionListener,
 	) { }
 
 	private async tryProgressFulfill(swap: Swap) {
@@ -246,7 +249,8 @@ export class Relayer {
 		let auctionSignedVaa: Uint8Array | undefined;
 		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			const solanaTime = await getCurrentSolanaTimeMS(this.solanaConnection);
-			let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+			let auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
+			// let auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
 			let openToBid = false;
 			if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toBase58()) {
 				openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
@@ -262,14 +266,15 @@ export class Relayer {
 			if (!auctionState || openToBid) {
 				logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
 				try {
-					await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+					await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
 					logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 				} catch (err) {
 					logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 				}
 			}
 
-			auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+			// auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+			auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
 			swap.bidAmount64 = auctionState?.amountPromised;
 			let sequence: bigint | undefined = auctionState?.sequence;
 			try {
@@ -285,7 +290,8 @@ export class Relayer {
 					sequence = sequence - 1n;
 				}
 			} catch (err) {
-				auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+				// auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
+				auctionState = await this.auctionListener.getAuctionState(swap.orderHash);
 				if (!!auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
 					logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
 					return;
@@ -515,7 +521,7 @@ export class Relayer {
 		return false;
 	}
 
-	private isAuctionOpenToBid(auction: AuctionState, solanaTime: number): boolean {
+	private isAuctionOpenToBid(auction: AuctionState | BidState, solanaTime: number): boolean {
 		if (auction.validFrom <= solanaTime) {
 			return false;
 		}

@@ -16,13 +16,14 @@ const coder = new BorshInstructionCoder(SwiftAuction);
 export interface BidState {
 	orderHash: string;
 	orderId: string;
-	amountBid: string;
-	driver: string;
+	amountPromised: bigint;
+	winner: string;
 	signature: string;
 	timestamp: number;
 	firstBidTime: number;
 	order: any;
 	validFrom: number;
+	sequence: bigint;
 }
 
 export class AuctionListener {
@@ -45,24 +46,25 @@ export class AuctionListener {
 	public async getAuctionState(orderHash: string): Promise<BidState | null> {
 		let state = this.bidStatesMap.get(orderHash) || null;
 		if (state) {
-			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state.orderId} in memory`);
+			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
-			logger.debug(`[ReBidListener] No auction state found for order hash: ${orderHash}. Getting from solana ...`);
+			logger.debug(`[AuctionListener] No auction state found for order hash: ${orderHash}. Getting from solana ...`);
 			const auctionState = await getAuctionStateFromSolana(this.solanaConnection, new PublicKey(orderHash));
 			if (auctionState) {
 				state = {
 					orderHash,
 					orderId: `SWIFT_0x${orderHash}`,
-					amountBid: auctionState?.amountPromised.toString() || '0',
-					driver: this.driverSolanaAddress,
+					amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
+					winner: this.driverSolanaAddress,
 					signature: '',
 					timestamp: Date.now(),
 					firstBidTime: Date.now(),
 					order: null,
 					validFrom: auctionState?.validFrom || 0,
+					sequence: auctionState?.sequence || BigInt(0),
 				};
 			}
-			logger.debug(`[ReBidListener] Retrieved auction state for order: ${state?.orderId} from solana`);
+			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state?.orderId} from solana`);
 		}
 		return state;
 	}
@@ -73,7 +75,7 @@ export class AuctionListener {
 	 */
 	public getAllAuctionStates(): BidState[] {
 		const states = Array.from(this.bidStatesMap.values());
-		logger.debug(`[ReBidListener] Retrieved ${states.length} auction states from memory`);
+		logger.debug(`[AuctionListener] Retrieved ${states.length} auction states from memory`);
 		return states;
 	}
 
@@ -83,7 +85,7 @@ export class AuctionListener {
 	 */
 	public getAuctionStateCount(): number {
 		const count = this.bidStatesMap.size;
-		logger.debug(`[ReBidListener] Current auction states count: ${count}`);
+		logger.debug(`[AuctionListener] Current auction states count: ${count}`);
 		return count;
 	}
 
@@ -92,8 +94,8 @@ export class AuctionListener {
 
 		if (existingState) {
 			// Parse bid amounts for comparison (assuming they are numeric strings)
-			const existingAmount = BigInt(existingState.amountBid);
-			const newAmount = BigInt(bidState.amountBid);
+			const existingAmount = BigInt(existingState.amountPromised);
+			const newAmount = BigInt(bidState.amountPromised);
 
 			// Only update if the new bid amount is larger than the existing one
 			if (newAmount > existingAmount) {
@@ -103,9 +105,9 @@ export class AuctionListener {
 					firstBidTime: existingState.firstBidTime
 				};
 				this.bidStatesMap.set(bidState.orderHash, updatedBidState);
-				logger.info(`[ReBidListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountBid} > previous: ${existingState.amountBid}, driver: ${bidState.driver}`);
+				logger.info(`[AuctionListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} > previous: ${existingState.amountPromised}, driver: ${bidState.winner}`);
 			} else {
-				logger.debug(`[ReBidListener] Skipping bid update for order: ${bidState.orderId}, new amount: ${bidState.amountBid} <= existing: ${existingState.amountBid}`);
+				logger.debug(`[AuctionListener] Skipping bid update for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} <= existing: ${existingState.amountPromised}`);
 			}
 			return;
 		}
@@ -128,12 +130,12 @@ export class AuctionListener {
 				this.bidStatesMap.delete(oldestOrderHash);
 				removedCount++;
 				if (removedState) {
-					logger.debug(`[ReBidListener] Removed old bid state for order: ${removedState.orderId} (exceeded threshold)`);
+					logger.debug(`[AuctionListener] Removed old bid state for order: ${removedState.orderId} (exceeded threshold)`);
 				}
 			}
 		}
 
-		logger.info(`[ReBidListener] Stored new bid state for order: ${bidState.orderId}, driver: ${bidState.driver}, amount: ${bidState.amountBid}, total states: ${this.bidStatesMap.size}${removedCount > 0 ? `, removed ${removedCount} old states` : ''}`);
+		logger.info(`[AuctionListener] Stored new bid state for order: ${bidState.orderId}, driver: ${bidState.winner}, amount: ${bidState.amountPromised}, total states: ${this.bidStatesMap.size}${removedCount > 0 ? `, removed ${removedCount} old states` : ''}`);
 	}
 
 	private async processBidInstruction(
@@ -173,19 +175,20 @@ export class AuctionListener {
 		const orderHashHex = orderHash.toString('hex');
 		const orderId = `SWIFT_0x${orderHashHex}`;
 
-		logger.info(`[ReBidListener] Processing bid instruction - Order: ${orderId}, Amount: ${amountBid64}, Driver: ${driver}, Signature: ${signature}`);
+		logger.info(`[AuctionListener] Processing bid instruction - Order: ${orderId}, Amount: ${amountBid64}, Driver: ${driver}, Signature: ${signature}`);
 
 		// Create bid state object
 		const bidState: BidState = {
 			orderHash: orderHashHex,
 			orderId,
-			amountBid: amountBid64,
-			driver,
+			amountPromised: BigInt(amountBid64),
+			winner: driver,
 			signature,
 			timestamp: Date.now(),
 			firstBidTime: Date.now(),
 			order: decodeData.order,
 			validFrom: decodeData.validFrom,
+			sequence: decodeData.seqMsg ? BigInt(decodeData.seqMsg.toString()) : BigInt(0),
 		};
 
 		this.storeBidState(bidState);
@@ -196,7 +199,7 @@ export class AuctionListener {
 			throw new Error('Geyser endpoint is not configured');
 		}
 
-		logger.info(`[ReBidListener] Initializing Geyser client connection to: ${this.rpcConfig.solana.geyser.endpoint}`);
+		logger.info(`[AuctionListener] Initializing Geyser client connection to: ${this.rpcConfig.solana.geyser.endpoint}`);
 
 		const client = new Client(
 			this.rpcConfig.solana.geyser.endpoint,
@@ -205,7 +208,7 @@ export class AuctionListener {
 		);
 
 		const version = await client.getVersion();
-		logger.info(`[ReBidListener] Connected to Solana Geyser, version: ${JSON.stringify(version)}`);
+		logger.info(`[AuctionListener] Connected to Solana Geyser, version: ${JSON.stringify(version)}`);
 
 		const stream = await client.subscribe();
 		const auctionProgram = AuctionAddressSolana;
@@ -214,7 +217,7 @@ export class AuctionListener {
 			new PublicKey(auctionProgram),
 		);
 
-		logger.info(`[ReBidListener] Setting up subscription for auction program: ${auctionProgram}, config: ${auctionConfig.toString()}`);
+		logger.info(`[AuctionListener] Setting up subscription for auction program: ${auctionProgram}, config: ${auctionConfig.toString()}`);
 
 		// Create subscription request
 		const request: SubscribeRequest = SubscribeRequest.create({
@@ -234,10 +237,10 @@ export class AuctionListener {
 		await new Promise<void>((resolve, reject) => {
 			stream.write(request, (err: any) => {
 				if (err === null || err === undefined) {
-					logger.info('[ReBidListener] Successfully subscribed to auction transactions');
+					logger.info('[AuctionListener] Successfully subscribed to auction transactions');
 					resolve();
 				} else {
-					logger.error(`[ReBidListener] Failed to subscribe to auction transactions: ${err}`);
+					logger.error(`[AuctionListener] Failed to subscribe to auction transactions: ${err}`);
 					reject(err);
 				}
 			});
@@ -253,7 +256,12 @@ export class AuctionListener {
 				const signature = binary_to_base58(data.transaction.transaction.signature);
 				const message = data.transaction.transaction.transaction.message;
 
-				logger.debug(`[ReBidListener] Processing transaction: ${signature}`);
+				if (data.transaction.transaction.meta?.err) {
+					logger.info(`[AuctionListener] Skipping failed transaction: ${signature}`);
+					return;
+				}
+
+				logger.debug(`[AuctionListener] Processing transaction: ${signature}`);
 
 				for (const ix of message.instructions) {
 					const programidx = ix.programIdIndex;
@@ -265,43 +273,43 @@ export class AuctionListener {
 
 					const decoded = coder.decode(ix.data);
 					if (decoded?.name !== 'bid') {
-						logger.debug(`[ReBidListener] Skipping non-bid instruction: ${decoded?.name || 'unknown'}`);
+						logger.debug(`[AuctionListener] Skipping non-bid instruction: ${decoded?.name || 'unknown'}`);
 						continue;
 					}
 
-					logger.debug(`[ReBidListener] Found bid instruction in transaction: ${signature}`);
+					logger.debug(`[AuctionListener] Found bid instruction in transaction: ${signature}`);
 					await this.processBidInstruction(signature, ix, decoded, message);
 				}
 			} catch (error: any) {
-				logger.error(`[ReBidListener] Error processing streamed transaction data: ${error.message || error}`);
+				logger.error(`[AuctionListener] Error processing streamed transaction data: ${error.message || error}`);
 				if (error.stack) {
-					logger.debug(`[ReBidListener] Error stack trace: ${error.stack}`);
+					logger.debug(`[AuctionListener] Error stack trace: ${error.stack}`);
 				}
 			}
 		});
 
 		stream.on('error', (error: any) => {
-			logger.error(`[ReBidListener] Geyser stream error: ${error.message || error}`);
+			logger.error(`[AuctionListener] Geyser stream error: ${error.message || error}`);
 		});
 
 		stream.on('end', () => {
-			logger.warn('[ReBidListener] Geyser stream ended unexpectedly');
+			logger.warn('[AuctionListener] Geyser stream ended unexpectedly');
 		});
 	}
 
 	public async start(): Promise<void> {
 		if (!this.globalConfig.rebidEnabled) {
-			logger.info('[ReBidListener] Rebid functionality is disabled in configuration');
+			logger.info('[AuctionListener] Rebid functionality is disabled in configuration');
 			return;
 		}
 
-		logger.info(`[ReBidListener] Starting ReBid Listener with bid state threshold: ${this.bidStateThreshold}, driver address: ${this.driverSolanaAddress}`);
+		logger.info(`[AuctionListener] Starting ReBid Listener with bid state threshold: ${this.bidStateThreshold}, driver address: ${this.driverSolanaAddress}`);
 
 		try {
 			await this.setupGeyserSubscription();
-			logger.info('[ReBidListener] ReBid Listener started successfully and is now monitoring for bid transactions');
+			logger.info('[AuctionListener] ReBid Listener started successfully and is now monitoring for bid transactions');
 		} catch (error: any) {
-			logger.error(`[ReBidListener] Failed to start ReBid Listener: ${error.message || error}`);
+			logger.error(`[AuctionListener] Failed to start ReBid Listener: ${error.message || error}`);
 			throw error;
 		}
 	}
