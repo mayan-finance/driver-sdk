@@ -18,6 +18,7 @@ import { AUCTION_MODES } from './utils/state-parser';
 import { MIN_PULL_AMOUNT, Rebalancer } from './rebalancer';
 import { createRebalance, DB_PATH } from './utils/sqlite3';
 import { GlobalConfig } from './config/global';
+import { SimpleCache } from './cache';
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
@@ -32,6 +33,10 @@ export class AuctionFulfillerConfig {
 		6: 10,
 	};
 	private readonly forceBid = false;
+
+	private readonly cache = new SimpleCache();
+	private readonly getEvmQuoteCache = this.cache.wrap(this.getEvmEquivalentOutput, 3000);
+	private readonly getSolanaQuoteCache = this.cache.wrap(this.getSolanaEquivalentOutput, 3000);
 
 	constructor(
 		private readonly gConf: GlobalConfig,
@@ -97,15 +102,25 @@ export class AuctionFulfillerConfig {
 
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
-			output64 = await this.getSolanaEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
+			output64 = await this.getSolanaQuoteCache(
+				driverToken,
+				effectiveAmountIn,
+				swap.toToken,
+				{
+					key: `getSolanaEquivalentOutput-${swap.sourceTxHash}`,
+				}
+			);
 		} else {
-			output64 = await this.getEvmEquivalentOutput(
+			output64 = await this.getEvmQuoteCache(
 				swap.destChain,
 				driverToken,
 				effectiveAmountIn,
 				normalizedMinAmountOut,
 				swap.toToken,
 				swap.retries,
+				{
+					key: `getEvmEquivalentOutput-${swap.sourceTxHash}`,
+				}
 			);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
