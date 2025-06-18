@@ -116,6 +116,14 @@ export async function main() {
 	await registerSvc.register();
 	registerSvc.scheduleRegister();
 
+	const auctionListener = new AuctionListener(
+		walletConf.solana.publicKey.toString(),
+		solanaConnection,
+		globalConfig,
+		rpcConfig,
+	);
+	auctionListener.start();
+
 	const vaaPoster = new VaaPoster(rpcConfig, walletConf, solanaConnection, solanaTxSender, priorityFeeHelper);
 	const unlocker = new Unlocker(
 		globalConfig,
@@ -198,6 +206,7 @@ export async function main() {
 		driverSvc,
 		chainFinalitySvc,
 		rebalancer,
+		auctionListener,
 	);
 
 	const stateCloser = new StateCloser(walletConf, solanaConnection, solanaIxHelper, solanaTxSender);
@@ -211,13 +220,6 @@ export async function main() {
 		driverSvc,
 		stateCloser,
 	);
-	const rebidListener = new AuctionListener(
-		walletConf.solana.publicKey.toString(),
-		solanaConnection,
-		globalConfig,
-		rpcConfig,
-	);
-	rebidListener.start();
 	// watcher.init();
 }
 
