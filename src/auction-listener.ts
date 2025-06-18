@@ -14,6 +14,7 @@ import { getAuctionState as getAuctionStateFromSolana } from './utils/state-pars
 const coder = new BorshInstructionCoder(SwiftAuction);
 
 export interface BidState {
+	auctionStateAddr: string;
 	orderHash: string;
 	orderId: string;
 	amountPromised: bigint;
@@ -40,20 +41,21 @@ export class AuctionListener {
 
 	/**
 	 * Get auction state from memory if it exists
-	 * @param orderHash The order hash to lookup
+	 * @param auctionStateAddr The auction state address to lookup
 	 * @returns BidState if found, null otherwise
 	 */
-	public async getAuctionState(orderHash: string): Promise<BidState | null> {
-		let state = this.bidStatesMap.get(orderHash) || null;
+	public async getAuctionState(auctionStateAddr: string): Promise<BidState | null> {
+		let state = this.bidStatesMap.get(auctionStateAddr) || null;
 		if (state) {
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
-			logger.debug(`[AuctionListener] No auction state found for order hash: ${orderHash}. Getting from solana ...`);
-			const auctionState = await getAuctionStateFromSolana(this.solanaConnection, new PublicKey(orderHash));
+			logger.debug(`[AuctionListener] No auction state found for auctionStateAddr: ${auctionStateAddr}. Getting from solana ...`);
+			const auctionState = await getAuctionStateFromSolana(this.solanaConnection, new PublicKey(auctionStateAddr));
 			if (auctionState) {
 				state = {
-					orderHash,
-					orderId: `SWIFT_0x${orderHash}`,
+					auctionStateAddr,
+					orderHash: '',
+					orderId: '',
 					amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
 					winner: this.driverSolanaAddress,
 					signature: '',
@@ -90,21 +92,18 @@ export class AuctionListener {
 	}
 
 	private storeBidState(bidState: BidState): void {
-		const existingState = this.bidStatesMap.get(bidState.orderHash);
+		const existingState = this.bidStatesMap.get(bidState.auctionStateAddr);
 
 		if (existingState) {
-			// Parse bid amounts for comparison (assuming they are numeric strings)
 			const existingAmount = BigInt(existingState.amountPromised);
 			const newAmount = BigInt(bidState.amountPromised);
 
-			// Only update if the new bid amount is larger than the existing one
 			if (newAmount > existingAmount) {
-				// Keep the original first bid time but update other fields
 				const updatedBidState: BidState = {
 					...bidState,
 					firstBidTime: existingState.firstBidTime
 				};
-				this.bidStatesMap.set(bidState.orderHash, updatedBidState);
+				this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
 				logger.info(`[AuctionListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} > previous: ${existingState.amountPromised}, driver: ${bidState.winner}`);
 			} else {
 				logger.debug(`[AuctionListener] Skipping bid update for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} <= existing: ${existingState.amountPromised}`);
@@ -112,22 +111,20 @@ export class AuctionListener {
 			return;
 		}
 
-		// Add new bid state - set both timestamp and firstBidTime to current time
 		const newBidState: BidState = {
 			...bidState,
 			firstBidTime: bidState.timestamp
 		};
 
-		this.bidStatesMap.set(bidState.orderHash, newBidState);
-		this.bidOrder.push(bidState.orderHash);
+		this.bidStatesMap.set(bidState.auctionStateAddr, newBidState);
+		this.bidOrder.push(bidState.auctionStateAddr);
 
-		// Remove oldest entries if we exceed the threshold
 		let removedCount = 0;
 		while (this.bidOrder.length > this.bidStateThreshold) {
-			const oldestOrderHash = this.bidOrder.shift();
-			if (oldestOrderHash) {
-				const removedState = this.bidStatesMap.get(oldestOrderHash);
-				this.bidStatesMap.delete(oldestOrderHash);
+			const oldestAuctionStateAddr = this.bidOrder.shift();
+			if (oldestAuctionStateAddr) {
+				const removedState = this.bidStatesMap.get(oldestAuctionStateAddr);
+				this.bidStatesMap.delete(oldestAuctionStateAddr);
 				removedCount++;
 				if (removedState) {
 					logger.debug(`[AuctionListener] Removed old bid state for order: ${removedState.orderId} (exceeded threshold)`);
@@ -146,6 +143,9 @@ export class AuctionListener {
 	): Promise<void> {
 		const driverIdx = ix.accounts[1];
 		const driver = binary_to_base58(message.accountKeys[driverIdx]);
+
+		const auctionStateIdx = ix.accounts[2];
+		const auctionStateAddr = binary_to_base58(message.accountKeys[auctionStateIdx]);
 
 		const decodeData = decoded.data as any;
 
@@ -175,10 +175,10 @@ export class AuctionListener {
 		const orderHashHex = orderHash.toString('hex');
 		const orderId = `SWIFT_0x${orderHashHex}`;
 
-		logger.info(`[AuctionListener] Processing bid instruction - Order: ${orderId}, Amount: ${amountBid64}, Driver: ${driver}, Signature: ${signature}`);
+		logger.info(`[AuctionListener] Processing bid instruction - Order: ${orderId}, Amount: ${amountBid64}, Driver: ${driver}, Signature: ${signature}, AuctionStateAddr: ${auctionStateAddr}`);
 
-		// Create bid state object
 		const bidState: BidState = {
+			auctionStateAddr,
 			orderHash: orderHashHex,
 			orderId,
 			amountPromised: BigInt(amountBid64),
