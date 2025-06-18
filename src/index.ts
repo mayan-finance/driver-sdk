@@ -221,7 +221,7 @@ export async function main() {
 		driverSvc,
 		stateCloser,
 	);
-	// watcher.init();
+	watcher.init();
 }
 
 main().catch((err) => {
