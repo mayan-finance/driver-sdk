@@ -246,6 +246,10 @@ export class DriverService {
 			throw new Error('`Shall not bid on tx because bid amount is less than min amount out`');
 		}
 
+		// TODO: remove debug
+		logger.info(`debugggggg not bid`);
+		return;
+
 		const bidIx = await this.solanaIxService.getBidIx(
 			this.walletConfig.solana.publicKey,
 			new PublicKey(swap.auctionStateAddr),

@@ -54,7 +54,7 @@ export function getTotalDiffAmount(dbFile: string, interval: '-1 day' | '-1 hour
 }
 
 export function createRebalance(dbFile: string, orderId: string, amount: number) {
-	const query = `insert into rebalances (orderId, amount) values ('${orderId}', ${amount});`;
+	const query = `insert or ignore into rebalances (orderId, amount) values ('${orderId}', ${amount});`;
 	execSync(`sqlite3 ${dbFile} "${query}"`);
 }
 
