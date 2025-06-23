@@ -1,9 +1,78 @@
 import { Logger, createLogger, format, transports } from 'winston';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const { combine, timestamp, printf, colorize } = format;
 
 const logFormat = printf(({ level, message, timestamp }) => {
     return `${timestamp} [${level}]: ${message}`;
+});
+
+// File size management utilities
+class LogFileManager {
+    private static readonly MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
+    private static readonly MAX_BACKUP_FILES = 5;
+
+    static checkAndRotateFile(filename: string): void {
+        try {
+            if (!fs.existsSync(filename)) {
+                return;
+            }
+
+            const stats = fs.statSync(filename);
+            if (stats.size >= this.MAX_FILE_SIZE) {
+                this.rotateFile(filename);
+            }
+        } catch (error) {
+            console.error('Error checking file size:', error);
+        }
+    }
+
+    private static rotateFile(filename: string): void {
+        try {
+            const dir = path.dirname(filename);
+            const ext = path.extname(filename);
+            const baseName = path.basename(filename, ext);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupName = path.join(dir, `${baseName}.${timestamp}${ext}`);
+
+            // Rename current file to backup
+            fs.renameSync(filename, backupName);
+
+            // Keep only the most recent backup files
+            this.cleanupOldBackups(dir, baseName, ext);
+        } catch (error) {
+            console.error('Error rotating log file:', error);
+        }
+    }
+
+    private static cleanupOldBackups(dir: string, baseName: string, ext: string): void {
+        try {
+            const files = fs.readdirSync(dir)
+                .filter(file => file.startsWith(baseName) && file.endsWith(ext))
+                .map(file => ({
+                    name: file,
+                    path: path.join(dir, file),
+                    mtime: fs.statSync(path.join(dir, file)).mtime
+                }))
+                .sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+            // Keep only the most recent backup files
+            for (let i = this.MAX_BACKUP_FILES; i < files.length; i++) {
+                fs.unlinkSync(files[i].path);
+            }
+        } catch (error) {
+            console.error('Error cleaning up old backup files:', error);
+        }
+    }
+}
+
+// Custom format that checks file size before logging
+const sizeCheckFormat = format((info) => {
+    // Check and rotate log files before writing
+    LogFileManager.checkAndRotateFile('logs/error.log');
+    LogFileManager.checkAndRotateFile('logs/combined.log');
+    return info;
 });
 
 class DuplicateLoggerWrapper {
@@ -76,9 +145,16 @@ class DuplicateLoggerWrapper {
 }
 
 export function getLogger(): Logger {
+    // Ensure logs directory exists
+    const logsDir = 'logs';
+    if (!fs.existsSync(logsDir)) {
+        fs.mkdirSync(logsDir, { recursive: true });
+    }
+
     return createLogger({
         level: process.env.LOG_LEVEL || 'info',
         format: combine(
+            sizeCheckFormat(),
             colorize(),
             timestamp({
                 format: 'YYYY-MM-DD HH:mm:ss.SSS'
