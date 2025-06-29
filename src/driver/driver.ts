@@ -246,7 +246,6 @@ export class DriverService {
 			throw new Error('`Shall not bid on tx because bid amount is less than min amount out`');
 		}
 
-		throw new Error('debugggggg');
 		// // TODO: remove debug
 		// logger.info(`debugggggg not bid`);
 		// return;

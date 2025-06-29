@@ -195,6 +195,13 @@ export class AuctionFulfillerConfig {
 		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
 		logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
 
+		if (lastBid && normalizedBidAmount < lastBid) {
+			this.cache.remove(`getEvmEquivalentOutput-${swap.sourceTxHash}`);
+			this.cache.remove(`getSolanaEquivalentOutput-${swap.sourceTxHash}`);
+			logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} is less than lastBid ${lastBid} for swap ${swap.sourceTxHash}`);
+			throw new Error(`normalizedBidAmount ${normalizedBidAmount} is less than lastBid ${lastBid} for swap ${swap.sourceTxHash}`);
+		}
+
 		return normalizedBidAmount;
 	}
 
