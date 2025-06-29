@@ -256,7 +256,7 @@ export class Relayer {
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 500) {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {
