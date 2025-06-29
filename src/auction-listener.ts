@@ -148,12 +148,24 @@ export class AuctionListener {
 		ix: any,
 		decoded: any,
 		message: any,
+		deleted: boolean,
 	): Promise<void> {
 		const driverIdx = ix.accounts[1];
 		const driver = binary_to_base58(message.accountKeys[driverIdx]);
 
 		const auctionStateIdx = ix.accounts[2];
 		const auctionStateAddr = binary_to_base58(message.accountKeys[auctionStateIdx]);
+
+		if (deleted) {
+			let state = this.bidStatesMap.get(auctionStateAddr);
+			if (state && state.winner !== this.driverSolanaAddress) {
+				this.bidStatesMap.delete(auctionStateAddr);
+				this.bidOrder = this.bidOrder.filter(addr => addr !== auctionStateAddr);
+				logger.info(`[AuctionListener] Removed auction state for order: ${auctionStateAddr} because it was deleted`);
+			}
+
+			return;
+		}
 
 		const decodeData = decoded.data as any;
 
@@ -264,15 +276,15 @@ export class AuctionListener {
 				const signature = binary_to_base58(data.transaction.transaction.signature);
 				const message = data.transaction.transaction.transaction.message;
 
+				let deleted = false;
 				if (data.transaction.transaction.meta?.err) {
 					if (data.transaction.transaction.meta?.logMessages.join('\n').includes('auction is closed.')) {
 						logger.info(`[AuctionListener] Auction is closed. Skipping transaction: ${signature}`);
-						this.bidStatesMap.delete(signature);
-						this.bidOrder = this.bidOrder.filter(addr => addr !== signature);
+						deleted = true;
+					} else {
+						logger.info(`[AuctionListener] Skipping failed transaction: ${signature}`);
 						return;
 					}
-					logger.info(`[AuctionListener] Skipping failed transaction: ${signature}`);
-					return;
 				}
 
 				logger.debug(`[AuctionListener] Processing transaction: ${signature}`);
@@ -292,7 +304,7 @@ export class AuctionListener {
 					}
 
 					logger.debug(`[AuctionListener] Found bid instruction in transaction: ${signature}`);
-					await this.processBidInstruction(signature, ix, decoded, message);
+					await this.processBidInstruction(signature, ix, decoded, message, deleted);
 				}
 			} catch (error: any) {
 				logger.error(`[AuctionListener] Error processing streamed transaction data: ${error.message || error}`);
