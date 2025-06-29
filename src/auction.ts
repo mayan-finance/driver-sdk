@@ -189,6 +189,8 @@ export class AuctionFulfillerConfig {
 			normalizedBidAmount = normalizedMinAmountOut;
 		}
 
+		logger.info(`//debug log: lastBid ${lastBid} and normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
+
 		swap.bidAmountIn = Number(normalizedBidAmount + 1n) * effectiveAmountIn / output / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
 		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
 		logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
