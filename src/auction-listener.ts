@@ -46,6 +46,11 @@ export class AuctionListener {
 	 */
 	public async getAuctionState(auctionStateAddr: string): Promise<BidState | null> {
 		let state = this.bidStatesMap.get(auctionStateAddr) || null;
+
+		if (state && Date.now() - state.firstBidTime > this.globalConfig.auctionTimeSeconds * 1000) {
+			state = null;
+		}
+
 		if (state) {
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
@@ -57,7 +62,7 @@ export class AuctionListener {
 					orderHash: '',
 					orderId: '',
 					amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
-					winner: this.driverSolanaAddress,
+					winner: auctionState?.winner || '',
 					signature: '',
 					timestamp: Date.now(),
 					firstBidTime: Date.now(),
@@ -260,6 +265,12 @@ export class AuctionListener {
 				const message = data.transaction.transaction.transaction.message;
 
 				if (data.transaction.transaction.meta?.err) {
+					if (data.transaction.transaction.meta?.logMessages.join('\n').includes('auction is closed.')) {
+						logger.info(`[AuctionListener] Auction is closed. Skipping transaction: ${signature}`);
+						this.bidStatesMap.delete(signature);
+						this.bidOrder = this.bidOrder.filter(addr => addr !== signature);
+						return;
+					}
 					logger.info(`[AuctionListener] Skipping failed transaction: ${signature}`);
 					return;
 				}
