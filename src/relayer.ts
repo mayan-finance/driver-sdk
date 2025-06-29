@@ -314,9 +314,9 @@ export class Relayer {
 				}
 			}
 
-			// TODO: remove debug
-			logger.info(`debugggggg not fulfill`);
-			return;
+			// // TODO: remove debug
+			// logger.info(`debugggggg not fulfill`);
+			// return;
 			await this.waitForFinalizeOnSource(swap);
 
 			logger.info(`Got sequence ${sequence} for ${swap.sourceTxHash}. Getting auction singed VAA...`);
@@ -332,9 +332,9 @@ export class Relayer {
 			logger.info(`Simple mode evm fulfilling ${swap.sourceTxHash}...`);
 		}
 
-		// TODO: remove debug
-		logger.info(`debugggggg not fulfill`);
-		return;
+		// // TODO: remove debug
+		// logger.info(`debugggggg not fulfill`);
+		// return;
 
 		await this.driverService.fulfill(swap, auctionSignedVaa);
 
@@ -395,77 +395,77 @@ export class Relayer {
 			}
 		}
 
-		// TODO: remove debug
-		logger.info(`debugggggg not fulfill`);
-		return;
+		// // TODO: remove debug
+		// logger.info(`debugggggg not fulfill`);
+		// return;
 
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 
-		// TODO: remove debug
-		// remove comments.
-		// let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
-		// if (driverToken.contract === swap.toToken.contract) {
-		// 	await this.waitForFinalizeOnSource(swap);
-		// 	await this.driverService.solanaFulfillAndSettlePackage(swap);
-		// 	swap.status = SWAP_STATUS.ORDER_SETTLED;
-		// } else {
-		// 	await this.waitForFinalizeOnSource(swap);
-		// 	if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
-		// 		try {
-		// 			// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
-		// 			await this.driverService.solanaFulfillAndSettleJitoBundle(swap);
-		// 			swap.status = SWAP_STATUS.ORDER_SETTLED;
-		// 			return;
-		// 		} catch (e: any) {
-		// 			logger.warn(
-		// 				`Failed to send bundle for ${swap.sourceTxHash}. Falling back to sending each tx separately. errors: ${e} ${e.stack}`,
-		// 			);
-		// 		}
-		// 	}
+		// // TODO: remove debug
+		// // remove comments.
+		let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
+		if (driverToken.contract === swap.toToken.contract) {
+			await this.waitForFinalizeOnSource(swap);
+			await this.driverService.solanaFulfillAndSettlePackage(swap);
+			swap.status = SWAP_STATUS.ORDER_SETTLED;
+		} else {
+			await this.waitForFinalizeOnSource(swap);
+			if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
+				try {
+					// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
+					await this.driverService.solanaFulfillAndSettleJitoBundle(swap);
+					swap.status = SWAP_STATUS.ORDER_SETTLED;
+					return;
+				} catch (e: any) {
+					logger.warn(
+						`Failed to send bundle for ${swap.sourceTxHash}. Falling back to sending each tx separately. errors: ${e} ${e.stack}`,
+					);
+				}
+			}
 
-		// 	let alreadyRegisteredWinner =
-		// 		swap.auctionMode === AUCTION_MODES.DONT_CARE ||
-		// 		(!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
-		// 	const stateToAss = getAssociatedTokenAddressSync(
-		// 		new PublicKey(swap.toToken.mint),
-		// 		new PublicKey(swap.stateAddr),
-		// 		true,
-		// 		swap.toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-		// 	);
-		// 	let stateToAssData = await this.solanaConnection.getAccountInfo(stateToAss);
-		// 	let createStateToAss = !stateToAssData || stateToAssData.lamports === 0;
-		// 	let alreadyRegisteredOrder = !!destState;
-		// 	if (createStateToAss || !alreadyRegisteredWinner) {
-		// 		await this.driverService.postBid(
-		// 			swap,
-		// 			createStateToAss,
-		// 			false,
-		// 			false,
-		// 			alreadyRegisteredWinner,
-		// 			alreadyRegisteredOrder,
-		// 		);
-		// 	}
+			let alreadyRegisteredWinner =
+				swap.auctionMode === AUCTION_MODES.DONT_CARE ||
+				(!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
+			const stateToAss = getAssociatedTokenAddressSync(
+				new PublicKey(swap.toToken.mint),
+				new PublicKey(swap.stateAddr),
+				true,
+				swap.toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			);
+			let stateToAssData = await this.solanaConnection.getAccountInfo(stateToAss);
+			let createStateToAss = !stateToAssData || stateToAssData.lamports === 0;
+			let alreadyRegisteredOrder = !!destState;
+			if (createStateToAss || !alreadyRegisteredWinner) {
+				await this.driverService.postBid(
+					swap,
+					createStateToAss,
+					false,
+					false,
+					alreadyRegisteredWinner,
+					alreadyRegisteredOrder,
+				);
+			}
 
-		// 	logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
-		// 	let fulfillRetries = 0;
-		// 	while (true) {
-		// 		try {
-		// 			await this.driverService.fulfill(swap);
-		// 			break;
-		// 		} catch (err) {
-		// 			if (fulfillRetries > 3) {
-		// 				throw err;
-		// 			} else {
-		// 				logger.warn(
-		// 					`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
-		// 				);
-		// 				fulfillRetries++;
-		// 			}
-		// 		}
-		// 	}
-		// 	logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
-		// 	swap.status = SWAP_STATUS.ORDER_FULFILLED;
-		// }
+			logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
+			let fulfillRetries = 0;
+			while (true) {
+				try {
+					await this.driverService.fulfill(swap);
+					break;
+				} catch (err) {
+					if (fulfillRetries > 3) {
+						throw err;
+					} else {
+						logger.warn(
+							`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
+						);
+						fulfillRetries++;
+					}
+				}
+			}
+			logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
+			swap.status = SWAP_STATUS.ORDER_FULFILLED;
+		}
 	}
 
 	private async settle(swap: Swap) {
