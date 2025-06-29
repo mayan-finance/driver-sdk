@@ -276,9 +276,9 @@ export class Relayer {
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
-						await delay(100);
 						break;
 					}
+					await delay(100);
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
@@ -290,6 +290,7 @@ export class Relayer {
 					await delay(500);
 				}
 			}
+			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
 
 			let auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 			swap.bidAmount64 = auctionState?.amountPromised;
