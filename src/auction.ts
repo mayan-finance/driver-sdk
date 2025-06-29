@@ -19,6 +19,7 @@ import { MIN_PULL_AMOUNT, Rebalancer } from './rebalancer';
 import { createRebalance, DB_PATH } from './utils/sqlite3';
 import { GlobalConfig } from './config/global';
 import { SimpleCache } from './cache';
+import { AuctionListener } from './auction-listener';
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
@@ -47,6 +48,7 @@ export class AuctionFulfillerConfig {
 		private readonly swapRouters: SwapRouters,
 		private readonly tokenList: TokenList,
 		private readonly rebalancer: Rebalancer,
+		private readonly auctionListener: AuctionListener,
 	) { }
 
 	async normalizedBidAmount(
@@ -195,7 +197,11 @@ export class AuctionFulfillerConfig {
 		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
 		logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
 
-		if (lastBid && normalizedBidAmount < lastBid) {
+		// get last bid from auction listener
+		const auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
+		const lastBidFromAuctionListener = auctionState?.amountPromised;
+
+		if ((lastBidFromAuctionListener && normalizedBidAmount < lastBidFromAuctionListener) || (lastBid && normalizedBidAmount < lastBid)) {
 			this.cache.remove(`getEvmEquivalentOutput-${swap.sourceTxHash}`);
 			this.cache.remove(`getSolanaEquivalentOutput-${swap.sourceTxHash}`);
 			logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} is less than lastBid ${lastBid} for swap ${swap.sourceTxHash}`);
