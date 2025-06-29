@@ -133,11 +133,11 @@ export class MayanExplorerWatcher {
 
 					logger.info(
 						`Received explorer swap with ` +
-							'\x1b[32m' +
-							`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
+						'\x1b[32m' +
+						`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
 					);
 
-					await delay(1000); // start relaying after 1 second
+					await delay(100); // start relaying after 100ms
 					await this.relayer.relay(swap);
 				} catch (err) {
 					logger.warn(`Error handling explorer swap with ${err}`);
