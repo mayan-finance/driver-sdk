@@ -11,6 +11,7 @@ import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
 import { DriverService } from '../driver/driver';
+import { delay } from '../utils/util';
 
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
@@ -136,6 +137,7 @@ export class MayanExplorerWatcher {
 							`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
 					);
 
+					await delay(1000); // start relaying after 1 second
 					await this.relayer.relay(swap);
 				} catch (err) {
 					logger.warn(`Error handling explorer swap with ${err}`);
