@@ -1,5 +1,7 @@
 import { ChainId, getSignedVAAWithRetry, parseVaa } from '@certusone/wormhole-sdk';
 import { publicrpc } from '@certusone/wormhole-sdk-proto-web';
+import { Transaction } from '@mysten/sui/transactions';
+import { SUI_CLOCK_OBJECT_ID } from '@mysten/sui/utils';
 import { PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
@@ -12,6 +14,32 @@ const { GrpcWebImpl, PublicRPCServiceClientImpl } = publicrpc;
 export const WORMHOLE_CORE_BRIDGE = new PublicKey('worm2ZoG2kUd4vFXhvjh93UUH596ayRfgQ2MgjNMTth');
 export const WORMHOLE_SHIM_PROGRAM = new PublicKey('EtZMZM22ViKMo4r5y4Anovs3wKQ2owUmDpjygnMMcdEX');
 export const WORMHOLE_SHIM_EVENT_AUTH = new PublicKey('HQS31aApX3DDkuXgSpV9XyDUNtFgQ31pUn5BNWHG2PSp');
+export const WORMHOLE_VERIFY_VAA_SHIM_PROGRAM = new PublicKey("EFaNWErqAtVWufdNb7yofSHHfWFos843DFpu4JBw24at");
+
+export const WORMHOLE_SUI_PACKAGE = '0x5306f64e312b581766351c07af79c72fcb1cd25147157fdc2f8ad76de9a3fb6a';
+export const WORMHOLE_SUI_CORE_ID = '0xaeab97f96cf9877fee2883315d459552b2b921edc16d7ceac6eab944dd88919c';
+export const WORMHOLE_SUI_TOKEN_BRIDGE_ID = '0xc57508ee0d4595e5a8728974a4a93a787d38f339757230d441e895422c07aba9';
+
+export function addParseAndVerifySui(
+	tx: Transaction,
+	signedVaa: Uint8Array,
+): {
+	tx: Transaction;
+	vaa: {
+		$kind: 'NestedResult';
+		NestedResult: [number, number];
+	};
+} {
+	const [vaa] = tx.moveCall({
+		target: `${WORMHOLE_SUI_PACKAGE}::vaa::parse_and_verify`,
+		arguments: [tx.object(WORMHOLE_SUI_CORE_ID), tx.pure.vector('u8', signedVaa), tx.object(SUI_CLOCK_OBJECT_ID)],
+	});
+
+	return {
+		tx: tx,
+		vaa: vaa,
+	};
+}
 
 function serializePayload(parsedVaa: any) {
 	const x = Buffer.alloc(51 + parsedVaa.payload.length);
@@ -149,6 +177,28 @@ async function getSignedVaaFromWormholeScan(
 	}
 
 	throw new Error(`Signed vaa not found for ${emitterChain}/${emitterAddress}/${sequence}`);
+}
+
+export async function getSequenceFromWormholeScan(txHash: string): Promise<string> {
+	let maxRetries = 10;
+	let retries = 0;
+	while (retries < maxRetries) {
+		try {
+			const { data } = await axios.get(`https://api.wormholescan.io/api/v1/operations?txHash=${txHash}`);
+
+			// {"operations":[{"id":"30/000000000000000000000000875d6d37ec55c8cf220b9e5080717549d8aa8eca/11207","emitterChain":30,"emitterAddress":{"hex":"000000000000000000000000875d6d37ec55c8cf220b9e5080717549d8aa8eca","native":"0x875d6d37ec55c8cf220b9e5080717549d8aa8eca"},"sequence":"11207","content":{"standarizedProperties":{"appIds":null,"fromChain":0,"fromAddress":"","toChain":0,"toAddress":"","tokenChain":0,"tokenAddress":"","amount":"","feeAddress":"","feeChain":0,"fee":"","normalizedDecimals":null}},"sourceChain":{"chainId":30,"timestamp":"2025-04-27T16:07:07Z","transaction":{"txHash":"0x4433652a68b62c1a045812bb2e8404eef229abf9fd2ccff0401f9c78eb49e02a"},"from":"0x13e71631684a90df4c2310f1ec78c3eda037b2eb","status":"confirmed"}}]}%
+			if (data && data.operations && data.operations.length > 0) {
+				return data.operations[0].sequence;
+			}
+		} catch (err) {
+			logger.info(`Unable to fetch sequence from wormhole scan ${err}. Retrying... ${txHash}`);
+		} finally {
+			retries++;
+			await delay(1000);
+		}
+	}
+
+	throw new Error(`Sequence not found for ${txHash}`);
 }
 
 export async function getSignedVAARaw(

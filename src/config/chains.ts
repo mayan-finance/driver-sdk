@@ -4,6 +4,7 @@ export const CHAIN_ID_ETH = 2;
 export const CHAIN_ID_BSC = 4;
 export const CHAIN_ID_POLYGON = 5;
 export const CHAIN_ID_AVAX = 6;
+export const CHAIN_ID_SUI = 21;
 export const CHAIN_ID_ARBITRUM = 23;
 export const CHAIN_ID_OPTIMISM = 24;
 export const CHAIN_ID_BASE = 30;
@@ -37,9 +38,11 @@ export const chainMap: { [key: string]: number } = {
 	optimism: CHAIN_ID_OPTIMISM,
 	base: CHAIN_ID_BASE,
 	unichain: CHAIN_ID_UNICHAIN,
+	sui: CHAIN_ID_SUI,
 };
 
 export const supportedChainIds: number[] = [
+	CHAIN_ID_SUI,
 	CHAIN_ID_SOLANA,
 	CHAIN_ID_ETH,
 	CHAIN_ID_BSC,

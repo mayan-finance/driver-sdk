@@ -2,7 +2,7 @@ import { getAssociatedTokenAddressSync, TOKEN_2022_PROGRAM_ID, TOKEN_PROGRAM_ID 
 import { Connection, PublicKey } from '@solana/web3.js';
 import axios from 'axios';
 import { ethers } from 'ethers6';
-import { CHAIN_ID_SOLANA, isEvmChainId } from './config/chains';
+import { CHAIN_ID_SOLANA, CHAIN_ID_SUI, isEvmChainId } from './config/chains';
 import { RpcConfig } from './config/rpc';
 import { Token } from './config/tokens';
 import { WalletConfig } from './config/wallet';
@@ -13,6 +13,7 @@ import { getErc20Balance } from './utils/erc20';
 import { EvmProviders } from './utils/evm-providers';
 import { SwiftCosts } from './utils/fees';
 import logger from './utils/logger';
+import { SuiClient } from '@mysten/sui/client';
 
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
@@ -23,6 +24,7 @@ export class AuctionFulfillerConfig {
 		private readonly rpcConfig: RpcConfig,
 		private readonly connection: Connection,
 		private readonly evmProviders: EvmProviders,
+		private readonly suiProviders: SuiClient,
 		private readonly walletConfig: WalletConfig,
 		private readonly swapRouters: SwapRouters,
 	) {}
@@ -50,7 +52,7 @@ export class AuctionFulfillerConfig {
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			output64 = await this.getSolanaEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
-		} else {
+		} else if (isEvmChainId(swap.destChain)) {
 			output64 = await this.getEvmEquivalentOutput(
 				swap.destChain,
 				driverToken,
@@ -59,7 +61,12 @@ export class AuctionFulfillerConfig {
 				swap.toToken,
 				swap.retries,
 			);
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			output64 = await this.getSuiEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken, swap.retries);
+		} else {
+			throw new Error(`Unsupported chain for bid amount ${swap.destChain}`);
 		}
+
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
 
 		const bpsFees = await this.calcProtocolAndRefBps(
@@ -142,6 +149,33 @@ export class AuctionFulfillerConfig {
 		return output;
 	}
 
+	async getSuiEquivalentOutput(
+		driverToken: Token,
+		effectiveAmountInDriverToken: number,
+		toToken: Token,
+		swapRetries: number,
+	): Promise<bigint> {
+		let output: bigint;
+		if (driverToken.contract === toToken.contract) {
+			output = BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals));
+		} else {
+			const quoteRes = await this.swapRouters.getSuiQuote(
+				BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
+				driverToken.contract,
+				toToken.contract,
+				swapRetries,
+			);
+
+			if (!quoteRes) {
+				throw new Error('sui quote for bid in swift failed');
+			}
+
+			output = BigInt(Math.floor(Number(quoteRes.outAmount)));
+		}
+
+		return output;
+	}
+
 	async getSolanaEquivalentOutput(
 		driverToken: Token,
 		effectiveAmountInDriverToken: number,
@@ -178,7 +212,7 @@ export class AuctionFulfillerConfig {
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
 			output64 = await this.getSolanaEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
-		} else {
+		} else if (isEvmChainId(swap.destChain)) {
 			output64 = await this.getEvmEquivalentOutput(
 				swap.destChain,
 				driverToken,
@@ -187,6 +221,10 @@ export class AuctionFulfillerConfig {
 				swap.toToken,
 				swap.retries,
 			);
+		} else if (swap.destChain === CHAIN_ID_SUI) {
+			output64 = await this.getSuiEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken, swap.retries);
+		} else {
+			throw new Error(`Unsupported chain for fulfill amount ${swap.destChain}`);
 		}
 		let output = Number(output64) / 10 ** swap.toToken.decimals;
 
@@ -312,6 +350,12 @@ export class AuctionFulfillerConfig {
 				);
 				return Number(balance64) / 10 ** token.decimals;
 			}
+		} else if (token.wChainId === CHAIN_ID_SUI) {
+			const balance = await this.suiProviders.getBalance({
+				owner: this.walletConfig.sui.toSuiAddress(),
+				coinType: token.contract,
+			});
+			return Number(balance.totalBalance) / 10 ** token.decimals;
 		} else {
 			throw new Error(`Unsupported chain ${token.wChainId}`);
 		}

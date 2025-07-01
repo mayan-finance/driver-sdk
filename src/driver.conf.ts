@@ -8,6 +8,7 @@ import {
 	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
 	CHAIN_ID_UNICHAIN,
+	CHAIN_ID_SUI,
 } from './config/chains';
 
 export const driverConfig = {
@@ -25,6 +26,7 @@ export const driverConfig = {
 		CHAIN_ID_BASE,
 		CHAIN_ID_SOLANA,
 		CHAIN_ID_UNICHAIN,
+		CHAIN_ID_SUI,
 	]),
 	acceptedOutputChains: new Set([
 		CHAIN_ID_BSC,
@@ -36,5 +38,6 @@ export const driverConfig = {
 		CHAIN_ID_BASE,
 		CHAIN_ID_SOLANA,
 		CHAIN_ID_UNICHAIN,
+		CHAIN_ID_SUI,
 	]),
 };
