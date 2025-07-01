@@ -354,12 +354,7 @@ export class Relayer {
 			return;
 		}
 
-		// M0 Stable Coin Swap With USDC on Solana Destination Chain
-		const isUsdcM0Swap = this.tokenList.getNativeUsdc(swap.sourceChain)?.contract === swap.fromToken.contract &&
-			swap.destChain === CHAIN_ID_SOLANA && swap.toToken.contract === "mzerokyEX9TNDoK4o2YZQBDmMzjokAeN6M2g2S3pLJo";
-		logger.info(`///////// isUsdcM0Swap ${isUsdcM0Swap} for ${swap.sourceTxHash}`);
-
-		if (swap.auctionMode === AUCTION_MODES.ENGLISH && !isUsdcM0Swap) {
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
@@ -407,10 +402,6 @@ export class Relayer {
 
 			let auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 			swap.bidAmount64 = auctionState?.amountPromised;
-		} else if (swap.auctionMode === AUCTION_MODES.ENGLISH && isUsdcM0Swap) {
-			logger.info(`///////// bid m0 swap ${swap.sourceTxHash}`);
-			await this.driverService.bidM0Swap(swap);
-			logger.info(`///////// after bid m0 swap ${swap.sourceTxHash}`);
 		} else {
 			let alreadyRegisteredOrder = !!destState;
 			if (!alreadyRegisteredOrder) {
@@ -423,16 +414,10 @@ export class Relayer {
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 
 		let driverToken: Token;
-		if (isUsdcM0Swap) {
-			driverToken = swap.toToken;
-		} else {
-			driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
-		}
+		driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap);
 
 		if (driverToken.contract === swap.toToken.contract) {
-			logger.info(`///////// before wait for finalize on source ${swap.sourceTxHash}`);
 			await this.waitForFinalizeOnSource(swap);
-			logger.info(`///////// after wait for finalize on source ${swap.sourceTxHash}`);
 			await this.driverService.solanaFulfillAndSettlePackage(swap);
 			swap.status = SWAP_STATUS.ORDER_SETTLED;
 		} else {
