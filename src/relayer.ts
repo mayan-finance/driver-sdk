@@ -27,7 +27,6 @@ import {
 	SOLANA_DEST_STATUSES,
 	SwiftDestState,
 	SwiftSourceState,
-	getAuctionState,
 	getSwiftStateDest,
 	getSwiftStateSrc,
 } from './utils/state-parser';
@@ -353,123 +352,128 @@ export class Relayer {
 			return;
 		}
 
-		throw new Error('should not bid and fulfill on solana');
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+			let winner = null;
+			let lastBidTimestamp = null;
+			while (winner === null) {
+				let [solanaTime, auctionState] = await Promise.all([
+					getCurrentSolanaTimeMS(this.solanaConnection),
+					this.auctionListener.getAuctionState(swap.auctionStateAddr),
+				]);
+				this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
+				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 1000 || auctionState.isClosed) {
+						return;
+					} else {
+						if (auctionState.timestamp == lastBidTimestamp) {
+							await delay(100);
+							continue;
+						}
+						try {
+							logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
+							await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+							logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
+							lastBidTimestamp = auctionState.timestamp;
+						} catch (err) {
+							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+						}
+						await delay(100);
+					}
+				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
+						winner = auctionState.winner;
+						break;
+					}
+					await delay(100);
+				} else {
+					try {
+						logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
+						await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+						logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
+					} catch (err) {
+						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+					}
+					await delay(500);
+				}
+			}
+			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
 
-		// if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
-		// 	let [solanaTime, auctionState] = await Promise.all([
-		// 		getCurrentSolanaTimeMS(this.solanaConnection),
-		// 		getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr)),
-		// 	]);
-		// 	let openToBid = false;
-		// 	if (!!auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-		// 		openToBid = this.isAuctionOpenToBid(auctionState, solanaTime);
-		// 		if (!openToBid) {
-		// 			logger.info(
-		// 				`Stopped bidding on ${swap.sourceTxHash} because I'm not the winner and auction is not open`,
-		// 			);
-		// 			await delay(5000);
-		// 			return;
-		// 		}
-		// 	}
+			let auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
+			swap.bidAmount64 = auctionState?.amountPromised;
+		} else {
+			let alreadyRegisteredOrder = !!destState;
+			if (!alreadyRegisteredOrder) {
+				logger.info(`Registering order for simple-fulfill`);
+				await this.driverService.registerOrder(swap);
+				logger.info(`Order registered for ${swap.sourceTxHash}`);
+			}
+		}
 
-		// 	if (!auctionState || openToBid) {
-		// 		logger.info(`In bid-and-fullfilll Bidding for ${swap.sourceTxHash}...`);
-		// 		try {
-		// 			await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
-		// 			logger.info(`In bid-and-fullfilll done bid for ${swap.sourceTxHash}...`);
-		// 		} catch (err) {
-		// 			logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
-		// 		}
-		// 		// await delay(this.gConf.auctionTimeSeconds * 1000);
-		// 		// logger.info(`Finished waiting for auction time for ${swap.sourceTxHash}`);
-		// 	}
+		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 
-		// 	auctionState = await getAuctionState(this.solanaConnection, new PublicKey(swap.auctionStateAddr));
-		// 	swap.bidAmount64 = auctionState?.amountPromised;
-		// 	if (auctionState && auctionState?.winner !== this.walletConfig.solana.publicKey.toString()) {
-		// 		logger.warn(`Stopped working on ${swap.sourceTxHash} because I'm not the final winner`);
-		// 		return;
-		// 	}
-		// } else {
-		// 	let alreadyRegisteredOrder = !!destState;
-		// 	if (!alreadyRegisteredOrder) {
-		// 		logger.info(`Registering order for simple-fulfill`);
-		// 		await this.driverService.registerOrder(swap);
-		// 		logger.info(`Order registered for ${swap.sourceTxHash}`);
-		// 	}
-		// }
+		let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
+		if (driverToken.contract === swap.toToken.contract) {
+			await this.waitForFinalizeOnSource(swap);
+			await this.driverService.solanaFulfillAndSettlePackage(swap);
+			swap.status = SWAP_STATUS.ORDER_SETTLED;
+		} else {
+			await this.waitForFinalizeOnSource(swap);
+			if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
+				try {
+					// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
+					await this.driverService.solanaFulfillAndSettleJitoBundle(swap);
+					swap.status = SWAP_STATUS.ORDER_SETTLED;
+					return;
+				} catch (e: any) {
+					logger.warn(
+						`Failed to send bundle for ${swap.sourceTxHash}. Falling back to sending each tx separately. errors: ${e} ${e.stack}`,
+					);
+				}
+			}
 
-		// // // TODO: remove debug
-		// // logger.info(`debugggggg not fulfill`);
-		// // return;
+			let alreadyRegisteredWinner =
+				swap.auctionMode === AUCTION_MODES.DONT_CARE ||
+				(!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
+			const stateToAss = getAssociatedTokenAddressSync(
+				new PublicKey(swap.toToken.mint),
+				new PublicKey(swap.stateAddr),
+				true,
+				swap.toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+			);
+			let stateToAssData = await this.solanaConnection.getAccountInfo(stateToAss);
+			let createStateToAss = !stateToAssData || stateToAssData.lamports === 0;
+			let alreadyRegisteredOrder = !!destState;
+			if (createStateToAss || !alreadyRegisteredWinner) {
+				await this.driverService.postBid(
+					swap,
+					createStateToAss,
+					false,
+					false,
+					alreadyRegisteredWinner,
+					alreadyRegisteredOrder,
+				);
+			}
 
-		// // await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
-
-		// // // TODO: remove debug
-		// // // remove comments.
-		// let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
-		// if (driverToken.contract === swap.toToken.contract) {
-		// 	await this.waitForFinalizeOnSource(swap);
-		// 	await this.driverService.solanaFulfillAndSettlePackage(swap);
-		// 	swap.status = SWAP_STATUS.ORDER_SETTLED;
-		// } else {
-		// 	await this.waitForFinalizeOnSource(swap);
-		// 	if (this.rpcConfig.solana.fulfillTxMode === 'JITO') {
-		// 		try {
-		// 			// send everything as bundle. If we fail to land under like 10 seconds, fall back to sending txs separately
-		// 			await this.driverService.solanaFulfillAndSettleJitoBundle(swap);
-		// 			swap.status = SWAP_STATUS.ORDER_SETTLED;
-		// 			return;
-		// 		} catch (e: any) {
-		// 			logger.warn(
-		// 				`Failed to send bundle for ${swap.sourceTxHash}. Falling back to sending each tx separately. errors: ${e} ${e.stack}`,
-		// 			);
-		// 		}
-		// 	}
-
-		// 	let alreadyRegisteredWinner =
-		// 		swap.auctionMode === AUCTION_MODES.DONT_CARE ||
-		// 		(!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
-		// 	const stateToAss = getAssociatedTokenAddressSync(
-		// 		new PublicKey(swap.toToken.mint),
-		// 		new PublicKey(swap.stateAddr),
-		// 		true,
-		// 		swap.toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-		// 	);
-		// 	let stateToAssData = await this.solanaConnection.getAccountInfo(stateToAss);
-		// 	let createStateToAss = !stateToAssData || stateToAssData.lamports === 0;
-		// 	let alreadyRegisteredOrder = !!destState;
-		// 	if (createStateToAss || !alreadyRegisteredWinner) {
-		// 		await this.driverService.postBid(
-		// 			swap,
-		// 			createStateToAss,
-		// 			false,
-		// 			false,
-		// 			alreadyRegisteredWinner,
-		// 			alreadyRegisteredOrder,
-		// 		);
-		// 	}
-
-		// 	logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
-		// 	let fulfillRetries = 0;
-		// 	while (true) {
-		// 		try {
-		// 			await this.driverService.fulfill(swap);
-		// 			break;
-		// 		} catch (err) {
-		// 			if (fulfillRetries > 3) {
-		// 				throw err;
-		// 			} else {
-		// 				logger.warn(
-		// 					`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
-		// 				);
-		// 				fulfillRetries++;
-		// 			}
-		// 		}
-		// 	}
-		// 	logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
-		// 	swap.status = SWAP_STATUS.ORDER_FULFILLED;
-		// }
+			logger.info(`In bid-and-fullfilll Sending fulfill for ${swap.sourceTxHash}...`);
+			let fulfillRetries = 0;
+			while (true) {
+				try {
+					await this.driverService.fulfill(swap);
+					break;
+				} catch (err) {
+					if (fulfillRetries > 3) {
+						throw err;
+					} else {
+						logger.warn(
+							`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
+						);
+						fulfillRetries++;
+					}
+				}
+			}
+			logger.info(`In bid-and-fulfilll Sent fulfill for ${swap.sourceTxHash}`);
+			swap.status = SWAP_STATUS.ORDER_FULFILLED;
+		}
 	}
 
 	private async settle(swap: Swap) {
