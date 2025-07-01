@@ -274,6 +274,46 @@ export class DriverService {
 		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
 	}
 
+	async bidM0Swap(swap: Swap): Promise<void> {
+		let ratio = 0.99;
+		let amountOut = swap.fromAmount.toNumber() * ratio * 10 ** 6;
+		swap.bidAmountIn = swap.fromAmount.toNumber() * ratio;
+
+		if (amountOut < swap.minAmountOut64) {
+			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because amountOut ${amountOut} is less than minAmountOut ${swap.minAmountOut64} for m0 swap`);
+			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because amountOut ${amountOut} is less than minAmountOut ${swap.minAmountOut64} for m0 swap`);
+		}
+
+		let balance = await this.auctionFulfillerCfg.getTokenBalance(swap.toToken);
+		if (balance < amountOut) {
+			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because balance ${balance} is less than amountOut ${amountOut} for m0 swap`);
+			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because balance ${balance} is less than amountOut ${amountOut} for m0 swap`);
+		}
+
+		const bidIx = await this.solanaIxService.getBidIx(
+			this.walletConfig.solana.publicKey,
+			new PublicKey(swap.auctionStateAddr),
+			BigInt(amountOut),
+			swap,
+			6,
+		);
+
+		let instructions = [bidIx];
+		let signers = [this.walletConfig.solana];
+
+		logger.info(`Sending bid transaction for ${swap.sourceTxHash} for m0 swap`);
+		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+			instructions,
+			signers,
+			[],
+			this.rpcConfig.solana.sendCount,
+			true,
+			undefined,
+			70_000,
+		);
+		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash} for m0 swap`);
+	}
+
 	async registerOrder(swap: Swap) {
 		let instructions = [];
 		instructions.unshift(await this.getRegisterOrderFromSwap(swap));
