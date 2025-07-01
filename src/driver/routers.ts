@@ -426,6 +426,14 @@ export class SwapRouters {
 			params: queryParams,
 		};
 
+		if (process.env.USE_OKX_HTTP_PROXY === 'true') {
+			config.proxy = {
+				host: process.env.OKX_HTTP_PROXY_HOST!,
+				port: 3128,
+				protocol: 'http',
+			};
+		}
+
 		try {
 			const response = await axios.get(apiUrl, config);
 			return {
