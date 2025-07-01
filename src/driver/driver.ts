@@ -138,41 +138,49 @@ export class DriverService {
 		return instruction;
 	}
 
-	getDriverEvmTokenForBidAndSwap(srcChain: number, destChain: number, fromToken: Token): Token {
-		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
-		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
-		const fromEth = this.tokenList.getEth(srcChain);
-		const fromSolWeth = srcChain === CHAIN_ID_SOLANA ? this.tokenList.getWethSol() : null;
+	getDriverEvmTokenForBidAndSwap(swap: Swap): Token {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(swap.sourceChain);
+		const fromNativeUSDC = this.tokenList.getNativeUsdc(swap.sourceChain);
+		const fromEth = this.tokenList.getEth(swap.sourceChain);
+		const fromSolWeth = swap.sourceChain === CHAIN_ID_SOLANA ? this.tokenList.getWethSol() : null;
 
-		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
-			const destUsdc = this.tokenList.getNativeUsdc(destChain);
-			const destUsdt = this.tokenList.getNativeUsdt(destChain);
+		if (swap.fromToken.contract === fromNativeUSDC?.contract || swap.fromToken.contract === fromNativeUSDT?.contract) {
+			const destUsdc = this.tokenList.getNativeUsdc(swap.destChain);
+			const destUsdt = this.tokenList.getNativeUsdt(swap.destChain);
 			if (!destUsdc && !destUsdt) {
-				throw new Error(`Stable token not found on ${destChain} for driver! not bidding or swapping`);
+				throw new Error(`Stable token not found on ${swap.destChain} for driver! not bidding or swapping`);
 			}
 
 			return (destUsdc || destUsdt)!;
-		} else if (fromToken.contract === fromEth?.contract || fromToken.contract === fromSolWeth?.contract) {
-			return this.tokenList.getEth(destChain)!;
+		} else if (swap.fromToken.contract === fromEth?.contract || swap.fromToken.contract === fromSolWeth?.contract) {
+			return this.tokenList.getEth(swap.destChain)!;
 		} else {
 			throw new Error(
-				`Unsupported input token ${fromToken.contract} on
-				${srcChain} for driver! not bidding or swapping`,
+				`Unsupported input token ${swap.fromToken.contract} on
+				${swap.sourceChain} for driver! not bidding or swapping`,
 			);
 		}
 	}
 
-	getDriverSolanaTokenForBidAndSwap(srcChain: number, fromToken: Token): Token {
-		const fromNativeUSDT = this.tokenList.getNativeUsdt(srcChain);
-		const fromNativeUSDC = this.tokenList.getNativeUsdc(srcChain);
-		const fromEth = this.tokenList.getEth(srcChain);
+	getDriverSolanaTokenForBidAndSwap(swap: Swap): Token {
+		const fromNativeUSDT = this.tokenList.getNativeUsdt(swap.sourceChain);
+		const fromNativeUSDC = this.tokenList.getNativeUsdc(swap.sourceChain);
+		const fromEth = this.tokenList.getEth(swap.sourceChain);
 
-		if (fromToken.contract === fromNativeUSDC?.contract || fromToken.contract === fromNativeUSDT?.contract) {
+
+		if (
+			this.tokenList.getNativeUsdc(swap.sourceChain)?.contract === swap.fromToken.contract &&
+			swap.destChain === CHAIN_ID_SOLANA &&
+			swap.toToken.contract === "mzerokyEX9TNDoK4o2YZQBDmMzjokAeN6M2g2S3pLJo") {
+			return swap.toToken
+		}
+
+		if (swap.fromToken.contract === fromNativeUSDC?.contract || swap.fromToken.contract === fromNativeUSDT?.contract) {
 			return this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)!;
-		} else if (fromToken.contract === fromEth?.contract) {
+		} else if (swap.fromToken.contract === fromEth?.contract) {
 			return this.tokenList.getWethSol();
 		} else {
-			throw new Error(`Unsupported input token ${fromToken.contract} for driver! not bidding or swapping`);
+			throw new Error(`Unsupported input token ${swap.fromToken.contract} for driver! not bidding or swapping`);
 		}
 	}
 
@@ -209,12 +217,12 @@ export class DriverService {
 
 		let driverToken: Token;
 		if (dstChain === CHAIN_ID_SOLANA) {
-			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
+			driverToken = this.getDriverSolanaTokenForBidAndSwap(swap);
 		} else {
-			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+			driverToken = this.getDriverEvmTokenForBidAndSwap(swap);
 		}
 
-		let isDriverTokenUSDC = driverToken.contract === this.tokenList.getNativeUsdc(dstChain)?.contract;
+		let isDriverTokenUSDC = driverToken.contract === this.tokenList.getNativeUsdc(dstChain)?.contract || driverToken.contract === "mzerokyEX9TNDoK4o2YZQBDmMzjokAeN6M2g2S3pLJo";
 		let isDstChainValidForRebalance = REBALANCE_ENABLED_CHAIN_IDS.includes(dstChain);
 
 		if (process.env.BATTLE_TEST === 'true' && (!isDriverTokenUSDC || !isDstChainValidForRebalance)) {
@@ -272,50 +280,6 @@ export class DriverService {
 			70_000,
 		);
 		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
-	}
-
-	async bidM0Swap(swap: Swap): Promise<void> {
-		let ratio = 0.99;
-		let amountOut = swap.fromAmount.toNumber() * ratio * 10 ** 6;
-		swap.bidAmountIn = swap.fromAmount.toNumber() * ratio;
-
-		if (amountOut < swap.minAmountOut64) {
-			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because amountOut ${amountOut} is less than minAmountOut ${swap.minAmountOut64} for m0 swap`);
-			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because amountOut ${amountOut} is less than minAmountOut ${swap.minAmountOut64} for m0 swap`);
-		}
-
-		logger.info(`///////// bidM0Swap ${swap.sourceTxHash} amountOut ${amountOut} for m0 swap, swap: ${swap.destAddress} ${swap.destChain} ${swap.toToken.contract}`);
-
-		let balance = await this.auctionFulfillerCfg.getTokenBalance(swap.toToken);
-		if (balance < amountOut) {
-			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because balance ${balance} is less than amountOut ${amountOut} for m0 swap`);
-			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because balance ${balance} is less than amountOut ${amountOut} for m0 swap`);
-		}
-
-		logger.info(`///////// before bidIx ${swap.sourceTxHash}`);
-
-		const bidIx = await this.solanaIxService.getBidIx(
-			this.walletConfig.solana.publicKey,
-			new PublicKey(swap.auctionStateAddr),
-			BigInt(amountOut),
-			swap,
-			6,
-		);
-
-		let instructions = [bidIx];
-		let signers = [this.walletConfig.solana];
-
-		logger.info(`Sending bid transaction for ${swap.sourceTxHash} for m0 swap`);
-		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
-			instructions,
-			signers,
-			[],
-			this.rpcConfig.solana.sendCount,
-			true,
-			undefined,
-			70_000,
-		);
-		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash} for m0 swap`);
 	}
 
 	async registerOrder(swap: Swap) {
@@ -507,9 +471,9 @@ export class DriverService {
 
 		let driverToken: Token;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
-			driverToken = this.getDriverSolanaTokenForBidAndSwap(srcChain, fromToken);
+			driverToken = this.getDriverSolanaTokenForBidAndSwap(swap);
 		} else {
-			driverToken = this.getDriverEvmTokenForBidAndSwap(srcChain, dstChain, fromToken);
+			driverToken = this.getDriverEvmTokenForBidAndSwap(swap);
 		}
 
 		const fulfillAmount = await this.auctionFulfillerCfg.fulfillAmount(
