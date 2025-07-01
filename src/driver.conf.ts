@@ -18,7 +18,7 @@ export const driverConfig = {
 	acceptedInputChains: new Set([
 		// CHAIN_ID_BSC,
 		CHAIN_ID_AVAX,
-		// CHAIN_ID_ETH,
+		CHAIN_ID_ETH,
 		CHAIN_ID_ARBITRUM,
 		CHAIN_ID_POLYGON,
 		CHAIN_ID_OPTIMISM,
@@ -29,7 +29,7 @@ export const driverConfig = {
 	acceptedOutputChains: new Set([
 		// CHAIN_ID_BSC,
 		CHAIN_ID_AVAX,
-		// CHAIN_ID_ETH,
+		CHAIN_ID_ETH,
 		CHAIN_ID_ARBITRUM,
 		CHAIN_ID_POLYGON,
 		CHAIN_ID_OPTIMISM,
