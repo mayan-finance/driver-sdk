@@ -25,6 +25,7 @@ export interface BidState {
 	order: any;
 	validFrom: number;
 	sequence: bigint;
+	isClosed: boolean;
 }
 
 export class AuctionListener {
@@ -69,6 +70,7 @@ export class AuctionListener {
 					order: null,
 					validFrom: auctionState?.validFrom || 0,
 					sequence: auctionState?.sequence || BigInt(0),
+					isClosed: false,
 				};
 			}
 			if (state) {
@@ -159,9 +161,9 @@ export class AuctionListener {
 		if (deleted) {
 			let state = this.bidStatesMap.get(auctionStateAddr);
 			if (state && state.winner !== this.driverSolanaAddress) {
-				this.bidStatesMap.delete(auctionStateAddr);
-				this.bidOrder = this.bidOrder.filter(addr => addr !== auctionStateAddr);
-				logger.info(`[AuctionListener] Removed auction state for order: ${auctionStateAddr} because it was deleted`);
+				state.isClosed = true;
+				this.storeBidState(state);
+				logger.info(`[AuctionListener] Auction state for order: ${state.orderId} was deleted`);
 			}
 
 			return;
@@ -209,6 +211,7 @@ export class AuctionListener {
 			order: decodeData.order,
 			validFrom: decodeData.validFrom,
 			sequence: decodeData.seqMsg ? BigInt(decodeData.seqMsg.toString()) : BigInt(0),
+			isClosed: false,
 		};
 
 		this.storeBidState(bidState);

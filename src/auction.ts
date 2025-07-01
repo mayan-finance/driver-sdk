@@ -208,6 +208,11 @@ export class AuctionFulfillerConfig {
 			throw new Error(`normalizedBidAmount ${normalizedBidAmount} is less than lastBid ${lastBid} for swap ${swap.sourceTxHash}`);
 		}
 
+		if (auctionState?.isClosed) {
+			logger.info(`in bid: auctionState is closed for swap ${swap.sourceTxHash}`);
+			throw new Error(`auctionState is closed for swap ${swap.sourceTxHash}`);
+		}
+
 		return normalizedBidAmount;
 	}
 
