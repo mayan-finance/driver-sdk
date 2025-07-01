@@ -8,7 +8,7 @@ import { ContractsConfig } from './config/contracts';
 import { MayanEndpoints } from './config/endpoints';
 import { GlobalConfig } from './config/global';
 import { RpcConfig } from './config/rpc';
-import { TokenList } from './config/tokens';
+import { Token, TokenList } from './config/tokens';
 import { WalletConfig } from './config/wallet';
 import { driverConfig } from './driver.conf';
 import { DriverService } from './driver/driver';
@@ -352,7 +352,11 @@ export class Relayer {
 			return;
 		}
 
-		if (swap.auctionMode === AUCTION_MODES.ENGLISH) {
+		// M0 Stable Coin Swap With USDC on Solana Destination Chain
+		const isUsdcM0Swap = this.tokenList.getNativeUsdc(swap.sourceChain)?.contract === swap.fromToken.contract &&
+			swap.destChain === CHAIN_ID_SOLANA && swap.toToken.contract === "mzerokyEX9TNDoK4o2YZQBDmMzjokAeN6M2g2S3pLJo";
+
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH && !isUsdcM0Swap) {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
@@ -400,6 +404,8 @@ export class Relayer {
 
 			let auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 			swap.bidAmount64 = auctionState?.amountPromised;
+		} else if (swap.auctionMode === AUCTION_MODES.ENGLISH && isUsdcM0Swap) {
+			await this.driverService.bidM0Swap(swap);
 		} else {
 			let alreadyRegisteredOrder = !!destState;
 			if (!alreadyRegisteredOrder) {
@@ -411,7 +417,13 @@ export class Relayer {
 
 		// await this.submitGaslessOrderIfRequired(swap, srcState, sourceEvmOrder);
 
-		let driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
+		let driverToken: Token;
+		if (isUsdcM0Swap) {
+			driverToken = swap.toToken;
+		} else {
+			driverToken = this.driverService.getDriverSolanaTokenForBidAndSwap(swap.sourceChain, swap.fromToken);
+		}
+
 		if (driverToken.contract === swap.toToken.contract) {
 			await this.waitForFinalizeOnSource(swap);
 			await this.driverService.solanaFulfillAndSettlePackage(swap);
