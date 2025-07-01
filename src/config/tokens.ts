@@ -269,6 +269,7 @@ export class TokenList {
 			supportsPermit: false,
 			standard: isToken2022 ? 'spl2022' : 'spl',
 			hasTransferFee: hasTransferFee,
+			wChainId: CHAIN_ID_SOLANA,
 		};
 	}
 

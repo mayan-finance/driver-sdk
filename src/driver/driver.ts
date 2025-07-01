@@ -284,11 +284,15 @@ export class DriverService {
 			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because amountOut ${amountOut} is less than minAmountOut ${swap.minAmountOut64} for m0 swap`);
 		}
 
+		logger.info(`///////// bidM0Swap ${swap.sourceTxHash} amountOut ${amountOut} for m0 swap, swap: ${swap.destAddress} ${swap.destChain} ${swap.toToken.contract}`);
+
 		let balance = await this.auctionFulfillerCfg.getTokenBalance(swap.toToken);
 		if (balance < amountOut) {
 			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because balance ${balance} is less than amountOut ${amountOut} for m0 swap`);
 			throw new Error(`Shall not bid on tx: ${swap.sourceTxHash} because balance ${balance} is less than amountOut ${amountOut} for m0 swap`);
 		}
+
+		logger.info(`///////// before bidIx ${swap.sourceTxHash}`);
 
 		const bidIx = await this.solanaIxService.getBidIx(
 			this.walletConfig.solana.publicKey,
