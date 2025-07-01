@@ -137,7 +137,7 @@ export class MayanExplorerWatcher {
 						`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
 					);
 
-					await delay(100); // start relaying after 100ms
+					await delay(1000); // start relaying after 1000ms
 					await this.relayer.relay(swap);
 				} catch (err) {
 					logger.warn(`Error handling explorer swap with ${err}`);
