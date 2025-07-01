@@ -45,14 +45,15 @@ export class AuctionListener {
 	 * @param auctionStateAddr The auction state address to lookup
 	 * @returns BidState if found, null otherwise
 	 */
-	public async getAuctionState(auctionStateAddr: string): Promise<BidState | null> {
+	public async getAuctionState(auctionStateAddr: string, forceSolana: boolean = false): Promise<BidState | null> {
 		let state = this.bidStatesMap.get(auctionStateAddr) || null;
 
 		if (state && Date.now() - state.firstBidTime > this.globalConfig.auctionTimeSeconds * 1000) {
 			state = null;
 		}
 
-		if (state) {
+		let firstBidTime = state?.firstBidTime || Date.now();
+		if (state && !forceSolana) {
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
 			logger.debug(`[AuctionListener] No auction state found for auctionStateAddr: ${auctionStateAddr}. Getting from solana ...`);
@@ -66,7 +67,7 @@ export class AuctionListener {
 					winner: auctionState?.winner || '',
 					signature: '',
 					timestamp: Date.now(),
-					firstBidTime: Date.now(),
+					firstBidTime: firstBidTime,
 					order: null,
 					validFrom: auctionState?.validFrom || 0,
 					sequence: auctionState?.sequence || BigInt(0),
