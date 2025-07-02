@@ -397,6 +397,11 @@ export class Relayer {
 				}
 			}
 			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
+			if (getRebalanceIsCreated(DB_PATH, swap.orderId) === RebalanceStatus.IS_NOT_CREATED) {
+				const amount = getRebalanceAmount(DB_PATH, swap.orderId);
+				this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
+				setRebalanceIsCreated(DB_PATH, swap.orderId, true);
+			}
 
 			let auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 			swap.bidAmount64 = auctionState?.amountPromised;

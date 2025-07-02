@@ -66,7 +66,7 @@ export class AuctionFulfillerConfig {
 		let balanceWithRebalance = balance;
 		if (this.gConf.isRebalancerEnabled && context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
 			try {
-				balanceWithRebalance = balance + Math.max(await this.rebalancer.fetchSolanaUsdcBalance(), MIN_PULL_AMOUNT);
+				balanceWithRebalance = balance + Math.max(await this.rebalancer.fetchSuiUsdcBalance(), MIN_PULL_AMOUNT);
 			} catch (error) {
 				logger.error(`Error fetching solana usdc balance ${error}`);
 				balanceWithRebalance = balance;
