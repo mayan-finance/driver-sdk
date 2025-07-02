@@ -163,7 +163,13 @@ export class AuctionFulfillerConfig {
 		const minAmountNeededForFulfill64 = (userMinAmountOut * 10000n) / (10000n - bpsFees) + 1n;
 		const minAmountNeededForFulfill = Number(minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
 
-		const minFulfillAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
+		let minFulfillAmountIn;
+		if (swap.minAmountOut64 === 0n) {
+			minFulfillAmountIn = 0;
+		} else {
+			minFulfillAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
+		}
+
 		if (minFulfillAmountIn > effectiveAmountIn * 1.0003) {
 			logger.warn(
 				`Auction.normalizedBidAmount: mappedMinAmountIn > effectiveAmountIn ${minFulfillAmountIn} > ${effectiveAmountIn} for ${swap.sourceTxHash}`,
@@ -335,7 +341,12 @@ export class AuctionFulfillerConfig {
 		const minAmountNeededForFulfill64 = Number(realMinAmountOut) / (1 - Number(bpsFees) / 10000);
 		const minAmountNeededForFulfill = (1.000001 * minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
 
-		const mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
+		let mappedMinAmountIn;
+		if (swap.minAmountOut64 === 0n) {
+			mappedMinAmountIn = 0;
+		} else {
+			mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
+		}
 
 		logger.info(`mappedMinAmountIn ${mappedMinAmountIn} for swap ${swap.sourceTxHash}`);
 
@@ -414,6 +425,7 @@ export class AuctionFulfillerConfig {
 			finalAmountIn = finalAmountIn * (1 - 3 / 10000);
 		}
 
+		logger.info(`token standard: ${swap.toToken.standard} for swap ${swap.sourceTxHash}`);
 		return Math.max(finalAmountIn, minFulfillAmount * 1.000001);
 	}
 
