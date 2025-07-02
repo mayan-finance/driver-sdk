@@ -1,4 +1,4 @@
-import { Account, createTransferInstruction, getAccount, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
+import { Account, createTransferInstruction, getAccount, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, createTransferCheckedInstruction } from '@solana/spl-token';
 import {
 	AddressLookupTableAccount,
 	Connection,
@@ -240,16 +240,30 @@ export class SolanaFulfiller {
 				false,
 				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			);
-			fulfillAmountIxs = [
-				createTransferInstruction(
+			let transferIX;
+			if (toToken.standard === 'spl2022') {
+				transferIX = createTransferCheckedInstruction(
+					driverAss,
+					new PublicKey(driverToken.mint),
+					stateToAss,
+					this.walletConfig.solana.publicKey,
+					Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals),
+					driverToken.decimals,
+					[],
+					TOKEN_2022_PROGRAM_ID,
+				);
+			} else {
+				transferIX = createTransferInstruction(
 					driverAss,
 					stateToAss,
 					this.walletConfig.solana.publicKey,
 					Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals),
 					[],
-					toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
-				),
-			];
+					TOKEN_PROGRAM_ID,
+				);
+			}
+
+			fulfillAmountIxs = [transferIX];
 		} else {
 			const quoteRes = await this.getQuoteWithRetry(
 				BigInt(Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals)),
