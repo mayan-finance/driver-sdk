@@ -1,4 +1,4 @@
-import { Account, createTransferInstruction, getAccount, getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { Account, createTransferInstruction, getAccount, getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 import {
 	AddressLookupTableAccount,
 	Connection,
@@ -238,6 +238,7 @@ export class SolanaFulfiller {
 				new PublicKey(driverToken.mint),
 				this.walletConfig.solana.publicKey,
 				false,
+				toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 			);
 			fulfillAmountIxs = [
 				createTransferInstruction(
@@ -245,6 +246,8 @@ export class SolanaFulfiller {
 					stateToAss,
 					this.walletConfig.solana.publicKey,
 					Math.floor(effectiveAmountInDriverToken * 10 ** driverToken.decimals),
+					[],
+					toToken.standard === 'spl2022' ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
 				),
 			];
 		} else {

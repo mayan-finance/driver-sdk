@@ -425,7 +425,6 @@ export class AuctionFulfillerConfig {
 			finalAmountIn = finalAmountIn * (1 - 3 / 10000);
 		}
 
-		logger.info(`token standard: ${swap.toToken.standard} for swap ${swap.sourceTxHash}`);
 		return Math.max(finalAmountIn, minFulfillAmount * 1.000001);
 	}
 
