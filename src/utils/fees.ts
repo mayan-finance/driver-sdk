@@ -24,7 +24,7 @@ export class FeeService {
 		private readonly endpoints: MayanEndpoints,
 		private readonly tokenList: TokenList,
 		private readonly gConf: GlobalConfig,
-	) {}
+	) { }
 
 	async calculateSwiftExpensesAndUSDInFromToken(qr: ExpenseParams): Promise<SwiftCosts> {
 		if (!qr.auctionMode) {
@@ -44,7 +44,13 @@ export class FeeService {
 
 		const solPrice = prices.data[this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId];
 		const fromTokenPrice = prices.data[qr.fromToken.coingeckoId];
-		const toTokenPrice = prices.data[qr.toToken.coingeckoId];
+		let toTokenPrice = 0;
+		if (qr.toToken.contract === "mzerokyEX9TNDoK4o2YZQBDmMzjokAeN6M2g2S3pLJo") {
+			let usdcOnSolana = this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA);
+			toTokenPrice = prices.data[usdcOnSolana?.coingeckoId!];
+		} else {
+			toTokenPrice = prices.data[qr.toToken.coingeckoId];
+		}
 		const nativeFromPrice = prices.data[this.tokenList.nativeTokens[qr.fromChainId].coingeckoId];
 		const nativeToPrice = prices.data[this.tokenList.nativeTokens[qr.toChainId].coingeckoId];
 
