@@ -55,7 +55,8 @@ interface ChainConfig {
     maximum_threshold: string;
 }
 
-const SOLANA_CCTP_CHAIN_ID = 0;
+const SUI_CHAIN_ID = 1999;
+const SUI_USDC_TOKEN_ADDRESS = "0xdba34672e30cb065b1f93e3ab55318768fd6fef66c15942c9f7cb846e2f900e7::usdc::USDC";
 export const MIN_PULL_AMOUNT = process.env.MIN_PULL_AMOUNT ? parseInt(process.env.MIN_PULL_AMOUNT) : 500;
 
 export const REBALANCE_ENABLED_CHAIN_IDS = [CHAIN_ID_ETH, CHAIN_ID_AVAX, CHAIN_ID_OPTIMISM, CHAIN_ID_BASE, CHAIN_ID_UNICHAIN, CHAIN_ID_POLYGON, CHAIN_ID_ARBITRUM, CHAIN_ID_SOLANA];
@@ -86,19 +87,15 @@ export class Rebalancer {
         }
     }
 
-    async fetchSolanaUsdcBalance(): Promise<number> {
+    async fetchSuiUsdcBalance(): Promise<number> {
         let balances = await this.fetchBalances();
-        const usdc = this.tokenList.getNativeUsdc(CHAIN_ID_SOLANA)
-        if (!usdc) {
-            throw new Error(`USDC not found for chain ${CHAIN_ID_SOLANA}`);
-        }
 
-        let balance = balances.find(b => b.chain_id === SOLANA_CCTP_CHAIN_ID && b.token_address.toLowerCase() === usdc.contract.toLowerCase());
+        let balance = balances.find(b => b.chain_id === SUI_CHAIN_ID && b.token_address.toLowerCase() === SUI_USDC_TOKEN_ADDRESS.toLowerCase());
         if (!balance) {
-            throw new Error(`Balance not found for chain ${SOLANA_CCTP_CHAIN_ID} and token ${usdc.contract}`);
+            throw new Error(`Balance not found for chain ${SUI_CHAIN_ID} and token ${SUI_USDC_TOKEN_ADDRESS}`);
         }
 
-        return parseInt(balance.balance, 16) / (10 ** usdc.decimals);
+        return parseInt(balance.balance, 16) / (10 ** 6);
     }
 
     async checkFeasibility(chainId: number, amount: number, orderId: string): Promise<FeasibilityResponse> {
@@ -184,6 +181,8 @@ export class Rebalancer {
                 return 3;
             case CHAIN_ID_OPTIMISM:
                 return 2;
+            case CHAIN_ID_SOLANA:
+                return 5;
         }
         return 0;
     }
