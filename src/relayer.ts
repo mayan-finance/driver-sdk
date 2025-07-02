@@ -74,8 +74,6 @@ export class Relayer {
 				}
 
 				if (swap.destChain === CHAIN_ID_SOLANA) {
-					logger.info(`///////// tryProgressFulfill ${swap.sourceTxHash}`);
-
 					if (swap.auctionMode === AUCTION_MODES.ENGLISH || swap.auctionMode === AUCTION_MODES.DONT_CARE) {
 						await this.bidAndFulfillSolana(swap, destState!, sourceState, sourceEvmOrder);
 					} else {
