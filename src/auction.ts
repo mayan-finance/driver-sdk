@@ -197,12 +197,6 @@ export class AuctionFulfillerConfig {
 			normalizedBidAmount = normalizedMinAmountOut;
 		}
 
-		logger.info(`//debug log: lastBid ${lastBid} and normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
-
-		swap.bidAmountIn = Number(normalizedBidAmount + 1n) * effectiveAmountIn / output / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
-		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
-		logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
-
 		// get last bid from auction listener
 		const auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 		const lastBidFromAuctionListener = auctionState?.amountPromised;
@@ -218,6 +212,19 @@ export class AuctionFulfillerConfig {
 			logger.info(`in bid: auctionState is closed for swap ${swap.sourceTxHash}`);
 			throw new Error(`auctionState is closed for swap ${swap.sourceTxHash}`);
 		}
+
+		// if (lastBid && lastBid < normalizedBidAmount && lastBid > 0n) {
+		// 	normalizedBidAmount = lastBid + 5n;
+		// }
+
+		// if (lastBidFromAuctionListener && lastBidFromAuctionListener < normalizedBidAmount && lastBidFromAuctionListener > 0n) {
+		// 	normalizedBidAmount = lastBidFromAuctionListener + 5n;
+		// }
+
+		swap.bidAmountIn = Number(normalizedBidAmount + 1n) * effectiveAmountIn / output / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
+		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
+		logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
+
 
 		return normalizedBidAmount;
 	}
