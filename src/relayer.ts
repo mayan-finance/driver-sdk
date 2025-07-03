@@ -301,7 +301,7 @@ export class Relayer {
 
 					if (getRebalanceIsCreated(DB_PATH, swap.orderId) === RebalanceStatus.IS_NOT_CREATED) {
 						const amount = getRebalanceAmount(DB_PATH, swap.orderId);
-						this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
+						await this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
 						setRebalanceIsCreated(DB_PATH, swap.orderId, true);
 					}
 				} else {
@@ -399,7 +399,7 @@ export class Relayer {
 			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
 			if (getRebalanceIsCreated(DB_PATH, swap.orderId) === RebalanceStatus.IS_NOT_CREATED) {
 				const amount = getRebalanceAmount(DB_PATH, swap.orderId);
-				this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
+				await this.rebalancer.forceRebalance(swap.destChain, amount, swap.orderId);
 				setRebalanceIsCreated(DB_PATH, swap.orderId, true);
 			}
 
