@@ -181,13 +181,13 @@ export class Relayer {
 
 			logger.info(`Started relaying ${swap.sourceTxHash}`);
 
-			while (!this.finished(swap) && swap.retries < 15) {
+			while (!this.finished(swap) && swap.retries < 30) {
 				try {
 					logger.info(`In while-switch ${swap.sourceTxHash} with status: ${swap.status} ${swap.retries}`);
 					await this.tryProgressFulfill(swap);
 				} catch (err: any) {
 					logger.error(`error in main while for tx: ${swap.sourceTxHash} ${err}`);
-					let backoff = 500;
+					let backoff = 1000;
 					// switch (swap.retries) {
 					// 	case 1:
 					// 		backoff = 1_000;
@@ -209,7 +209,7 @@ export class Relayer {
 					// 	default:
 					// 		break;
 					// }
-					if (swap.retries > 6) {
+					if (swap.retries > 20) {
 						backoff = 1_500;
 					}
 					swap.retries++;
