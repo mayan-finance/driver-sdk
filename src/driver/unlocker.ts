@@ -264,24 +264,24 @@ export class Unlocker {
 				throw new Error(`Too many orderHashes might not fit into block...`);
 			}
 
-			let volumeStep = 30;
-			let desiredUnlockValue = 400;
-			// switch (sourceChainId) {
-			// 	case CHAIN_ID_ARBITRUM:
-			// 	case CHAIN_ID_BASE:
-			// 	case CHAIN_ID_UNICHAIN:
-			// 	case CHAIN_ID_OPTIMISM:
-			// 	case CHAIN_ID_POLYGON:
-			// 	case CHAIN_ID_BSC:
-			// 	case CHAIN_ID_AVAX:
-			// 		volumeStep = 2000;
-			// 		break;
-			// 	case CHAIN_ID_ETH:
-			// 		volumeStep = 16000;
-			// 		break;
-			// 	default:
-			// 		break;
-			// }
+			let volumeStep = 80;
+			let desiredUnlockValue = 640;
+			switch (sourceChainId) {
+				case CHAIN_ID_ARBITRUM:
+				case CHAIN_ID_BASE:
+				case CHAIN_ID_UNICHAIN:
+				case CHAIN_ID_OPTIMISM:
+				case CHAIN_ID_POLYGON:
+				case CHAIN_ID_BSC:
+				case CHAIN_ID_AVAX:
+					volumeStep = 50;
+					break;
+				case CHAIN_ID_ETH:
+					volumeStep = 200;
+					break;
+				default:
+					break;
+			}
 
 			let totalVolume = filteredOrders.reduce((acc, order) => acc + Number(order.volume), 0);
 			let volumeSteps = Math.ceil(totalVolume / volumeStep);
