@@ -254,7 +254,7 @@ export class Relayer {
 					getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
-				this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
+				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 1000 || auctionState.isClosed) {
 						return;
@@ -360,7 +360,7 @@ export class Relayer {
 					getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
-				this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
+				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 1000 || auctionState.isClosed) {
 						return;
