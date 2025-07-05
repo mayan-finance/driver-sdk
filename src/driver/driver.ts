@@ -208,6 +208,7 @@ export class DriverService {
 			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
 		});
+		logger.info(`[EXPENSES] ${swap.sourceTxHash}: ${expenses.fulfillAndUnlock}:${expenses.fulfillCost}:${expenses.unlockSource}`);
 		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
 		if (effectiveAmountIn < 0) {
