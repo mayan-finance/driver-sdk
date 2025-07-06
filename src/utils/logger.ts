@@ -39,6 +39,9 @@ class LogFileManager {
             // Rename current file to backup
             fs.renameSync(filename, backupName);
 
+            // Create a new empty file to ensure continuous logging
+            fs.writeFileSync(filename, '', { encoding: 'utf8' });
+
             // Keep only the most recent backup files
             this.cleanupOldBackups(dir, baseName, ext);
         } catch (error) {
