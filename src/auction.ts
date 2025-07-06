@@ -178,9 +178,9 @@ export class AuctionFulfillerConfig {
 			// continute anyway to bid min  amount out
 		}
 
-		let bidBpsMargin = 1; // 1.5 bps for swap
+		let bidBpsMargin = 1.3; // 1.5 bps for swap
 		if (swap.toToken.contract === driverToken.contract) {
-			bidBpsMargin = 0.8; // 1 bps if no swap is included
+			bidBpsMargin = 0.9; // 1 bps if no swap is included
 		} else if (!swap.toToken.pythUsdPriceId) {
 			bidBpsMargin = 45; // 50 bps if no pyth price id (probably meme coin,...)
 		}
