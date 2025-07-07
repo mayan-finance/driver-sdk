@@ -103,10 +103,10 @@ export async function giveErc20Allowance(
 	spender: string,
 	amount: bigint,
 	chainId: number,
-	networkFeeData: ethers.FeeData,
+	gasPrice: bigint,
 ): Promise<void> {
 	const contract = new ethers.Contract(tokenContract, erc20ApproveAbi, wallet);
-	const overrides = await getSuggestedOverrides(chainId, networkFeeData.gasPrice!);
+	const overrides = await getSuggestedOverrides(chainId, gasPrice);
 	const tx: ethers.TransactionResponse = await contract.approve(spender, amount, overrides);
 	const res = await tx.wait();
 	if (!res || res.status !== 1) {
