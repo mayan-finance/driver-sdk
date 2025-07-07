@@ -399,7 +399,7 @@ export class EvmFulfiller {
 		const tx = await this.evmProviders[targetChain].waitForTransaction(
 			fulfillTx.hash,
 			getTypicalBlocksToConfirm(targetChain),
-			12_000,
+			24_000,
 		);
 
 		if (!tx || tx.status !== 1) {
