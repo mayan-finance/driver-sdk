@@ -483,6 +483,14 @@ export class DriverService {
 			swap,
 			expenses,
 		);
+
+		const tBalanceCheckStart = Date.now();
+		while (Date.now() - tBalanceCheckStart < this.globalConfig.waitForRebalanceTransferIfNeededSeconds * 1000) {
+			if (await this.auctionFulfillerCfg.getTokenBalance(driverToken) >= fulfillAmount) {
+				break;
+			}
+			await delay(100);
+		}
 		if (await this.auctionFulfillerCfg.getTokenBalance(driverToken) < fulfillAmount) {
 			logger.error(`Not enough balance for fulfill ${swap.sourceTxHash}`);
 			throw new Error(`Not enough balance for fulfill ${swap.sourceTxHash}`);

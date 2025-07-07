@@ -45,4 +45,5 @@ export type GlobalConfig = {
 	feeParams: SwiftFeeParams;
 	isRebalancerEnabled: boolean;
 	minUsdcOrderAmount: number | undefined;
+	waitForRebalanceTransferIfNeededSeconds: number;
 };
