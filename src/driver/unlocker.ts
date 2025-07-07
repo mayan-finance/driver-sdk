@@ -563,9 +563,9 @@ export class Unlocker {
 		sequence: bigint;
 		txHash: string;
 	}> {
-		// const networkFeeData = await this.evmProviders[destChain].getFeeData();
-		const dstGasPrice = await this.evmProviders[destChain].send("eth_gasPrice", []);
-		const overrides = await getSuggestedOverrides(destChain, dstGasPrice);
+		const networkFeeData = await this.evmProviders[destChain].getFeeData();
+		// const dstGasPrice = await this.evmProviders[destChain].send("eth_gasPrice", []);
+		const overrides = await getSuggestedOverrides(destChain, networkFeeData.gasPrice!);
 		const tx: ethers.TransactionReceipt = await (
 			await this.walletsHelper.getWriteContract(destChain).postBatch(orderHashes, overrides)
 		).wait();
@@ -668,9 +668,9 @@ export class Unlocker {
 	): Promise<string> {
 		const swiftContract = this.walletsHelper.getWriteContract(sourceChain, false);
 
-		// const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
-		const srcGasPrice = await this.evmProviders[sourceChain].send("eth_gasPrice", []);
-		let overrides = await getSuggestedOverrides(sourceChain, srcGasPrice);
+		const networkFeeData = await this.evmProviders[sourceChain].getFeeData();
+		// const srcGasPrice = await this.evmProviders[sourceChain].send("eth_gasPrice", []);
+		let overrides = await getSuggestedOverrides(sourceChain, networkFeeData.gasPrice!);
 		let tx: ethers.TransactionResponse;
 		if (isBatch) {
 			tx = await swiftContract.unlockBatch(hexToUint8Array(signedVaa), overrides);

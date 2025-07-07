@@ -64,8 +64,8 @@ export class EvmFulfiller {
 			if (chainId === CHAIN_ID_SOLANA) {
 				continue;
 			}
-			// let networkFeeData = await this.evmProviders[chainId].getFeeData();
-			const gasPrice = await this.evmProviders[chainId].send("eth_gasPrice", []);
+			let networkFeeData = await this.evmProviders[chainId].getFeeData();
+			// const gasPrice = await this.evmProviders[chainId].send("eth_gasPrice", []);
 			let driverERC20Tokens = [this.tokenList.getNativeUsdc(chainId)];
 			if (chainId === CHAIN_ID_BSC) {
 				driverERC20Tokens = [this.tokenList.getNativeUsdt(chainId)];
@@ -94,7 +94,7 @@ export class EvmFulfiller {
 							this.contractsConfig.contracts[chainId],
 							ethers.MaxUint256,
 							chainId,
-							gasPrice,
+							networkFeeData.gasPrice!,
 						);
 						logger.info(`Allowance set for ${driverToken.contract} on chain ${chainId}`);
 					}
@@ -129,7 +129,7 @@ export class EvmFulfiller {
 							this.contractsConfig.evmFulfillHelpers[chainId],
 							ethers.MaxUint256,
 							chainId,
-							gasPrice,
+							networkFeeData.gasPrice!,
 						);
 						logger.info(`Helper Allowance set for ${driverToken.contract} on chain ${chainId}`);
 					}
@@ -229,8 +229,8 @@ export class EvmFulfiller {
 		postAuctionSignedVaa?: Uint8Array,
 	) {
 		const amountIn64 = ethers.parseUnits(availableAmountIn.toFixed(driverToken.decimals), driverToken.decimals);
-		// const freshGasPrice: bigint = (await this.evmProviders[targetChain].getFeeData()).gasPrice!;
-		const freshGasPrice = await this.evmProviders[targetChain].send("eth_gasPrice", []);
+		const freshGasPrice: bigint = (await this.evmProviders[targetChain].getFeeData()).gasPrice!;
+		// const freshGasPrice = await this.evmProviders[targetChain].send("eth_gasPrice", []);
 		const chosenGasPrice = freshGasPrice < dstGasPrice ? freshGasPrice : dstGasPrice;
 
 		const overrides = await getSuggestedOverrides(targetChain, chosenGasPrice);
@@ -523,8 +523,8 @@ export class EvmFulfiller {
 			throw new Error(`Not enough balance for and can not fullfill ${toToken.contract}`);
 		}
 
-		// const freshGasPrice: bigint = (await this.evmProviders[targetChain].getFeeData()).gasPrice!;
-		const freshGasPrice = await this.evmProviders[targetChain].send("eth_gasPrice", []);
+		const freshGasPrice: bigint = (await this.evmProviders[targetChain].getFeeData()).gasPrice!;
+		// const freshGasPrice = await this.evmProviders[targetChain].send("eth_gasPrice", []);
 		const chosenGasPrice = freshGasPrice < dstGasPrice ? freshGasPrice : dstGasPrice;
 
 		const overrides = await getSuggestedOverrides(targetChain, chosenGasPrice);

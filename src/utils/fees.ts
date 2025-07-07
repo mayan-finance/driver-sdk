@@ -93,16 +93,16 @@ export class FeeService {
 		const overallMultiplier = 1.05;
 		const isSingleUnlock = qr.toChainId === CHAIN_ID_ETH;
 
-		// const [srcFeeData, dstFeeData] = await Promise.all([
-		// 	qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
-		// 	qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
-		// ]);
-		// const srcGasPrice = srcFeeData?.gasPrice!;
-		// const dstGasPrice = dstFeeData?.gasPrice!;
-		const [srcGasPrice, dstGasPrice] = await Promise.all([
-			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].send("eth_gasPrice", []) : null,
-			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].send("eth_gasPrice", []) : null,
+		const [srcFeeData, dstFeeData] = await Promise.all([
+			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
+			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
 		]);
+		const srcGasPrice = srcFeeData?.gasPrice!;
+		const dstGasPrice = dstFeeData?.gasPrice!;
+		// const [srcGasPrice, dstGasPrice] = await Promise.all([
+		// 	qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].send("eth_gasPrice", []) : null,
+		// 	qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].send("eth_gasPrice", []) : null,
+		// ]);
 
 		let hasDestSwap = true;
 		if (
