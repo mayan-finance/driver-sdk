@@ -23,6 +23,8 @@ export async function getSuggestedOverrides(targetChain: number, chainGasPrice: 
 		} catch (err) {
 			logger.warn('failed to get gas price from polygon gas station', err);
 		}
+
+		overrides['gasLimit'] = 5000000;
 	} else if (targetChain === CHAIN_ID_BSC) {
 		overrides['gasPrice'] = chainGasPrice;
 	} else if (targetChain === CHAIN_ID_OPTIMISM) {
