@@ -3,6 +3,7 @@ import { ethers } from 'ethers6';
 import { abi as SwiftAbi } from '../abis/swift.abi';
 import {
 	CHAIN_ID_BSC,
+	CHAIN_ID_POLYGON,
 	CHAIN_ID_SOLANA,
 	ETH_CHAINS,
 	WORMHOLE_DECIMALS,
@@ -74,7 +75,7 @@ export class EvmFulfiller {
 				if (!driverToken) {
 					continue;
 				}
-				if (driverToken.supportsPermit) {
+				if (driverToken.supportsPermit && chainId !== CHAIN_ID_POLYGON) {
 					continue;
 				}
 				let getAndSet = async () => {
@@ -107,7 +108,7 @@ export class EvmFulfiller {
 				if (!driverToken) {
 					continue;
 				}
-				if (driverToken.supportsPermit) {
+				if (driverToken.supportsPermit && chainId !== CHAIN_ID_POLYGON) {
 					continue;
 				}
 				let getAndSetHelper = async () => {
