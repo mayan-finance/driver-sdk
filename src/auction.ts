@@ -201,7 +201,7 @@ export class AuctionFulfillerConfig {
 		const auctionState = await this.auctionListener.getAuctionState(swap.auctionStateAddr);
 		const lastBidFromAuctionListener = auctionState?.amountPromised;
 
-		if ((lastBidFromAuctionListener && normalizedBidAmount < lastBidFromAuctionListener) || (lastBid && normalizedBidAmount < lastBid)) {
+		if ((lastBidFromAuctionListener && normalizedBidAmount <= lastBidFromAuctionListener) || (lastBid && normalizedBidAmount <= lastBid)) {
 			this.cache.remove(`getEvmEquivalentOutput-${swap.sourceTxHash}`);
 			this.cache.remove(`getSolanaEquivalentOutput-${swap.sourceTxHash}`);
 			logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} is less than lastBid ${lastBid} for swap ${swap.sourceTxHash}`);
