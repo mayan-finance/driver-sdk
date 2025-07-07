@@ -36,11 +36,11 @@ class LogFileManager {
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const backupName = path.join(dir, `${baseName}.${timestamp}${ext}`);
 
-            // Rename current file to backup
-            fs.renameSync(filename, backupName);
+            // Copy current file to backup
+            fs.copyFileSync(filename, backupName);
 
-            // Create a new empty file to ensure continuous logging
-            fs.writeFileSync(filename, '', { encoding: 'utf8' });
+            // Make current file empty
+            fs.writeFileSync(filename, '');
 
             // Keep only the most recent backup files
             this.cleanupOldBackups(dir, baseName, ext);
