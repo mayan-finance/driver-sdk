@@ -157,7 +157,7 @@ export function getLogger(): Logger {
     return createLogger({
         level: process.env.LOG_LEVEL || 'info',
         format: combine(
-            sizeCheckFormat(),
+            // sizeCheckFormat(),
             colorize(),
             timestamp({
                 format: 'YYYY-MM-DD HH:mm:ss.SSS'

@@ -23,8 +23,6 @@ export async function getSuggestedOverrides(targetChain: number, chainGasPrice: 
 		} catch (err) {
 			logger.warn('failed to get gas price from polygon gas station', err);
 		}
-
-		overrides['gasLimit'] = 5000000;
 	} else if (targetChain === CHAIN_ID_BSC) {
 		overrides['gasPrice'] = chainGasPrice;
 	} else if (targetChain === CHAIN_ID_OPTIMISM) {
@@ -39,7 +37,7 @@ export async function getSuggestedOverrides(targetChain: number, chainGasPrice: 
 export function getTypicalBlocksToConfirm(targetChain: number): number {
 	switch (targetChain) {
 		case CHAIN_ID_POLYGON:
-			return 16;
+			return 4;
 		case CHAIN_ID_BSC:
 			return 10;
 		case CHAIN_ID_OPTIMISM:
@@ -47,7 +45,7 @@ export function getTypicalBlocksToConfirm(targetChain: number): number {
 		case CHAIN_ID_AVAX:
 			return 1;
 		case CHAIN_ID_ARBITRUM:
-			return 40;
+			return 10;
 		case CHAIN_ID_BASE:
 		case CHAIN_ID_UNICHAIN:
 			return 8;
