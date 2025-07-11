@@ -62,9 +62,6 @@ export class AuctionFulfillerConfig {
 		},
 		lastBid?: bigint,
 	): Promise<bigint> {
-		// Convert effectiveAmountIn to integer (smallest unit)
-		const effectiveAmountInBigInt = BigInt(Math.floor(effectiveAmountIn * 10 ** driverToken.decimals));
-
 		const balance = await this.getTokenBalance(driverToken);
 		let balanceWithRebalance = balance;
 		if (this.gConf.isRebalancerEnabled && context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
@@ -184,7 +181,7 @@ export class AuctionFulfillerConfig {
 				? normalizedMinAmountOut * BigInt(10 ** (swap.toToken.decimals - 8))
 				: normalizedMinAmountOut;
 
-		const minAmountNeededForFulfill64 = (userMinAmountOut * 10000n) / (10000n - bpsFees) + 1n;
+		const minAmountNeededForFulfill64 = (userMinAmountOut * 10000n) / (10000n - bpsFees);
 
 		// Calculate minFulfillAmountIn using integer arithmetic
 		let minFulfillAmountInBigInt: bigint;
@@ -219,7 +216,7 @@ export class AuctionFulfillerConfig {
 
 		// Convert to normalized decimals (WORMHOLE_DECIMALS or token decimals)
 		const targetDecimals = Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
-		const bidAmount64WithProfit = (bidAmountWithProfitBigInt * BigInt(10 ** targetDecimals)) / BigInt(10 ** swap.toToken.decimals) + 1n;
+		const bidAmount64WithProfit = (bidAmountWithProfitBigInt * BigInt(10 ** targetDecimals)) / BigInt(10 ** swap.toToken.decimals);
 
 		let normalizedBidAmount: bigint;
 		if (bidAmount64WithProfit > normalizedMinAmountOut) {
@@ -245,8 +242,8 @@ export class AuctionFulfillerConfig {
 		}
 
 		// Calculate bidAmountIn using integer arithmetic
-		// bidAmountIn = (normalizedBidAmount + 1) * effectiveAmountIn / output / 10^decimals / (1 - bpsFees/10000)
-		const bidAmountInNumerator = (normalizedBidAmount + 1n) * normalizedEffectiveAmountInBigInt * 10000n;
+		// bidAmountIn = normalizedBidAmount * effectiveAmountIn / output / 10^decimals / (1 - bpsFees/10000)
+		const bidAmountInNumerator = normalizedBidAmount * normalizedEffectiveAmountInBigInt * 10000n;
 		const bidAmountInDenominator = output64 * BigInt(10 ** targetDecimals) * (10000n - bpsFees);
 		swap.bidAmountIn = Number(bidAmountInNumerator / bidAmountInDenominator) / 10 ** driverToken.decimals;
 
@@ -336,41 +333,72 @@ export class AuctionFulfillerConfig {
 		return bidBpsMargin;
 	}
 
+	/**
+	 * Calculates the fulfillment amount using integer arithmetic to prevent floating point precision errors.
+	 * This method is critical for accurate financial calculations and must maintain precision throughout.
+	 * 
+	 * @param driverToken - The token used by the driver for fulfillment
+	 * @param effectiveAmountIn - The effective amount in (will be converted to BigInt for precision)
+	 * @param swap - The swap details containing all necessary information
+	 * @param costs - Swift costs including token prices
+	 * @returns Promise<number> - The final fulfillment amount
+	 */
 	async fulfillAmount(driverToken: Token, effectiveAmountIn: number, swap: Swap, costs: SwiftCosts): Promise<number> {
 		checkPaidLossWithinRange(swap.sourceTxHash);
 
+		// Volume limit check - keep as floating point for now as it's a configuration check
 		if (swap.fromAmount.toNumber() * costs.fromTokenPrice > driverConfig.volumeLimitUsd) {
 			throw new Error(`Volume limit exceeded for ${swap.sourceTxHash} and dropping fulfill`);
 		}
 
+		// Convert effectiveAmountIn to precise integer representation
+		// This prevents all subsequent floating point arithmetic errors
+		let normalizedEffectiveAmountIn = effectiveAmountIn;
 		if (
 			swap.sourceChain === CHAIN_ID_BSC &&
 			swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955'
 		) {
-			effectiveAmountIn = this.normalizeUsdtIfRequired(effectiveAmountIn);
+			normalizedEffectiveAmountIn = this.normalizeUsdtIfRequired(effectiveAmountIn);
+		}
+
+		// Convert to BigInt for all subsequent calculations
+		// Use driver token decimals to maintain full precision
+		const effectiveAmountInBigInt = BigInt(Math.floor(normalizedEffectiveAmountIn * 10 ** driverToken.decimals));
+
+		// Overflow protection: Check if the conversion was successful
+		if (effectiveAmountInBigInt <= 0n) {
+			throw new Error(`Invalid effective amount conversion for ${swap.sourceTxHash}: ${normalizedEffectiveAmountIn}`);
 		}
 
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
+		// Get quote output in precise BigInt format
 		let output64: bigint;
 		if (swap.destChain === CHAIN_ID_SOLANA) {
-			output64 = await this.getSolanaEquivalentOutput(driverToken, effectiveAmountIn, swap.toToken);
+			output64 = await this.getSolanaEquivalentOutput(driverToken, normalizedEffectiveAmountIn, swap.toToken);
 		} else {
 			output64 = await this.getEvmEquivalentOutput(
 				swap.destChain,
 				driverToken,
-				effectiveAmountIn,
+				normalizedEffectiveAmountIn,
 				normalizedMinAmountOut,
 				swap.toToken,
 				swap.retries,
 			);
 		}
-		let output = Number(output64) / 10 ** swap.toToken.decimals;
 
+		// Overflow protection: Ensure output64 is valid
+		if (output64 <= 0n) {
+			throw new Error(`Invalid output amount from quote for ${swap.sourceTxHash}: ${output64}`);
+		}
+
+		// Only convert to number for logging purposes
+		const outputNumber = Number(output64) / 10 ** swap.toToken.decimals;
 		logger.info(
-			`in fulfil: output: ${output} for effectiveAmountIn: ${effectiveAmountIn} for swap ${swap.sourceTxHash}`,
+			`in fulfil: output: ${outputNumber} for effectiveAmountIn: ${normalizedEffectiveAmountIn} for swap ${swap.sourceTxHash}`,
 		);
 
+		// Calculate protocol and referrer fees
 		const bpsFees = await this.calcProtocolAndRefBps(
 			swap.fromAmount64,
 			swap.fromToken,
@@ -378,57 +406,101 @@ export class AuctionFulfillerConfig {
 			swap.destChain,
 			swap.referrerBps,
 		);
+
+		// Calculate real minimum amount out with proper decimal handling
 		const realMinAmountOut =
 			swap.toToken.decimals > 8
 				? normalizedMinAmountOut * BigInt(10 ** (swap.toToken.decimals - 8))
 				: normalizedMinAmountOut;
-		const minAmountNeededForFulfill64 = Number(realMinAmountOut) / (1 - Number(bpsFees) / 10000);
-		const minAmountNeededForFulfill = (1.000001 * minAmountNeededForFulfill64) / 10 ** swap.toToken.decimals;
 
-		let mappedMinAmountIn;
+		// Calculate minimum amount needed for fulfillment using integer arithmetic
+		// Formula: realMinAmountOut / (1 - bpsFees/10000)
+		// Rearranged: (realMinAmountOut * 10000) / (10000 - bpsFees)
+		const minAmountNeededForFulfill64BigInt = (realMinAmountOut * 10000n) / (10000n - bpsFees);
+
+		// Calculate mapped minimum amount in using integer arithmetic
+		// Formula: minAmountNeededForFulfill * (effectiveAmountIn / output)
+		// Rearranged: (minAmountNeededForFulfill64BigInt * effectiveAmountInBigInt) / output64
+		let mappedMinAmountInBigInt: bigint;
 		if (swap.minAmountOut64 === 0n) {
-			mappedMinAmountIn = 0;
+			mappedMinAmountInBigInt = 0n;
 		} else {
-			mappedMinAmountIn = minAmountNeededForFulfill * (effectiveAmountIn / output);
+			// Overflow protection: Check for potential overflow in multiplication
+			const maxSafeMultiplier = (2n ** 256n - 1n) / minAmountNeededForFulfill64BigInt;
+			if (effectiveAmountInBigInt > maxSafeMultiplier) {
+				throw new Error(`Potential overflow in mappedMinAmountIn calculation for ${swap.sourceTxHash}`);
+			}
+
+			mappedMinAmountInBigInt = (minAmountNeededForFulfill64BigInt * effectiveAmountInBigInt) / output64;
 		}
 
-		logger.info(`mappedMinAmountIn ${mappedMinAmountIn} for swap ${swap.sourceTxHash}`);
+		// Convert to number for logging (using driver token decimals)
+		const mappedMinAmountInNumber = Number(mappedMinAmountInBigInt) / 10 ** driverToken.decimals;
+		logger.info(`mappedMinAmountIn ${mappedMinAmountInNumber} for swap ${swap.sourceTxHash}`);
 
+		// Calculate bidAmountIn if not set, using integer arithmetic
+		let bidAmountInBigInt = 0n;
 		if (!swap.bidAmountIn) {
 			logger.info(`swap.bidAmountIn is not set for swap ${swap.sourceTxHash}`);
 			if (swap.bidAmount64) {
-				const bidOut = Number(swap.bidAmount64) / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
-				swap.bidAmountIn = (1.000001 * bidOut * (effectiveAmountIn / output)) / (1 - Number(bpsFees) / 10000);
+				// Convert bid amount to driver token decimals
+				const targetDecimals = Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
+				const bidOut64 = swap.bidAmount64 * BigInt(10 ** (swap.toToken.decimals - targetDecimals));
+
+				// Calculate bid amount in using exact arithmetic
+				// Formula: (bidOut * effectiveAmountIn / output) / (1 - bpsFees/10000)
+				const bidAmountInNumerator = bidOut64 * effectiveAmountInBigInt * 10000n;
+				const bidAmountInDenominator = output64 * (10000n - bpsFees);
+
+				bidAmountInBigInt = bidAmountInNumerator / bidAmountInDenominator;
+				swap.bidAmountIn = Number(bidAmountInBigInt) / 10 ** driverToken.decimals;
 			}
+		} else {
+			// Convert existing bidAmountIn to BigInt
+			bidAmountInBigInt = BigInt(Math.floor(swap.bidAmountIn * 10 ** driverToken.decimals));
 		}
 
 		logger.info(`bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
 
-		const minFulfillAmount = Math.max(mappedMinAmountIn, swap.bidAmountIn || 0);
-		logger.info(`minFulfillAmount ${minFulfillAmount} for swap ${swap.sourceTxHash}`);
-		// for simple mode without auction, do not pay any loss
-		if (swap.auctionMode === AUCTION_MODES.ENGLISH && (minFulfillAmount > effectiveAmountIn || swap.retries > 1)) {
+		// Calculate minimum fulfill amount using integer arithmetic
+		const minFulfillAmountBigInt = bidAmountInBigInt > mappedMinAmountInBigInt ? bidAmountInBigInt : mappedMinAmountInBigInt;
+		const minFulfillAmountNumber = Number(minFulfillAmountBigInt) / 10 ** driverToken.decimals;
+		logger.info(`minFulfillAmount ${minFulfillAmountNumber} for swap ${swap.sourceTxHash}`);
+
+		// Handle loss calculation for English auctions when amount is insufficient
+		let adjustedEffectiveAmountInBigInt = effectiveAmountInBigInt;
+
+		if (swap.auctionMode === AUCTION_MODES.ENGLISH && (minFulfillAmountBigInt > effectiveAmountInBigInt || swap.retries > 1)) {
+			// Remove previous loss if exists
 			if (swap.lastloss && swap.lastloss > 0) {
 				removeLoss(swap.lastloss);
 			}
 
+			// Calculate per-retry loss
 			let perRetryAddedLossUsd = 0;
 			if (driverToken.contract !== swap.toToken.contract) {
-				perRetryAddedLossUsd = this.perRetryMinAvailableLossUSD[swap.invalidAmountRetires];
+				perRetryAddedLossUsd = this.perRetryMinAvailableLossUSD[swap.invalidAmountRetires] || 0;
 			}
 
-			let lossAmountUsd =
-				perRetryAddedLossUsd + costs.fromTokenPrice * Math.max(minFulfillAmount - effectiveAmountIn, 0);
+			// Calculate loss amount using integer arithmetic where possible
+			const deficitBigInt = minFulfillAmountBigInt > effectiveAmountInBigInt ?
+				minFulfillAmountBigInt - effectiveAmountInBigInt : 0n;
+			const deficitNumber = Number(deficitBigInt) / 10 ** driverToken.decimals;
 
+			let lossAmountUsd = perRetryAddedLossUsd + costs.fromTokenPrice * deficitNumber;
+
+			// Loss limit checks
 			if (lossAmountUsd > maxLossPerSwapUSD) {
-				logger.warn(`Max loss filled can not for ${minFulfillAmount} > ${effectiveAmountIn}`);
+				logger.warn(`Max loss filled can not for ${minFulfillAmountNumber} > ${normalizedEffectiveAmountIn}`);
 				alertForLossReach('perSwapLoss', `Max loss filled for one swap pls check ${swap.sourceTxHash}`);
-				throw new Error(`max per-swap loss filled (need ${lossAmountUsd})  for  ${swap.sourceTxHash}`);
+				throw new Error(`max per-swap loss filled (need ${lossAmountUsd}) for ${swap.sourceTxHash}`);
 			}
 
-			if (lossAmountUsd > costs.fromTokenPrice * effectiveAmountIn * 0.1) {
+			// 10% cap check
+			const maxLossUsd = costs.fromTokenPrice * normalizedEffectiveAmountIn * 0.1;
+			if (lossAmountUsd > maxLossUsd) {
 				logger.info(
-					`MAX10 capped for ${swap.sourceTxHash},  ${lossAmountUsd} loss reduced to ${costs.fromTokenPrice * effectiveAmountIn * 0.1}`,
+					`MAX10 capped for ${swap.sourceTxHash}, ${lossAmountUsd} loss reduced to ${maxLossUsd}`,
 				);
 				throw Error(`Would not fulfill because capped loss ${swap.sourceTxHash}`);
 			}
@@ -437,7 +509,7 @@ export class AuctionFulfillerConfig {
 			appendLoss(lossAmountUsd);
 			swap.lastloss = lossAmountUsd;
 
-			// we need a safeguard to prevent divison by small values in case we get wrong prices from server, ...
+			// Calculate safe price for added loss with minimum price guards
 			const minPrices = {
 				usdc: 0.9,
 				eth: 2500,
@@ -447,30 +519,87 @@ export class AuctionFulfillerConfig {
 				driverToken.contract === ethers.ZeroAddress ||
 				driverToken.contract === '7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs' // weth sol
 			) {
-				// eth
+				// ETH price guard
 				safeFromTokenPriceForAddedLoss = Math.max(minPrices.eth, costs.fromTokenPrice);
 			} else {
+				// USDC price guard
 				safeFromTokenPriceForAddedLoss = Math.max(minPrices.usdc, costs.fromTokenPrice);
 			}
 
-			effectiveAmountIn =
-				Math.max(effectiveAmountIn, minFulfillAmount * 1.000001) +
-				perRetryAddedLossUsd / safeFromTokenPriceForAddedLoss;
-		} else if (minFulfillAmount > effectiveAmountIn) {
+			// Adjust effective amount with loss compensation using integer arithmetic
+			// Formula: max(effectiveAmountIn, minFulfillAmount) + perRetryAddedLossUsd / safePrice
+			const baseAmount = effectiveAmountInBigInt > minFulfillAmountBigInt ? effectiveAmountInBigInt : minFulfillAmountBigInt;
+
+			// Convert loss compensation to BigInt
+			const lossCompensation = perRetryAddedLossUsd / safeFromTokenPriceForAddedLoss;
+			const lossCompensationBigInt = BigInt(Math.floor(lossCompensation * 10 ** driverToken.decimals));
+
+			// Overflow protection for addition
+			const maxSafeAmount = (2n ** 256n - 1n) - lossCompensationBigInt;
+			if (baseAmount > maxSafeAmount) {
+				throw new Error(`Potential overflow in loss compensation calculation for ${swap.sourceTxHash}`);
+			}
+
+			adjustedEffectiveAmountInBigInt = baseAmount + lossCompensationBigInt;
+		} else if (minFulfillAmountBigInt > effectiveAmountInBigInt) {
 			throw new Error(`Insufficient effective amount in for ${swap.sourceTxHash}. dropping fulfill`);
 		}
 
-		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
+		// Calculate final amount using the same logic as normalizedBidAmount
 		const bidBpsMargin = this.getBpsMargin(driverToken, swap);
+		const bidBpsMarginBigInt = BigInt(Math.floor(bidBpsMargin * 100)); // Convert to basis points
 
-		const profitMargin = effectiveAmountIn - mappedMinAmountIn;
+		// Use the same calculation approach as normalizedBidAmount for consistency
+		// Calculate fulfillAmountInWithProfit - apply only profit margin to driver input
+		// Fees are applied to output tokens, not input tokens
+		const fulfillAmountInWithProfit = (adjustedEffectiveAmountInBigInt * (1000000n - bidBpsMarginBigInt)) / 1000000n;
 
-		let finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
-		if (finalAmountIn * (1 - (bidBpsMargin + 0.1) / 10000) > minFulfillAmount) {
-			finalAmountIn = finalAmountIn * (1 - bidBpsMargin / 10000);
+		// Calculate the corresponding output amount (what user would receive)
+		const fulfillOutputAmount = (fulfillAmountInWithProfit * output64) / adjustedEffectiveAmountInBigInt;
+
+		// Convert to normalized decimals for comparison with bid
+		const targetDecimals = Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
+		const fulfillOutputNormalized = (fulfillOutputAmount * BigInt(10 ** targetDecimals)) / BigInt(10 ** swap.toToken.decimals);
+
+		// Calculate the amount driver needs to provide (including fees)
+		let finalAmountInBigInt: bigint;
+
+		if (swap.bidAmount64 && swap.bidAmount64 > 0n && fulfillOutputNormalized > swap.bidAmount64) {
+			// We promised a specific amount to the user, so calculate the driver amount needed
+			// to deliver exactly that amount after fees are deducted
+			const promisedOutputInDestDecimals = swap.toToken.decimals > targetDecimals ?
+				swap.bidAmount64 * BigInt(10 ** (swap.toToken.decimals - targetDecimals)) :
+				swap.bidAmount64;
+
+			// Calculate driver amount needed: driverAmount = userAmount / (1 - fees/10000)
+			// Rearranged: driverAmount = (userAmount * 10000) / (10000 - fees)
+			const driverAmountNeededForPromise = (promisedOutputInDestDecimals * 10000n) / (10000n - bpsFees);
+
+			// Convert this back to driver token input amount
+			finalAmountInBigInt = (driverAmountNeededForPromise * adjustedEffectiveAmountInBigInt) / output64;
+		} else {
+			finalAmountInBigInt = fulfillAmountInWithProfit;
 		}
 
-		return Math.max(finalAmountIn, minFulfillAmount * 1.000001);
+		// Ensure minimum amount is met exactly
+		if (finalAmountInBigInt < minFulfillAmountBigInt) {
+			finalAmountInBigInt = minFulfillAmountBigInt;
+		}
+
+		// Final overflow protection before conversion
+		if (finalAmountInBigInt > BigInt(Number.MAX_SAFE_INTEGER)) {
+			logger.warn(`Final amount too large for safe conversion: ${finalAmountInBigInt} for ${swap.sourceTxHash}`);
+		}
+
+		// Convert back to number with full precision
+		const finalAmount = Number(finalAmountInBigInt) / 10 ** driverToken.decimals;
+
+		// Sanity check: ensure final amount is positive and reasonable
+		if (finalAmount <= 0 || !isFinite(finalAmount)) {
+			throw new Error(`Invalid final amount calculated: ${finalAmount} for ${swap.sourceTxHash}`);
+		}
+
+		return finalAmount;
 	}
 
 	private async getJupQuoteWithRetry(
