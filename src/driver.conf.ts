@@ -14,7 +14,7 @@ export const driverConfig = {
 	maxPendingOrders: 3, // do not bid on anything else if you already have 3 pending orders. Try fulfilling them first
 	bidAggressionPercent: 0, // 0% above minamout out
 	fulfillAggressionPercent: 100, // take 0% of approximated available profit
-	volumeLimitUsd: 5000, // 5k USD
+	volumeLimitUsd: 15000, // 15k USD
 	acceptedInputChains: new Set([
 		// CHAIN_ID_BSC,
 		CHAIN_ID_AVAX,
