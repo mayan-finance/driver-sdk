@@ -178,12 +178,7 @@ export class AuctionFulfillerConfig {
 			// continute anyway to bid min  amount out
 		}
 
-		let bidBpsMargin = 1.3; // 1.5 bps for swap
-		if (swap.toToken.contract === driverToken.contract) {
-			bidBpsMargin = 0.9; // 1 bps if no swap is included
-		} else if (!swap.toToken.pythUsdPriceId) {
-			bidBpsMargin = 45; // 50 bps if no pyth price id (probably meme coin,...)
-		}
+		const bidBpsMargin = this.getBpsMargin(driverToken, swap);
 		const fulfillAmountInWithProfit =
 			(1 - bidBpsMargin / 10000) * effectiveAmountIn * (1 - Number(bpsFees) / 10000);
 		const bidAmountWithProfit = (fulfillAmountInWithProfit * Number(output)) / effectiveAmountIn;
@@ -297,6 +292,16 @@ export class AuctionFulfillerConfig {
 			return effectiveAmountIn * 0.999 * safeUsdtToUsdc;
 		}
 		return effectiveAmountIn / 1.002;
+	}
+
+	private getBpsMargin(driverToken: Token, swap: Swap): number {
+		let bidBpsMargin = 1.3; // 1.5 bps for swap
+		if (swap.toToken.contract === driverToken.contract) {
+			bidBpsMargin = 0.9; // 1 bps if no swap is included
+		} else if (!swap.toToken.pythUsdPriceId) {
+			bidBpsMargin = 45; // 50 bps if no pyth price id (probably meme coin,...)
+		}
+		return bidBpsMargin;
 	}
 
 	async fulfillAmount(driverToken: Token, effectiveAmountIn: number, swap: Swap, costs: SwiftCosts): Promise<number> {
@@ -424,12 +429,13 @@ export class AuctionFulfillerConfig {
 		}
 
 		const aggressionPercent = this.fulfillAggressionPercent; // 0 - 100
+		const bidBpsMargin = this.getBpsMargin(driverToken, swap);
 
 		const profitMargin = effectiveAmountIn - mappedMinAmountIn;
 
 		let finalAmountIn = mappedMinAmountIn + (profitMargin * aggressionPercent) / 100;
-		if (finalAmountIn * (1 - 3.1 / 10000) > minFulfillAmount) {
-			finalAmountIn = finalAmountIn * (1 - 3 / 10000);
+		if (finalAmountIn * (1 - (bidBpsMargin + 0.1) / 10000) > minFulfillAmount) {
+			finalAmountIn = finalAmountIn * (1 - bidBpsMargin / 10000);
 		}
 
 		return Math.max(finalAmountIn, minFulfillAmount * 1.000001);
