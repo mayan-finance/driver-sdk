@@ -198,7 +198,7 @@ export class SolanaMultiTxSender {
 		return trxHash;
 	}
 
-	private async createOptimizedVersionedTransaction(
+	async createOptimizedVersionedTransaction(
 		instructions: TransactionInstruction[],
 		signers: Signer[],
 		lookupTables: AddressLookupTableAccount[],

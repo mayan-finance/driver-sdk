@@ -18,6 +18,7 @@ import { Swap } from '../swap.dto';
 import { tryNativeToUint8Array } from '../utils/buffer';
 import { FeeService } from '../utils/fees';
 import logger from '../utils/logger';
+import { binary_to_base58 } from '../utils/base58';
 import { SolanaMultiTxSender } from '../utils/solana-trx';
 import { DB_PATH, insertTransactionLog } from '../utils/sqlite3';
 import { AUCTION_MODES, getAuctionState } from '../utils/state-parser';
@@ -270,17 +271,187 @@ export class DriverService {
 		let instructions = [bidIx];
 		let signers = [this.walletConfig.solana];
 
-		logger.info(`Sending bid transaction for ${swap.sourceTxHash}`);
-		const hash = await this.solanaSender.createAndSendOptimizedTransaction(
+		// Store auction state before bidding for comparison
+		const stateBefore = await this.auctionFulfillerCfg.auctionListener?.getAuctionState(swap.auctionStateAddr);
+		const previousAmount = stateBefore?.amountPromised || 0n;
+
+		// Create and sign transaction to calculate hash upfront
+		const { trx } = await this.solanaSender.createOptimizedVersionedTransaction(
 			instructions,
 			signers,
 			[],
-			this.rpcConfig.solana.sendCount,
 			true,
 			undefined,
 			70_000,
 		);
-		logger.info(`Sent bid transaction for ${swap.sourceTxHash} with ${hash}`);
+
+		const rawTrx = trx.serialize();
+		// Calculate hash from signed transaction (before sending)
+		const calculatedHash = trx.signatures[0] ? binary_to_base58(trx.signatures[0]) : '';
+
+		logger.info(`Prepared bid transaction hash: ${calculatedHash} for ${swap.sourceTxHash} - Previous amount: ${previousAmount}, Bidding: ${normalizedBidAmount}`);
+
+		// Race between transaction confirmation and auction events
+		await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, calculatedHash, rawTrx, previousAmount);
+	}
+
+	/**
+	 * Send transaction and race between transaction confirmation and auction events
+	 */
+	private async sendTransactionAndWaitForEvents(
+		swap: Swap,
+		expectedBidAmount: bigint,
+		txHash: string,
+		rawTrx: Buffer | Uint8Array,
+		previousAmount: bigint
+	): Promise<void> {
+		// Start background transaction sending and monitoring
+		const txConfirmationPromise = this.sendAndMonitorTransaction(rawTrx, txHash, swap.sourceTxHash);
+
+		// Start auction listener monitoring
+		const auctionEventPromise = this.waitForBidEvent(swap, expectedBidAmount, txHash, previousAmount);
+
+		// Race between the two - whoever completes first wins
+		try {
+			const result = await Promise.race([
+				txConfirmationPromise.then(() => ({ source: 'transaction-confirmation', hash: txHash })),
+				auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
+			]);
+
+			logger.info(`[BidRace] ✅ Bid completed via ${result.source} for ${swap.sourceTxHash} with hash: ${txHash}`);
+		} catch (error: any) {
+			logger.error(`[BidRace] ❌ Bid failed for ${swap.sourceTxHash}: ${error.message}`);
+			throw error;
+		}
+	}
+
+	/**
+	 * Send transaction and monitor its confirmation status
+	 */
+	private async sendAndMonitorTransaction(
+		rawTrx: Buffer | Uint8Array,
+		expectedHash: string,
+		sourceTxHash: string
+	): Promise<void> {
+		const timeout = 59_000; // 59 seconds timeout
+		const pollInterval = 900; // Check every 900ms
+		const startTime = Date.now();
+
+		// Send transaction multiple times to ensure it gets through
+		const sendPromises: Promise<void>[] = [];
+		for (let i = 0; i < this.rpcConfig.solana.sendCount; i++) {
+			sendPromises.push(
+				this.solanaConnection.sendRawTransaction(rawTrx, { skipPreflight: true })
+					.then(() => { /* fire and forget */ })
+					.catch(() => { /* ignore send errors */ })
+			);
+			// Stagger sends slightly
+			if (i < this.rpcConfig.solana.sendCount - 1) {
+				await new Promise(resolve => setTimeout(resolve, 100));
+			}
+		}
+
+		// Monitor transaction status
+		while (Date.now() - startTime < timeout) {
+			try {
+				const sigStatuses = await this.solanaConnection.getSignatureStatuses([expectedHash]);
+				const trxStatus = sigStatuses && sigStatuses.value[0];
+
+				if (trxStatus) {
+					if (trxStatus.err) {
+						throw new Error(`[TxMonitor] Transaction ${expectedHash} failed: ${trxStatus.err}`);
+					} else if (trxStatus.confirmationStatus === 'confirmed' || trxStatus.confirmationStatus === 'finalized') {
+						logger.info(`[TxMonitor] ✅ Transaction confirmed for ${sourceTxHash}: ${expectedHash}`);
+						return;
+					}
+				}
+
+				await new Promise(resolve => setTimeout(resolve, pollInterval));
+			} catch (error: any) {
+				logger.warn(`[TxMonitor] Error checking transaction status for ${sourceTxHash}: ${error.message}`);
+				await new Promise(resolve => setTimeout(resolve, pollInterval));
+			}
+		}
+
+		throw new Error(`[TxMonitor] Transaction confirmation timeout for ${sourceTxHash}: ${expectedHash}`);
+	}
+
+	/**
+	 * Wait for the auction listener to process our bid event
+	 * @param swap The swap being bid on
+	 * @param expectedBidAmount The amount we bid
+	 * @param txHash The transaction hash of our bid
+	 * @param previousAmount The previous highest bid amount
+	 */
+	private async waitForBidEvent(
+		swap: Swap,
+		expectedBidAmount: bigint,
+		txHash: string,
+		previousAmount: bigint
+	): Promise<void> {
+		const timeout = 10_000; // 10 seconds timeout
+		const pollInterval = 100; // Check every 100ms
+		const startTime = Date.now();
+		const driverAddress = this.walletConfig.solana.publicKey.toString();
+		const auctionListener = this.auctionFulfillerCfg.auctionListener;
+
+		if (!auctionListener) {
+			logger.warn(`[BidEvent] No auction listener available for ${swap.sourceTxHash}`);
+			return;
+		}
+
+		logger.debug(`[BidEvent] Waiting for auction listener to process bid for ${swap.sourceTxHash}, expected amount: ${expectedBidAmount}`);
+
+		while (Date.now() - startTime < timeout) {
+			try {
+				const auctionState = await auctionListener.getAuctionState(swap.auctionStateAddr, false);
+
+				if (auctionState) {
+					// Check if our bid was processed
+					if (auctionState.amountPromised >= expectedBidAmount &&
+						auctionState.winner === driverAddress &&
+						auctionState.signature === txHash) {
+						logger.info(`[BidEvent] ✅ Bid successfully processed for ${swap.sourceTxHash} - Amount: ${auctionState.amountPromised}, Winner: ${auctionState.winner.slice(0, 8)}...`);
+						return;
+					}
+
+					// Check if someone else outbid us
+					if (auctionState.amountPromised > expectedBidAmount &&
+						auctionState.winner !== driverAddress) {
+						logger.info(`[BidEvent] ⚠️ Outbid detected for ${swap.sourceTxHash} - Our bid: ${expectedBidAmount}, Current: ${auctionState.amountPromised}, Winner: ${auctionState.winner.slice(0, 8)}...`);
+						return;
+					}
+
+					// Check if auction was closed
+					if (auctionState.isClosed) {
+						logger.info(`[BidEvent] 🔒 Auction closed for ${swap.sourceTxHash} - Final amount: ${auctionState.amountPromised}, Winner: ${auctionState.winner.slice(0, 8)}...`);
+						return;
+					}
+
+					// Log progress if we're still waiting
+					if (auctionState.amountPromised > previousAmount) {
+						logger.debug(`[BidEvent] Progress detected for ${swap.sourceTxHash} - Amount updated to: ${auctionState.amountPromised}, Winner: ${auctionState.winner.slice(0, 8)}...`);
+					}
+				}
+
+				await new Promise(resolve => setTimeout(resolve, pollInterval));
+			} catch (error: any) {
+				logger.warn(`[BidEvent] Error checking auction state for ${swap.sourceTxHash}: ${error.message}`);
+				await new Promise(resolve => setTimeout(resolve, pollInterval));
+			}
+		}
+
+		// Timeout reached - log final state
+		try {
+			const finalState = await auctionListener.getAuctionState(swap.auctionStateAddr, true);
+			if (finalState) {
+				logger.warn(`[BidEvent] ⏰ Timeout waiting for bid event ${swap.sourceTxHash} - Final state: Amount: ${finalState.amountPromised}, Winner: ${finalState.winner.slice(0, 8)}..., Closed: ${finalState.isClosed}`);
+			} else {
+				logger.warn(`[BidEvent] ⏰ Timeout waiting for bid event ${swap.sourceTxHash} - No auction state found`);
+			}
+		} catch (error: any) {
+			logger.warn(`[BidEvent] ⏰ Timeout waiting for bid event ${swap.sourceTxHash} - Error getting final state: ${error.message}`);
+		}
 	}
 
 	async registerOrder(swap: Swap) {

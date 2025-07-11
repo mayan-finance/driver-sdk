@@ -48,7 +48,7 @@ export class AuctionFulfillerConfig {
 		private readonly swapRouters: SwapRouters,
 		private readonly tokenList: TokenList,
 		private readonly rebalancer: Rebalancer,
-		private readonly auctionListener: AuctionListener,
+		public readonly auctionListener: AuctionListener,
 	) { }
 
 	async normalizedBidAmount(
