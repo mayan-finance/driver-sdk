@@ -6,9 +6,9 @@ const filePath = './loss.json';
 export const maxLossPerSwapUSD = 10;
 export const maxTotalLossUSDPerDay = 100;
 
-const maxPerTenMins = 10;
-const maxPerHour = 50;
-const maxPerDay = 100;
+const maxPerTenMins = 30;
+const maxPerHour = 70;
+const maxPerDay = 150;
 
 export const paidLosses = {
 	TEN_MINS: 0,
