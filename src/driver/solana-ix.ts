@@ -191,6 +191,21 @@ export class NewSolanaIxHelper {
 			.instruction();
 	}
 
+	async getOverrideBidIx(
+		driver: PublicKey,
+		auctionState: PublicKey,
+		swap: Swap,
+		fromTokenDecimals: number,
+	): Promise<TransactionInstruction> {
+		return this.auctionProgram.methods
+			.overrideBid(this.createOrderParams(swap, fromTokenDecimals))
+			.accounts({
+				auctionState,
+				driver,
+			})
+			.instruction();
+	}
+
 	async getBidIx(
 		driver: PublicKey,
 		auctionState: PublicKey,

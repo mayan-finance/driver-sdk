@@ -234,6 +234,29 @@ export type SwiftAuction = {
 			];
 			args: [];
 		},
+		{
+			name: 'overrideBid';
+			accounts: [
+				{
+					name: 'driver';
+					isMut: true;
+					isSigner: true;
+				},
+				{
+					name: 'auctionState';
+					isMut: true;
+					isSigner: false;
+				},
+			];
+			args: [
+				{
+					name: 'order';
+					type: {
+						defined: 'OrderInfo';
+					};
+				},
+			];
+		},
 	];
 	accounts: [
 		{
@@ -260,7 +283,7 @@ export type SwiftAuction = {
 						type: 'u64';
 					},
 					{
-						name: 'amountOutMin';
+						name: 'deadlineFulfillment';
 						type: 'u64';
 					},
 					{
@@ -454,6 +477,10 @@ export type SwiftAuction = {
 			code: 6014;
 			name: 'InvalidRefAddress';
 			msg: 'Invalid ref address';
+		},
+		{
+			code: 6015;
+			name: 'DeadlineFulfillmentNotReached';
 		},
 	];
 };
@@ -694,6 +721,29 @@ export const IDL: SwiftAuction = {
 			],
 			args: [],
 		},
+		{
+			name: 'overrideBid',
+			accounts: [
+				{
+					name: 'driver',
+					isMut: true,
+					isSigner: true,
+				},
+				{
+					name: 'auctionState',
+					isMut: true,
+					isSigner: false,
+				},
+			],
+			args: [
+				{
+					name: 'order',
+					type: {
+						defined: 'OrderInfo',
+					},
+				},
+			],
+		},
 	],
 	accounts: [
 		{
@@ -720,7 +770,7 @@ export const IDL: SwiftAuction = {
 						type: 'u64',
 					},
 					{
-						name: 'amountOutMin',
+						name: 'deadlineFulfillment',
 						type: 'u64',
 					},
 					{
@@ -914,6 +964,10 @@ export const IDL: SwiftAuction = {
 			code: 6014,
 			name: 'InvalidRefAddress',
 			msg: 'Invalid ref address',
+		},
+		{
+			code: 6015,
+			name: 'DeadlineFulfillmentNotReached',
 		},
 	],
 };

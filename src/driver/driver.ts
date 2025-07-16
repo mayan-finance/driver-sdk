@@ -175,7 +175,7 @@ export class DriverService {
 		}
 	}
 
-	async bid(swap: Swap, lastBid?: bigint): Promise<void> {
+	async bid(swap: Swap, lastBid?: bigint, overrideBid?: boolean): Promise<void> {
 		if (this.pendingAuctionCount > driverConfig.maxPendingOrders) {
 			sendAlert('FILLED_PENDING', `Filled pending auction ${this.pendingAuctionCount}`);
 			throw new Error(`Not bidding ${swap.sourceTxHash} because we have too many pending orders`);
@@ -227,15 +227,26 @@ export class DriverService {
 			throw new Error('`Shall not bid on tx because bid amount is less than min amount out`');
 		}
 
-		const bidIx = await this.solanaIxService.getBidIx(
-			this.walletConfig.solana.publicKey,
-			new PublicKey(swap.auctionStateAddr),
-			normalizedBidAmount,
-			swap,
-			fromToken.decimals,
-		);
+		let instructions: TransactionInstruction[] = [];
+		if (overrideBid) {
+			const overrideBidIx = await this.solanaIxService.getOverrideBidIx(
+				this.walletConfig.solana.publicKey,
+				new PublicKey(swap.auctionStateAddr),
+				swap,
+				fromToken.decimals,
+			);
+			instructions.push(overrideBidIx);
+		} else {
+			const bidIx = await this.solanaIxService.getBidIx(
+				this.walletConfig.solana.publicKey,
+				new PublicKey(swap.auctionStateAddr),
+				normalizedBidAmount,
+				swap,
+				fromToken.decimals,
+			);
+			instructions.push(bidIx);
+		}
 
-		let instructions = [bidIx];
 		let signers = [this.walletConfig.solana];
 
 		logger.info(`Sending bid transaction for ${swap.sourceTxHash}`);
