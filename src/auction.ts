@@ -59,10 +59,11 @@ export class AuctionFulfillerConfig {
 		}
 
 		if (
-			swap.sourceChain === CHAIN_ID_BSC &&
-			swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955'
+			(swap.sourceChain === CHAIN_ID_BSC &&
+				swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955') ||
+			(swap.destChain === CHAIN_ID_BSC && driverToken.contract === '0x55d398326f99059ff775485246999027b3197955')
 		) {
-			effectiveAmountIn = this.normalizeUsdtIfRequired(effectiveAmountIn);
+			effectiveAmountIn = this.normalizeUsdtIfRequired(swap.sourceChain, swap.destChain, effectiveAmountIn);
 		}
 
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
@@ -147,7 +148,11 @@ export class AuctionFulfillerConfig {
 			normalizedBidAmount = normalizedMinAmountOut;
 		}
 
-		swap.bidAmountIn = 1.0000001 * Number(normalizedBidAmount + 1n) * effectiveAmountIn / output / 10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS) / (1 - Number(bpsFees) / 10000);
+		swap.bidAmountIn =
+			(1.0000001 * Number(normalizedBidAmount + 1n) * effectiveAmountIn) /
+			output /
+			10 ** Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS) /
+			(1 - Number(bpsFees) / 10000);
 		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
 		logger.info(`in bid: normalizedBidAmount ${normalizedBidAmount} for swap ${swap.sourceTxHash}`);
 
@@ -214,14 +219,23 @@ export class AuctionFulfillerConfig {
 		return output;
 	}
 
-	private normalizeUsdtIfRequired(effectiveAmountIn: number) {
+	private normalizeUsdtIfRequired(sourceChain: number, destChain: number, effectiveAmountIn: number) {
 		let usdtToUsdc = this.tokenList.getLatestUsdtToUsdcPrice();
-		if (usdtToUsdc) {
-			let safeUsdtToUsdc = Math.min(1.003, usdtToUsdc);
-			// 10 bps + ratio
-			return effectiveAmountIn * 0.999 * safeUsdtToUsdc;
+
+		let ratio = 1;
+		if (!usdtToUsdc) {
+			throw new Error(`No usdt to usdc price for ${sourceChain} to ${destChain}`);
 		}
-		return effectiveAmountIn / 1.002;
+
+		if (sourceChain === CHAIN_ID_BSC) {
+			ratio = usdtToUsdc;
+		} else {
+			ratio = 1 / usdtToUsdc;
+		}
+
+		let safeRatio = Math.min(1.0005, ratio);
+
+		return effectiveAmountIn * safeRatio;
 	}
 
 	async fulfillAmount(driverToken: Token, effectiveAmountIn: number, swap: Swap, costs: SwiftCosts): Promise<number> {
@@ -232,10 +246,11 @@ export class AuctionFulfillerConfig {
 		}
 
 		if (
-			swap.sourceChain === CHAIN_ID_BSC &&
-			swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955'
+			(swap.sourceChain === CHAIN_ID_BSC &&
+				swap.fromTokenAddress === '0x55d398326f99059ff775485246999027b3197955') ||
+			(swap.destChain === CHAIN_ID_BSC && driverToken.contract === '0x55d398326f99059ff775485246999027b3197955')
 		) {
-			effectiveAmountIn = this.normalizeUsdtIfRequired(effectiveAmountIn);
+			effectiveAmountIn = this.normalizeUsdtIfRequired(swap.sourceChain, swap.destChain, effectiveAmountIn);
 		}
 
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
