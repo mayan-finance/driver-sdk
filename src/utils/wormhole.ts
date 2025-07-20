@@ -135,6 +135,29 @@ export async function getSignedVaa(
 	}
 }
 
+export async function getSequenceFromWormholeScan(txHash: string): Promise<string> {
+	let maxRetries = 20;
+	let retries = 0;
+	while (retries < maxRetries) {
+		try {
+			const { data } = await axios.get(`https://api.wormholescan.io/api/v1/operations?txHash=${txHash}`);
+
+			// {"operations":[{"id":"30/000000000000000000000000875d6d37ec55c8cf220b9e5080717549d8aa8eca/11207","emitterChain":30,"emitterAddress":{"hex":"000000000000000000000000875d6d37ec55c8cf220b9e5080717549d8aa8eca","native":"0x875d6d37ec55c8cf220b9e5080717549d8aa8eca"},"sequence":"11207","content":{"standarizedProperties":{"appIds":null,"fromChain":0,"fromAddress":"","toChain":0,"toAddress":"","tokenChain":0,"tokenAddress":"","amount":"","feeAddress":"","feeChain":0,"fee":"","normalizedDecimals":null}},"sourceChain":{"chainId":30,"timestamp":"2025-04-27T16:07:07Z","transaction":{"txHash":"0x4433652a68b62c1a045812bb2e8404eef229abf9fd2ccff0401f9c78eb49e02a"},"from":"0x13e71631684a90df4c2310f1ec78c3eda037b2eb","status":"confirmed"}}]}%
+			if (data && data.operations && data.operations.length > 0) {
+				return data.operations[0].sequence;
+			}
+		} catch (err) {
+			console.info(`Unable to fetch sequence from wormhole scan ${err}. Retrying... ${txHash}`);
+		} finally {
+			retries++;
+			let waitTime = 1000 * retries;
+			await delay(waitTime);
+		}
+	}
+
+	throw new Error(`Sequence not found for ${txHash}`);
+}
+
 async function getSignedVaaFromWormholeScan(
 	emitterChain: number,
 	emitterAddress: string,

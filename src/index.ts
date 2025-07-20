@@ -56,6 +56,7 @@ export async function main() {
 	const globalConfig: GlobalConfig = {
 		rebidEnabled: process.env.REBID_ENABLED === 'true',
 		postAuctionMode: process.env.POST_AUCTION_MODE === 'SHIM' ? 'SHIM' : 'NORMAL',
+		postUnlockMode: process.env.POST_UNLOCK_MODE === 'SHIM' ? 'SHIM' : 'NORMAL',
 		ignoreReferrers: new Set(initialDynamicConfig.ignoreReferrers),
 		auctionTimeSeconds: initialDynamicConfig.auctionTimeSeconds,
 		batchUnlockThreshold: initialDynamicConfig.batchUnlockThreshold,

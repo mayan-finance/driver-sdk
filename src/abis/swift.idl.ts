@@ -547,8 +547,131 @@ export type Swift = {
 			];
 			args: [];
 		},
+		{
+			name: 'fullCloseSource';
+			accounts: [
+				{
+					name: 'state';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'auth';
+					isMut: true;
+					isSigner: true;
+				},
+			];
+			args: [
+				{
+					name: 'args';
+					type: {
+						defined: 'OrderInfo';
+					};
+				},
+			];
+		},
+		{
+			name: 'fullCloseDest';
+			accounts: [
+				{
+					name: 'state';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'auth';
+					isMut: true;
+					isSigner: true;
+				},
+			];
+			args: [
+				{
+					name: 'args';
+					type: {
+						defined: 'OrderInfo';
+					};
+				},
+				{
+					name: 'stateBump';
+					type: 'u8';
+				},
+			];
+		},
+		{
+			name: 'postUnlockShim';
+			accounts: [
+				{
+					name: 'driver';
+					isMut: true;
+					isSigner: true;
+				},
+				{
+					name: 'emitter';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'config';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'emitterSequence';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'feeCollector';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'message';
+					isMut: true;
+					isSigner: false;
+				},
+				{
+					name: 'coreBridgeProgram';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'systemProgram';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'clock';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'shimEventAuth';
+					isMut: false;
+					isSigner: false;
+				},
+				{
+					name: 'shimProgram';
+					isMut: false;
+					isSigner: false;
+				},
+			];
+			args: [];
+		},
 	];
 	accounts: [
+		{
+			name: 'closedState';
+			type: {
+				kind: 'struct';
+				fields: [
+					{
+						name: 'fulfilled';
+						type: 'bool';
+					},
+				];
+			};
+		},
 		{
 			name: 'swiftDestSolanaState';
 			type: {
@@ -1734,8 +1857,131 @@ export const IDL: Swift = {
 			],
 			args: [],
 		},
+		{
+			name: 'fullCloseSource',
+			accounts: [
+				{
+					name: 'state',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'auth',
+					isMut: true,
+					isSigner: true,
+				},
+			],
+			args: [
+				{
+					name: 'args',
+					type: {
+						defined: 'OrderInfo',
+					},
+				},
+			],
+		},
+		{
+			name: 'fullCloseDest',
+			accounts: [
+				{
+					name: 'state',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'auth',
+					isMut: true,
+					isSigner: true,
+				},
+			],
+			args: [
+				{
+					name: 'args',
+					type: {
+						defined: 'OrderInfo',
+					},
+				},
+				{
+					name: 'stateBump',
+					type: 'u8',
+				},
+			],
+		},
+		{
+			name: 'postUnlockShim',
+			accounts: [
+				{
+					name: 'driver',
+					isMut: true,
+					isSigner: true,
+				},
+				{
+					name: 'emitter',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'config',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'emitterSequence',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'feeCollector',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'message',
+					isMut: true,
+					isSigner: false,
+				},
+				{
+					name: 'coreBridgeProgram',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'systemProgram',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'clock',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'shimEventAuth',
+					isMut: false,
+					isSigner: false,
+				},
+				{
+					name: 'shimProgram',
+					isMut: false,
+					isSigner: false,
+				},
+			],
+			args: [],
+		},
 	],
 	accounts: [
+		{
+			name: 'closedState',
+			type: {
+				kind: 'struct',
+				fields: [
+					{
+						name: 'fulfilled',
+						type: 'bool',
+					},
+				],
+			},
+		},
 		{
 			name: 'swiftDestSolanaState',
 			type: {

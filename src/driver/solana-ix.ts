@@ -117,6 +117,42 @@ export class NewSolanaIxHelper {
 			.instruction();
 	}
 
+	async getBatchPostShimIx(
+		driver: PublicKey,
+		whConfig: PublicKey,
+		whCore: PublicKey,
+		whEmitter: PublicKey,
+		whSeq: PublicKey,
+		whFee: PublicKey,
+		states: PublicKey[],
+	): Promise<TransactionInstruction> {
+		const [whMessage] = PublicKey.findProgramAddressSync([whEmitter.toBuffer()], WORMHOLE_SHIM_PROGRAM);
+
+		return this.swiftProgram.methods
+			.postUnlockShim()
+			.accounts({
+				clock: SYSVAR_CLOCK_PUBKEY,
+				systemProgram: SystemProgram.programId,
+				config: whConfig,
+				coreBridgeProgram: whCore,
+				driver: driver,
+				emitter: whEmitter,
+				emitterSequence: whSeq,
+				feeCollector: whFee,
+				message: whMessage,
+				shimEventAuth: WORMHOLE_SHIM_EVENT_AUTH,
+				shimProgram: WORMHOLE_SHIM_PROGRAM,
+			})
+			.remainingAccounts(
+				states.map((state) => ({
+					isSigner: false,
+					isWritable: true,
+					pubkey: state,
+				})),
+			)
+			.instruction();
+	}
+
 	async getBatchPostIx(
 		driver: PublicKey,
 		whConfig: PublicKey,
