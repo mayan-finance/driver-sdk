@@ -39,6 +39,7 @@ import {
 	findVaaAddress,
 	getEmitterAddressEth,
 	getEmitterAddressSolana,
+	getSequenceFromWormholeScan,
 	getSignedVAAWithRetryGeneric,
 	getWormholeSequenceFromPostedMessage,
 	get_wormhole_core_accounts,
@@ -587,45 +588,73 @@ export class Unlocker {
 		const swiftProgram = new PublicKey(this.contracts.contracts[CHAIN_ID_SOLANA]);
 		const [swiftEmitter, _] = PublicKey.findProgramAddressSync([Buffer.from('emitter')], swiftProgram);
 		const wormholeAccs = get_wormhole_core_accounts(swiftEmitter);
-		const newMessageAccount = Keypair.generate();
 
 		const states = orderHashes.map((orderHash) =>
 			getSwiftStateAddrDest(swiftProgram, Buffer.from(orderHash.replace('0x', ''), 'hex')),
 		);
 
-		const batchPostIx = await this.solanaIx.getBatchPostIx(
-			this.walletConfig.solana.publicKey,
-			wormholeAccs.bridge_config,
-			wormholeAccs.coreBridge,
-			swiftEmitter,
-			wormholeAccs.sequence_key,
-			newMessageAccount.publicKey,
-			wormholeAccs.fee_collector,
-			states,
-		);
+		let unlockSequence: bigint;
+		let txHash: string;
+		if (this.gConf.postUnlockMode === 'SHIM') {
+			const batchPostShimIx = await this.solanaIx.getBatchPostShimIx(
+				this.walletConfig.solana.publicKey,
+				wormholeAccs.bridge_config,
+				wormholeAccs.coreBridge,
+				swiftEmitter,
+				wormholeAccs.sequence_key,
+				wormholeAccs.fee_collector,
+				states,
+			);
 
-		logger.verbose(`Sending batch post Solana for unlock`);
-		const txHash = await this.solanaSender.createAndSendOptimizedTransaction(
-			[batchPostIx],
-			[this.walletConfig.solana, newMessageAccount],
-			[],
-			30,
-			true,
-		);
-		logger.verbose(`Batch posted Successfully Solana, getting batch sequence`);
+			logger.verbose(`Sending shim batch post Solana for unlock`);
+			txHash = await this.solanaSender.createAndSendOptimizedTransaction(
+				[batchPostShimIx],
+				[this.walletConfig.solana],
+				[],
+				30,
+				true,
+			);
+			logger.verbose(`Batch shim batch posted Successfully with ${txHash} Solana, getting batch sequence`);
+			unlockSequence = BigInt(await getSequenceFromWormholeScan(txHash));
+		} else {
+			const newMessageAccount = Keypair.generate();
+			const batchPostIx = await this.solanaIx.getBatchPostIx(
+				this.walletConfig.solana.publicKey,
+				wormholeAccs.bridge_config,
+				wormholeAccs.coreBridge,
+				swiftEmitter,
+				wormholeAccs.sequence_key,
+				newMessageAccount.publicKey,
+				wormholeAccs.fee_collector,
+				states,
+			);
 
-		let wormholeMessage = await this.solanaConnection.getAccountInfo(newMessageAccount.publicKey);
-		let maxRetries = 6;
-		while (maxRetries-- > 0 && (!wormholeMessage || !wormholeMessage.data)) {
-			await delay(2000);
-			wormholeMessage = await this.solanaConnection.getAccountInfo(newMessageAccount.publicKey);
+			logger.verbose(`Sending batch post Solana for unlock`);
+			txHash = await this.solanaSender.createAndSendOptimizedTransaction(
+				[batchPostIx],
+				[this.walletConfig.solana, newMessageAccount],
+				[],
+				30,
+				true,
+			);
+			logger.verbose(`Batch posted Successfully Solana, getting batch sequence`);
+
+			let wormholeMessage = await this.solanaConnection.getAccountInfo(newMessageAccount.publicKey);
+			let maxRetries = 6;
+			while (maxRetries-- > 0 && (!wormholeMessage || !wormholeMessage.data)) {
+				await delay(2000);
+				wormholeMessage = await this.solanaConnection.getAccountInfo(newMessageAccount.publicKey);
+			}
+
+			if (!wormholeMessage || !wormholeMessage.data) {
+				throw new Error(`Batch post Solana failed because sequence not found. Post tx: ${txHash}`);
+			}
+
+			unlockSequence = getWormholeSequenceFromPostedMessage(wormholeMessage.data)
 		}
 
-		if (!wormholeMessage || !wormholeMessage.data) {
-			throw new Error(`Batch post Solana failed because sequence not found. Post tx: ${txHash}`);
-		}
 		return {
-			sequence: getWormholeSequenceFromPostedMessage(wormholeMessage.data),
+			sequence: unlockSequence,
 			txHash: txHash,
 		};
 	}
