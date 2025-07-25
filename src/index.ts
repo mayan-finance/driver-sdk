@@ -38,6 +38,7 @@ import { createDatabase, DB_PATH } from './utils/sqlite3';
 import { VaaPoster } from './utils/vaa-poster';
 import { MayanExplorerWatcher } from './watchers/mayan-explorer';
 import { AuctionListener } from './auction-listener';
+import { FutureManager } from './future-manager';
 
 export async function main() {
 	createDatabase(DB_PATH);
@@ -105,6 +106,7 @@ export async function main() {
 	await tokenList.init();
 
 	const rebalancer = new Rebalancer(treasuryEndpoints, tokenList);
+	const futureManager = new FutureManager(10000);
 
 	const solanaIxHelper = new NewSolanaIxHelper(
 		new PublicKey(contracts.contracts[CHAIN_ID_SOLANA]),
@@ -143,7 +145,7 @@ export async function main() {
 	);
 	unlocker.scheduleUnlockJobs();
 
-	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList, globalConfig);
+	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList, globalConfig, futureManager);
 	const lutOptimizer = new LookupTableOptimizer(
 		globalConfig,
 		walletConf,
@@ -221,6 +223,8 @@ export async function main() {
 		relayer,
 		driverSvc,
 		stateCloser,
+		futureManager,
+		feeSvc,
 	);
 	watcher.init();
 }

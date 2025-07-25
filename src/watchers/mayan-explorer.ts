@@ -12,6 +12,8 @@ import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
 import { DriverService } from '../driver/driver';
 import { delay } from '../utils/util';
+import { FutureManager } from '../future-manager';
+import { ExpenseParams, FeeService } from '../utils/fees';
 
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
@@ -31,6 +33,8 @@ export class MayanExplorerWatcher {
 		private readonly relayer: Relayer,
 		private readonly driver: DriverService,
 		private readonly stateCloser: StateCloser,
+		private readonly futureManager: FutureManager,
+		private readonly feeSvc: FeeService,
 	) {
 		this.initiateAddresses = [];
 		this.initiateAddresses.push(MayanForwarderAddress);
@@ -130,6 +134,19 @@ export class MayanExplorerWatcher {
 					}
 
 					const swap = await this.createSwapFromJson(rawSwap);
+					const qr: ExpenseParams = {
+						exactCalculation: false,
+						fromToken: swap.fromToken,
+						fromChainId: swap.sourceChain,
+						fromAmount: swap.fromAmount.toNumber(),
+						toToken: swap.toToken,
+						toChainId: swap.destChain,
+						gasDrop: swap.gasDrop.toNumber(),
+						isGasless: swap.gasless,
+						auctionMode: swap.auctionMode,
+					};
+					this.futureManager.add(this.feeSvc.getPriceFutureManagerKey(qr), this.feeSvc.getPriceFuture(qr), true);
+					this.futureManager.add(this.feeSvc.getChainFeeDataFutureManagerKey(qr), this.feeSvc.getChainFeeDataFuture(qr), true);
 
 					logger.info(
 						`Received explorer swap with ` +
@@ -220,6 +237,20 @@ export class MayanExplorerWatcher {
 	private async backgroundRelay(s: any) {
 		try {
 			const swap = await this.createSwapFromJson(s);
+			const qr: ExpenseParams = {
+				exactCalculation: false,
+				fromToken: swap.fromToken,
+				fromChainId: swap.sourceChain,
+				fromAmount: swap.fromAmount.toNumber(),
+				toToken: swap.toToken,
+				toChainId: swap.destChain,
+				gasDrop: swap.gasDrop.toNumber(),
+				isGasless: swap.gasless,
+				auctionMode: swap.auctionMode,
+			};
+			this.futureManager.add(this.feeSvc.getPriceFutureManagerKey(qr), this.feeSvc.getPriceFuture(qr), true);
+			this.futureManager.add(this.feeSvc.getChainFeeDataFutureManagerKey(qr), this.feeSvc.getChainFeeDataFuture(qr), true);
+
 			this.relayer.relay(swap);
 		} catch (err) {
 			logger.error(`Background relay failed ${err} ${s}`);

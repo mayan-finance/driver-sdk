@@ -17,6 +17,7 @@ import { GlobalConfig } from '../config/global';
 import { Token, TokenList } from '../config/tokens';
 import { EvmProviders } from './evm-providers';
 import { AUCTION_MODES } from './state-parser';
+import { FutureManager } from '../future-manager';
 
 export class FeeService {
 	constructor(
@@ -24,23 +25,20 @@ export class FeeService {
 		private readonly endpoints: MayanEndpoints,
 		private readonly tokenList: TokenList,
 		private readonly gConf: GlobalConfig,
+		private readonly futureManager: FutureManager,
 	) { }
 
 	async calculateSwiftExpensesAndUSDInFromToken(qr: ExpenseParams): Promise<SwiftCosts> {
 		if (!qr.auctionMode) {
 			qr.auctionMode = AUCTION_MODES.DONT_CARE;
 		}
-		const prices = await axios.get(this.endpoints.priceApiUrl + '/v3/price/list', {
-			params: {
-				ids: [
-					qr.fromToken.coingeckoId,
-					qr.toToken.coingeckoId,
-					this.tokenList.nativeTokens[qr.fromChainId].coingeckoId,
-					this.tokenList.nativeTokens[qr.toChainId].coingeckoId,
-					this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId,
-				].join(','),
-			},
-		});
+
+		let prices: any;
+		try {
+			prices = await this.futureManager.await(this.getPriceFutureManagerKey(qr));
+		} catch (e) {
+			prices = await this.getPriceFuture(qr);
+		}
 
 		const solPrice = prices.data[this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId];
 		const fromTokenPrice = prices.data[qr.fromToken.coingeckoId];
@@ -93,10 +91,17 @@ export class FeeService {
 		const overallMultiplier = 1.05;
 		const isSingleUnlock = qr.toChainId === CHAIN_ID_ETH;
 
-		const [srcFeeData, dstFeeData] = await Promise.all([
-			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
-			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
-		]);
+		let srcFeeData: any;
+		let dstFeeData: any;
+		try {
+			[srcFeeData, dstFeeData] = await this.futureManager.await(this.getChainFeeDataFutureManagerKey(qr));
+		} catch (e) {
+			[srcFeeData, dstFeeData] = await this.getChainFeeDataFuture(qr);
+		}
+		// const [srcFeeData, dstFeeData] = await Promise.all([
+		// 	qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
+		// 	qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
+		// ]);
 		const srcGasPrice = srcFeeData?.gasPrice!;
 		const dstGasPrice = dstFeeData?.gasPrice!;
 		// const [srcGasPrice, dstGasPrice] = await Promise.all([
@@ -440,8 +445,39 @@ export class FeeService {
 
 		return maxBatchSize - Math.min(maxBatchSize - 1, Math.floor(volume / volumeStep));
 	}
-}
 
+	async getPriceFuture(qr: ExpenseParams): Promise<any> {
+		let fut = axios.get(this.endpoints.priceApiUrl + '/v3/price/list', {
+			params: {
+				ids: [
+					qr.fromToken.coingeckoId,
+					qr.toToken.coingeckoId,
+					this.tokenList.nativeTokens[qr.fromChainId].coingeckoId,
+					this.tokenList.nativeTokens[qr.toChainId].coingeckoId,
+					this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId,
+				].join(','),
+			},
+		});
+		return fut;
+	}
+
+	getPriceFutureManagerKey(qr: ExpenseParams): string {
+		return `fee-service-${qr.fromToken.coingeckoId}-${qr.toToken.coingeckoId}-${this.tokenList.nativeTokens[qr.fromChainId].coingeckoId}-${this.tokenList.nativeTokens[qr.toChainId].coingeckoId}-${this.tokenList.nativeTokens[CHAIN_ID_SOLANA].coingeckoId}`;
+	}
+
+	async getChainFeeDataFuture(qr: ExpenseParams): Promise<any> {
+		let fut = Promise.all([
+			qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].getFeeData() : null,
+			qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].getFeeData() : null,
+		]);
+		return fut;
+	}
+
+	getChainFeeDataFutureManagerKey(qr: ExpenseParams): string {
+		return `fee-service-${qr.fromChainId}-${qr.toChainId}`;
+	}
+
+}
 export type SwiftCosts = {
 	fulfillCost: number;
 	unlockSource: number;
