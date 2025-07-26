@@ -250,13 +250,14 @@ export class Relayer {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
-				let [solanaTime, auctionState] = await Promise.all([
-					getCurrentSolanaTimeMS(this.solanaConnection),
+				let solanaTime = new Date().getTime();
+				let [auctionState] = await Promise.all([
+					// getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
 				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 500 || auctionState.isClosed) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 700 || auctionState.isClosed) {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {
@@ -353,13 +354,14 @@ export class Relayer {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
-				let [solanaTime, auctionState] = await Promise.all([
-					getCurrentSolanaTimeMS(this.solanaConnection),
+				let solanaTime = new Date().getTime();
+				let [auctionState] = await Promise.all([
+					// getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
 				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 500 || auctionState.isClosed) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 700 || auctionState.isClosed) {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {

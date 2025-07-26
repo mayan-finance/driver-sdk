@@ -48,6 +48,10 @@ export class AuctionListener {
 	public async getAuctionState(auctionStateAddr: string, forceSolana: boolean = false): Promise<BidState | null> {
 		let state = this.bidStatesMap.get(auctionStateAddr) || null;
 
+		let deleted = false;
+		if (state && state.isClosed) {
+			deleted = true;
+		}
 		if (state && Date.now() - state.firstBidTime > this.globalConfig.auctionTimeSeconds * 1000) {
 			state = null;
 		}
@@ -71,7 +75,7 @@ export class AuctionListener {
 					order: null,
 					validFrom: auctionState?.validFrom || 0,
 					sequence: auctionState?.sequence || BigInt(0),
-					isClosed: false,
+					isClosed: deleted,
 				};
 			}
 			if (state) {
