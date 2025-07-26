@@ -249,6 +249,10 @@ export class AuctionFulfillerConfig {
 			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 2n + 1n;
 		}
 
+		if (auctionState) {
+			logger.info(`saw auctionState ${auctionState.winner} for swap ${auctionState.orderId}-${swap.sourceTxHash} with lastBid ${auctionState.amountPromised}`);
+		}
+
 		// Calculate bidAmountIn using integer arithmetic
 		// bidAmountIn = normalizedBidAmount * effectiveAmountIn / output / 10^decimals / (1 - bpsFees/10000)
 		const bidAmountInNumerator = normalizedBidAmount * normalizedEffectiveAmountInBigInt * 10000n;

@@ -1,6 +1,7 @@
-import { Connection } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { FutureManager } from "./future-manager";
 import { getCurrentSolanaTimeMS } from "./utils/solana-trx";
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 async function main() {
 
@@ -22,6 +23,7 @@ async function main() {
     // console.log(result); // 'Hello World!' (not a Promise)
 
 
+    ////// SOLANA TIME TEST //////
     // let start = Date.now();
     // let time = await getCurrentSolanaTimeMS(new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'), 4)
     // console.log(`solana time: ${time}`)
@@ -31,16 +33,29 @@ async function main() {
     // let timestamp = new Date(time).getTime();
     // console.log(`timestamp from date: ${timestamp}`)
 
-    let jiriJakeFeeMap: any = {
-        fromToken: 'usdt',
-        toToken: 'usdc',
-        fromChainId: 1,
-        toChainId: 1,
-        gasDrop: 0,
-    }
 
-    jiriJakeFeeMap.timestamp = new Date().getTime();
-    console.log(`jiri-jake-fee|${JSON.stringify(jiriJakeFeeMap)}`);
+    ////// JIRI-JAKE FEE TEST //////
+    // let jiriJakeFeeMap: any = {
+    //     fromToken: 'usdt',
+    //     toToken: 'usdc',
+    //     fromChainId: 1,
+    //     toChainId: 1,
+    //     gasDrop: 0,
+    // }
+
+    // jiriJakeFeeMap.timestamp = new Date().getTime();
+    // console.log(`jiri-jake-fee|${JSON.stringify(jiriJakeFeeMap)}`);
+
+
+    ////// ATA TEST //////
+    let connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com')
+    let userAddress = new PublicKey('ChK5nzqPEhw8SVjitqHF9DK4yJ26ApPDzzfgaBBLQj2Y')
+    // let tokenAddress = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
+    let tokenAddress = new PublicKey('9SaKCMUd5D1uE39RkasJw7UtEtRTaBWykQvFQbgcbonk')
+    let ata = getAssociatedTokenAddressSync(tokenAddress, userAddress, true, TOKEN_PROGRAM_ID)
+    const accountData = await connection.getAccountInfo(ata)
+    const exists = accountData !== null;
+    console.log(exists)
 
     process.exit(0);
 }
