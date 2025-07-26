@@ -260,7 +260,7 @@ export class Relayer {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {
-							await delay(100);
+							await delay(200);
 							continue;
 						}
 						try {
@@ -271,14 +271,14 @@ export class Relayer {
 						} catch (err) {
 							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
-						await delay(100);
+						await delay(200);
 					}
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
 						break;
 					}
-					await delay(100);
+					await delay(200);
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
@@ -287,7 +287,7 @@ export class Relayer {
 					} catch (err) {
 						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 					}
-					await delay(100);
+					await delay(200);
 				}
 			}
 			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
@@ -362,11 +362,11 @@ export class Relayer {
 				]);
 				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
-					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 1000 || auctionState.isClosed) {
+					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - 500 || auctionState.isClosed) {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {
-							await delay(100);
+							await delay(200);
 							continue;
 						}
 						try {
@@ -377,14 +377,14 @@ export class Relayer {
 						} catch (err) {
 							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
-						await delay(100);
+						await delay(200);
 					}
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
 						break;
 					}
-					await delay(100);
+					await delay(200);
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
@@ -393,7 +393,7 @@ export class Relayer {
 					} catch (err) {
 						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 					}
-					await delay(500);
+					await delay(200);
 				}
 			}
 			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
