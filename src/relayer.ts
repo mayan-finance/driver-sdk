@@ -260,7 +260,6 @@ export class Relayer {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {
-							await delay(200);
 							continue;
 						}
 						try {
@@ -271,14 +270,13 @@ export class Relayer {
 						} catch (err) {
 							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
-						await delay(200);
 					}
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
 						break;
 					}
-					await delay(200);
+					await delay(100);
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
@@ -287,7 +285,6 @@ export class Relayer {
 					} catch (err) {
 						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 					}
-					await delay(200);
 				}
 			}
 			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
@@ -366,7 +363,6 @@ export class Relayer {
 						return;
 					} else {
 						if (auctionState.timestamp == lastBidTimestamp) {
-							await delay(200);
 							continue;
 						}
 						try {
@@ -377,14 +373,13 @@ export class Relayer {
 						} catch (err) {
 							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
-						await delay(200);
 					}
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
 						break;
 					}
-					await delay(200);
+					await delay(100);
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
@@ -393,7 +388,6 @@ export class Relayer {
 					} catch (err) {
 						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 					}
-					await delay(200);
 				}
 			}
 			logger.info(`I'm the winner. fulfill for ${swap.sourceTxHash}...`);
