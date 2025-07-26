@@ -246,7 +246,7 @@ export class AuctionFulfillerConfig {
 		}
 
 		if (lastBid && normalizedBidAmount > lastBid) {
-			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 4n + 1n;
+			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 2n + 1n;
 		}
 
 		// Calculate bidAmountIn using integer arithmetic
