@@ -41,7 +41,7 @@ export class FeeService {
 			fromChainId: qr.fromChainId,
 			toChainId: qr.toChainId,
 			gasDrop: qr.gasDrop,
-			timestamp: new Date().getTime(),
+			timestamp: Math.floor(new Date().getTime() / 1000),
 		};
 
 		let prices: any;
