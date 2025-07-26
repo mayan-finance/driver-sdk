@@ -22,14 +22,25 @@ async function main() {
     // console.log(result); // 'Hello World!' (not a Promise)
 
 
-    let start = Date.now();
-    let time = await getCurrentSolanaTimeMS(new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'), 4)
-    console.log(`solana time: ${time}`)
-    let end = Date.now();
-    console.log(`time taken: ${end - start}ms`)
+    // let start = Date.now();
+    // let time = await getCurrentSolanaTimeMS(new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com'), 4)
+    // console.log(`solana time: ${time}`)
+    // let end = Date.now();
+    // console.log(`time taken: ${end - start}ms`)
 
-    let timestamp = new Date(time).getTime();
-    console.log(`timestamp from date: ${timestamp}`)
+    // let timestamp = new Date(time).getTime();
+    // console.log(`timestamp from date: ${timestamp}`)
+
+    let jiriJakeFeeMap: any = {
+        fromToken: 'usdt',
+        toToken: 'usdc',
+        fromChainId: 1,
+        toChainId: 1,
+        gasDrop: 0,
+    }
+
+    jiriJakeFeeMap.timestamp = new Date().getTime();
+    console.log(`jiri-jake-fee|${JSON.stringify(jiriJakeFeeMap)}`);
 
     process.exit(0);
 }

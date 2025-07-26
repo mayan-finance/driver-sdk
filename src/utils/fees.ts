@@ -18,6 +18,7 @@ import { Token, TokenList } from '../config/tokens';
 import { EvmProviders } from './evm-providers';
 import { AUCTION_MODES } from './state-parser';
 import { FutureManager } from '../future-manager';
+import logger from './logger';
 
 export class FeeService {
 	constructor(
@@ -28,10 +29,20 @@ export class FeeService {
 		private readonly futureManager: FutureManager,
 	) { }
 
-	async calculateSwiftExpensesAndUSDInFromToken(qr: ExpenseParams): Promise<SwiftCosts> {
+	async calculateSwiftExpensesAndUSDInFromToken(qr: ExpenseParams, orderId: string): Promise<SwiftCosts> {
 		if (!qr.auctionMode) {
 			qr.auctionMode = AUCTION_MODES.DONT_CARE;
 		}
+
+		let jiriJakeFeeMap: any = {
+			orderId: orderId,
+			fromToken: qr.fromToken.coingeckoId,
+			toToken: qr.toToken.coingeckoId,
+			fromChainId: qr.fromChainId,
+			toChainId: qr.toChainId,
+			gasDrop: qr.gasDrop,
+			timestamp: new Date().getTime(),
+		};
 
 		let prices: any;
 		try {
@@ -104,6 +115,8 @@ export class FeeService {
 		// ]);
 		const srcGasPrice = srcFeeData?.gasPrice!;
 		const dstGasPrice = dstFeeData?.gasPrice!;
+		jiriJakeFeeMap.srcGasPrice = srcGasPrice;
+		jiriJakeFeeMap.dstGasPrice = dstGasPrice;
 		// const [srcGasPrice, dstGasPrice] = await Promise.all([
 		// 	qr.fromChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.fromChainId].send("eth_gasPrice", []) : null,
 		// 	qr.toChainId !== CHAIN_ID_SOLANA ? this.evmProviders[qr.toChainId].send("eth_gasPrice", []) : null,
@@ -123,6 +136,7 @@ export class FeeService {
 		) {
 			hasDestSwap = false;
 		}
+		jiriJakeFeeMap.hasDestSwap = hasDestSwap;
 
 		let fulfillCost = 0;
 		if (qr.toChainId !== CHAIN_ID_SOLANA) {
@@ -133,6 +147,7 @@ export class FeeService {
 				0,
 				overallMultiplier,
 			);
+			jiriJakeFeeMap.postAuctionCost = postAuctionCost;
 			let baseFulfillGas = baseFulfillGasWithBatch;
 			if (isSingleUnlock) {
 				// when destination is eth we do not use batch unlock. so fulfill is cheaper (no storage)
@@ -148,6 +163,7 @@ export class FeeService {
 			}
 
 			let fulfillGas = baseFulfillGas * this.getChainPriceFactor(qr.toChainId);
+			jiriJakeFeeMap.fulfillGas = fulfillGas;
 
 			fulfillCost += await this.calculateGenericEvmFee(
 				fulfillGas,
@@ -157,9 +173,12 @@ export class FeeService {
 				qr.gasDrop,
 				overallMultiplier,
 			);
+			jiriJakeFeeMap.fulfillCost = fulfillCost;
 		} else {
 			let fulfillSolCost = solTxCost + additionalSolfulfillCost; // base tx fees;
+			jiriJakeFeeMap.fulfillSolCost = fulfillSolCost;
 			fulfillSolCost += shrinkedStateCost;
+			jiriJakeFeeMap.shrinkedStateCost = shrinkedStateCost;
 			if (qr.toToken.contract !== '0x0000000000000000000000000000000000000000') {
 				// pure sol doesn't require creating atas
 				fulfillSolCost += ataCreationCost; // asssumes we will always create user ata
@@ -171,6 +190,7 @@ export class FeeService {
 				qr.gasDrop,
 				overallMultiplier,
 			);
+			jiriJakeFeeMap.fulfillSolCost = fulfillSolCost;
 		}
 
 		let maxBatchCount = 6; // we can send 8 unlock batches, but we consider 6 so that we can unlock with loss in case of liquidity emergencies
@@ -182,6 +202,8 @@ export class FeeService {
 			maxBatchCount,
 		);
 		let realBatchCount = 8;
+		jiriJakeFeeMap.estimatedBatchCount = estimatedBatchCount;
+		jiriJakeFeeMap.realBatchCount = realBatchCount;
 
 		let unlockFee: number;
 		if (qr.fromChainId === CHAIN_ID_SOLANA) {
@@ -196,6 +218,7 @@ export class FeeService {
 				let postOnDestCost = 0; // already posted on fulfill
 
 				unlockFee = unlockTotal + postOnDestCost;
+				jiriJakeFeeMap.unlockTotal = unlockTotal;
 			} else {
 				let postUnlockVaaSol =
 					postUnlockVaaBase + postUnlockVaaPerItem * realBatchCount + solTxCost - ataCreationCost; // source state Ata is closed and paid to unlocker/refunder on solana
@@ -219,6 +242,9 @@ export class FeeService {
 				);
 
 				unlockFee = (unlockForAll + batchPostCost) / estimatedBatchCount;
+				jiriJakeFeeMap.unlockForAll = unlockForAll;
+				jiriJakeFeeMap.batchPostCost = batchPostCost;
+				jiriJakeFeeMap.unlockFee = unlockFee;
 			}
 		} else {
 			let batchPostCost = 0;
@@ -258,6 +284,7 @@ export class FeeService {
 				overallMultiplier,
 			);
 			unlockFee = unlock + batchPostCost;
+			jiriJakeFeeMap.unlockFee = unlockFee;
 		}
 
 		const compensationsSol = {
@@ -279,6 +306,14 @@ export class FeeService {
 		let totalCost = fulfillCost + unlockFee;
 		totalCost = totalCost - (compensation * solPrice) / fromTokenPrice;
 		totalCost = Math.max(0.0, totalCost);
+
+		// csv compatible log
+		logger.info(`jiri-jake-fee|${JSON.stringify(jiriJakeFeeMap, (key, value) => {
+			if (typeof value === 'bigint') {
+				return value.toString();
+			}
+			return value;
+		})}`);
 
 		return {
 			fulfillCost: fulfillCost, //fulfillCost,

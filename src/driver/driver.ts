@@ -208,7 +208,7 @@ export class DriverService {
 			toToken: toToken,
 			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
-		});
+		}, swap.orderId);
 		logger.info(`[EXPENSES] ${swap.sourceTxHash}: ${expenses.fulfillAndUnlock}:${expenses.fulfillCost}:${expenses.unlockSource}`);
 		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
@@ -632,7 +632,7 @@ export class DriverService {
 			toToken: toToken,
 			fromAmount: swap.fromAmount.toNumber(),
 			gasDrop: swap.gasDrop.toNumber(),
-		});
+		}, swap.orderId);
 		const effectiveAmntIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
 		if (effectiveAmntIn < 0) {
