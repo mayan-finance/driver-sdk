@@ -242,11 +242,11 @@ export class AuctionFulfillerConfig {
 		}
 
 		if (lastBidFromAuctionListener && normalizedBidAmount > lastBidFromAuctionListener) {
-			normalizedBidAmount = lastBidFromAuctionListener + (normalizedBidAmount - lastBidFromAuctionListener) / 2n + 1n;
+			normalizedBidAmount = lastBidFromAuctionListener + (normalizedBidAmount - lastBidFromAuctionListener) / 4n + 1n;
 		}
 
 		if (lastBid && normalizedBidAmount > lastBid) {
-			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 2n + 1n;
+			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 4n + 1n;
 		}
 
 		if (auctionState) {
