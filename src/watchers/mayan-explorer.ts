@@ -144,9 +144,11 @@ export class MayanExplorerWatcher {
 						gasDrop: swap.gasDrop.toNumber(),
 						isGasless: swap.gasless,
 						auctionMode: swap.auctionMode,
+						destAddress: swap.destAddress,
 					};
 					this.futureManager.add(this.feeSvc.getPriceFutureManagerKey(qr), this.feeSvc.getPriceFuture(qr), true);
 					this.futureManager.add(this.feeSvc.getChainFeeDataFutureManagerKey(qr), this.feeSvc.getChainFeeDataFuture(qr), true);
+					this.futureManager.add(this.feeSvc.getAtaExistsFutureManagerKey(qr), this.feeSvc.getAtaExistsFuture(qr), true);
 
 					logger.info(
 						`Received explorer swap with ` +
@@ -247,9 +249,11 @@ export class MayanExplorerWatcher {
 				gasDrop: swap.gasDrop.toNumber(),
 				isGasless: swap.gasless,
 				auctionMode: swap.auctionMode,
+				destAddress: swap.destAddress,
 			};
 			this.futureManager.add(this.feeSvc.getPriceFutureManagerKey(qr), this.feeSvc.getPriceFuture(qr), true);
 			this.futureManager.add(this.feeSvc.getChainFeeDataFutureManagerKey(qr), this.feeSvc.getChainFeeDataFuture(qr), true);
+			this.futureManager.add(this.feeSvc.getAtaExistsFutureManagerKey(qr), this.feeSvc.getAtaExistsFuture(qr), true);
 
 			this.relayer.relay(swap);
 		} catch (err) {

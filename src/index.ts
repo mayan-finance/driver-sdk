@@ -145,7 +145,7 @@ export async function main() {
 	);
 	unlocker.scheduleUnlockJobs();
 
-	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList, globalConfig, futureManager);
+	const feeSvc = new FeeService(evmProviders, mayanEndpoints, tokenList, globalConfig, futureManager, solanaConnection);
 	const lutOptimizer = new LookupTableOptimizer(
 		globalConfig,
 		walletConf,

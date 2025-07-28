@@ -51,7 +51,7 @@ async function main() {
     let connection = new Connection(process.env.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com')
     let userAddress = new PublicKey('ChK5nzqPEhw8SVjitqHF9DK4yJ26ApPDzzfgaBBLQj2Y')
     // let tokenAddress = new PublicKey('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')
-    let tokenAddress = new PublicKey('9SaKCMUd5D1uE39RkasJw7UtEtRTaBWykQvFQbgcbonk')
+    let tokenAddress = new PublicKey('BXhVjDNucDJP2B8hZZbK4YtaVLjLdQ1PtW1ATcKrbonk')
     let ata = getAssociatedTokenAddressSync(tokenAddress, userAddress, true, TOKEN_PROGRAM_ID)
     const accountData = await connection.getAccountInfo(ata)
     const exists = accountData !== null;

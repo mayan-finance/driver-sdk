@@ -19,6 +19,8 @@ import { EvmProviders } from './evm-providers';
 import { AUCTION_MODES } from './state-parser';
 import { FutureManager } from '../future-manager';
 import logger from './logger';
+import { Connection, PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from '@solana/spl-token';
 
 export class FeeService {
 	constructor(
@@ -27,6 +29,7 @@ export class FeeService {
 		private readonly tokenList: TokenList,
 		private readonly gConf: GlobalConfig,
 		private readonly futureManager: FutureManager,
+		private readonly solanaConnection: Connection,
 	) { }
 
 	async calculateSwiftExpensesAndUSDInFromToken(qr: ExpenseParams, orderId: string): Promise<SwiftCosts> {
@@ -179,7 +182,14 @@ export class FeeService {
 			jiriJakeFeeMap.fulfillSolCost = fulfillSolCost;
 			fulfillSolCost += shrinkedStateCost;
 			jiriJakeFeeMap.shrinkedStateCost = shrinkedStateCost;
-			if (qr.toToken.contract !== '0x0000000000000000000000000000000000000000') {
+
+			let ataExists;
+			try {
+				ataExists = await this.futureManager.await(this.getAtaExistsFutureManagerKey(qr));
+			} catch (e) {
+				ataExists = await this.getAtaExistsFuture(qr);
+			}
+			if (qr.toToken.contract !== '0x0000000000000000000000000000000000000000' && !ataExists) {
 				// pure sol doesn't require creating atas
 				fulfillSolCost += ataCreationCost; // asssumes we will always create user ata
 			}
@@ -512,6 +522,27 @@ export class FeeService {
 		return `fee-service-${qr.fromChainId}-${qr.toChainId}`;
 	}
 
+	async getAtaExistsFuture(qr: ExpenseParams): Promise<any> {
+		if (qr.toToken.contract === "0x0000000000000000000000000000000000000000") {
+			return Promise.resolve(true);
+		}
+		if (qr.toChainId === CHAIN_ID_SOLANA) {
+			let tokenProgramId = qr.toToken.standard === 'spl' ? TOKEN_PROGRAM_ID : TOKEN_2022_PROGRAM_ID;
+			try {
+				let ata = getAssociatedTokenAddressSync(new PublicKey(qr.toToken.contract), new PublicKey(qr.destAddress), true, tokenProgramId)
+				let accountData = await this.solanaConnection.getAccountInfo(ata)
+				return Promise.resolve(accountData !== null);
+			} catch (e) {
+				return Promise.resolve(false);
+			}
+		} else {
+			return Promise.resolve(false);
+		}
+	}
+
+	getAtaExistsFutureManagerKey(qr: ExpenseParams): string {
+		return `fee-service-ata-exists-${qr.toToken.contract}-${qr.destAddress}`;
+	}
 }
 export type SwiftCosts = {
 	fulfillCost: number;
@@ -533,4 +564,5 @@ export type ExpenseParams = {
 	toToken: Token;
 	toChainId: number;
 	gasDrop: number;
+	destAddress: string;
 };
