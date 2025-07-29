@@ -280,7 +280,7 @@ export class DriverService {
 		if (useJito) {
 			logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
 			try {
-				const txHash = await this.solanaSender.createAndSendJitoBundle(
+				this.solanaSender.createAndSendJitoBundle(
 					[{
 						instructions: instructions,
 						signers: signers,
@@ -289,8 +289,10 @@ export class DriverService {
 					2,
 					false,
 					process.env.BID_JITO_TIP ? Number(process.env.BID_JITO_TIP) : 0.000018447,
-				);
-				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, txHash, undefined, previousAmount);
+				).catch((error: any) => {
+					logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
+				});
+				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
 			} catch (error: any) {
 				logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
 				throw error;
@@ -319,32 +321,32 @@ export class DriverService {
 	private async sendTransactionAndWaitForEvents(
 		swap: Swap,
 		expectedBidAmount: bigint,
-		txHash: string,
+		txHash?: string,
 		rawTrx?: Buffer | Uint8Array,
 		previousAmount?: bigint
 	): Promise<void> {
 		// Start background transaction sending and monitoring
 		let txConfirmationPromise: Promise<void> | undefined;
 		if (rawTrx) {
-			txConfirmationPromise = this.sendAndMonitorTransaction(rawTrx, txHash, swap.sourceTxHash);
+			txConfirmationPromise = this.sendAndMonitorTransaction(rawTrx, txHash!, swap.sourceTxHash);
 		}
 		// Start auction listener monitoring
-		const auctionEventPromise = this.waitForBidEvent(swap, expectedBidAmount, txHash, previousAmount || 0n);
+		const auctionEventPromise = this.waitForBidEvent(swap, expectedBidAmount, previousAmount || 0n, txHash);
 
 		// Race between the two - whoever completes first wins
-		let connectionFuture = rawTrx ?
-			txConfirmationPromise!.then(() => ({
-				source: 'transaction-confirmation', hash: txHash
-			})) :
-			this.solanaConnection.getSignatureStatus(txHash).then(() => {
-				return { source: 'transaction-confirmation', hash: txHash }
-			});
-
 		try {
-			const result = await Promise.race([
-				connectionFuture,
-				auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
-			]);
+			let result;
+			if (rawTrx) {
+				result = await Promise.race([
+					txConfirmationPromise!.then(() => ({
+						source: 'transaction-confirmation', hash: txHash
+					})),
+					auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
+				]);
+			} else {
+				result = await auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }));
+				txHash = (await this.auctionFulfillerCfg.auctionListener.getAuctionState(swap.auctionStateAddr, false))?.signature;
+			}
 
 			logger.info(`[BidRace] ✅ Bid completed via ${result.source} for ${swap.sourceTxHash} with hash: ${txHash}`);
 		} catch (error: any) {
@@ -414,8 +416,8 @@ export class DriverService {
 	private async waitForBidEvent(
 		swap: Swap,
 		expectedBidAmount: bigint,
-		txHash: string,
-		previousAmount: bigint
+		previousAmount: bigint,
+		txHash?: string,
 	): Promise<void> {
 		const timeout = 10_000; // 10 seconds timeout
 		const pollInterval = 100; // Check every 100ms
@@ -438,7 +440,7 @@ export class DriverService {
 					// Check if our bid was processed
 					if (auctionState.amountPromised >= expectedBidAmount &&
 						auctionState.winner === driverAddress &&
-						auctionState.signature === txHash) {
+						(txHash ? auctionState.signature === txHash : true)) {
 						logger.info(`[BidEvent] ✅ Bid successfully processed for ${swap.sourceTxHash} - Amount: ${auctionState.amountPromised}, Winner: ${auctionState.winner.slice(0, 8)}...`);
 						return;
 					}
