@@ -97,6 +97,7 @@ export class SolanaMultiTxSender {
 			lookupTables: AddressLookupTableAccount[];
 		}[],
 		timeoutSeconds: number,
+		waitForConfirmation: boolean = true,
 		tipAmount: number | null = null,
 	): Promise<string> {
 		if (txDatas.length > 5) {
@@ -143,37 +144,49 @@ export class SolanaMultiTxSender {
 		const bundleId = res.data.result;
 
 		const timeout = timeoutSeconds * 1000;
-		const interval = 500;
+		const interval = 1000;
 		const startTime = Date.now();
 
-		while (Date.now() - startTime < timeout && (await this.connection.getBlockHeight()) <= lastValidBlockHeight) {
+		if (waitForConfirmation) {
+			while (Date.now() - startTime < timeout && (await this.connection.getBlockHeight()) <= lastValidBlockHeight) {
+				const bundleStatuses = await getBundleStatuses(
+					[bundleId],
+					`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
+				);
+
+				if (bundleStatuses && bundleStatuses.value && bundleStatuses.value.length > 0) {
+					const status = bundleStatuses.value[0].confirmation_status;
+					if (status === 'confirmed' || status === 'finalized') {
+						const txHash = bundleStatuses.value[0].transactions[0];
+						const tx = await this.connection.getSignatureStatus(txHash);
+						if (!tx || !tx.value) {
+							continue;
+						}
+						if (tx.value?.err) {
+							throw new Error(`Bundle failed with error: ${tx.value.err}`);
+						}
+
+						logger.info(
+							`Posted ${status} transactions to jito with ${bundleId} ${bundleStatuses.value[0].transactions}`,
+						);
+
+						return txHash;
+					}
+				}
+				await new Promise((resolve) => setTimeout(resolve, interval));
+			}
+			throw new Error('Bundle failed to confirm within the timeout period');
+		} else {
 			const bundleStatuses = await getBundleStatuses(
 				[bundleId],
 				`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
 			);
-
 			if (bundleStatuses && bundleStatuses.value && bundleStatuses.value.length > 0) {
-				const status = bundleStatuses.value[0].confirmation_status;
-				if (status === 'confirmed' || status === 'finalized') {
-					const txHash = bundleStatuses.value[0].transactions[0];
-					const tx = await this.connection.getSignatureStatus(txHash);
-					if (!tx || !tx.value) {
-						continue;
-					}
-					if (tx.value?.err) {
-						throw new Error(`Bundle failed with error: ${tx.value.err}`);
-					}
-
-					logger.info(
-						`Posted ${status} transactions to jito with ${bundleId} ${bundleStatuses.value[0].transactions}`,
-					);
-
-					return txHash;
-				}
+				return bundleStatuses.value[0].transactions[0];
+			} else {
+				throw new Error('failed to get bundle statuses');
 			}
-			await new Promise((resolve) => setTimeout(resolve, interval));
 		}
-		throw new Error('Bundle failed to confirm within the timeout period');
 	}
 
 	async createAndSendOptimizedTransaction(

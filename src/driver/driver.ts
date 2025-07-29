@@ -276,34 +276,36 @@ export class DriverService {
 		const stateBefore = await this.auctionFulfillerCfg.auctionListener?.getAuctionState(swap.auctionStateAddr);
 		const previousAmount = stateBefore?.amountPromised || 0n;
 
-		// // Create and sign transaction to calculate hash upfront
-		// const { trx } = await this.solanaSender.createOptimizedVersionedTransaction(
-		// 	instructions,
-		// 	signers,
-		// 	[],
-		// 	true,
-		// 	undefined,
-		// 	70_000,
-		// );
-
-		// const rawTrx = trx.serialize();
-		// // Calculate hash from signed transaction (before sending)
-		// const calculatedHash = trx.signatures[0] ? binary_to_base58(trx.signatures[0]) : '';
-		logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
-		let txHash = await this.solanaSender.createAndSendJitoBundle(
-			[{
-				instructions: instructions,
-				signers: signers,
-				lookupTables: [],
-			}],
-			1,
-			process.env.BID_JITO_TIP ? Number(process.env.BID_JITO_TIP) : 0.000018447,
-		);
-
-		// logger.info(`Prepared bid transaction hash: ${calculatedHash} for ${swap.sourceTxHash} - Previous amount: ${previousAmount}, Bidding: ${normalizedBidAmount}`);
-
-		// Race between transaction confirmation and auction events
-		await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, txHash, previousAmount);
+		let useJito = process.env.BID_WITH_JITO === 'true';
+		if (useJito) {
+			logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
+			const txHash = await this.solanaSender.createAndSendJitoBundle(
+				[{
+					instructions: instructions,
+					signers: signers,
+					lookupTables: [],
+				}],
+				1,
+				false,
+				process.env.BID_JITO_TIP ? Number(process.env.BID_JITO_TIP) : 0.000018447,
+			);
+			await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, txHash, undefined, previousAmount);
+		} else {
+			// Create and sign transaction to calculate hash upfront
+			const { trx } = await this.solanaSender.createOptimizedVersionedTransaction(
+				instructions,
+				signers,
+				[],
+				true,
+				undefined,
+				70_000,
+			);
+			const rawTrx = trx.serialize();
+			// Calculate hash from signed transaction (before sending)
+			const calculatedHash = trx.signatures[0] ? binary_to_base58(trx.signatures[0]) : '';
+			logger.info(`Prepared bid transaction hash: ${calculatedHash} for ${swap.sourceTxHash} - Previous amount: ${previousAmount}, Bidding: ${normalizedBidAmount}`);
+			await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, calculatedHash, rawTrx, previousAmount);
+		}
 	}
 
 	/**
@@ -313,22 +315,29 @@ export class DriverService {
 		swap: Swap,
 		expectedBidAmount: bigint,
 		txHash: string,
-		// rawTrx: Buffer | Uint8Array,
-		previousAmount: bigint
+		rawTrx?: Buffer | Uint8Array,
+		previousAmount?: bigint
 	): Promise<void> {
 		// Start background transaction sending and monitoring
-		// const txConfirmationPromise = this.sendAndMonitorTransaction(rawTrx, txHash, swap.sourceTxHash);
-
+		let txConfirmationPromise: Promise<void> | undefined;
+		if (rawTrx) {
+			txConfirmationPromise = this.sendAndMonitorTransaction(rawTrx, txHash, swap.sourceTxHash);
+		}
 		// Start auction listener monitoring
-		const auctionEventPromise = this.waitForBidEvent(swap, expectedBidAmount, txHash, previousAmount);
+		const auctionEventPromise = this.waitForBidEvent(swap, expectedBidAmount, txHash, previousAmount || 0n);
 
 		// Race between the two - whoever completes first wins
+		let connectionFuture = rawTrx ?
+			txConfirmationPromise!.then(() => ({
+				source: 'transaction-confirmation', hash: txHash
+			})) :
+			this.solanaConnection.getSignatureStatus(txHash).then(() => {
+				return { source: 'transaction-confirmation', hash: txHash }
+			});
+
 		try {
 			const result = await Promise.race([
-				// txConfirmationPromise.then(() => ({ source: 'transaction-confirmation', hash: txHash })),
-				this.solanaConnection.getSignatureStatus(txHash).then(() => {
-					return ({ source: 'transaction-confirmation', hash: txHash })
-				}),
+				connectionFuture,
 				auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
 			]);
 
