@@ -85,7 +85,7 @@ export class SolanaMultiTxSender {
 		const ix = SystemProgram.transfer({
 			fromPubkey: this.walletConfig.solana.publicKey,
 			toPubkey: this.chooseJitoTipAccount(),
-			lamports: Math.floor(tipAmount || this.minJitoTipAmount * 10 ** 9),
+			lamports: Math.floor((tipAmount || this.minJitoTipAmount) * 10 ** 9),
 		});
 		return ix;
 	}
