@@ -242,16 +242,23 @@ export class AuctionFulfillerConfig {
 			throw new Error(`auctionState is closed for swap ${swap.sourceTxHash}`);
 		}
 
+		let changed = false;
 		if (lastBidFromAuctionListener && normalizedBidAmount > lastBidFromAuctionListener) {
 			normalizedBidAmount = lastBidFromAuctionListener + (normalizedBidAmount - lastBidFromAuctionListener) / 4n + 1n;
+			changed = true
 		}
 
 		if (lastBid && normalizedBidAmount > lastBid) {
 			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 4n + 1n;
+			changed = true;
 		}
 
 		if (auctionState) {
 			logger.info(`saw auctionState ${auctionState.winner} for swap ${auctionState.orderId}-${swap.sourceTxHash} with lastBid ${auctionState.amountPromised}`);
+		}
+
+		if (!changed) {
+			normalizedBidAmount = normalizedMinAmountOut + 1n;
 		}
 
 		// Calculate bidAmountIn using integer arithmetic
