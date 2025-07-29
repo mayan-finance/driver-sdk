@@ -82,10 +82,10 @@ export class FeeService {
 		let postCancelCost = this.gConf.feeParams.postCancelCost;
 		let batchPostBaseCost = this.gConf.feeParams.batchPostBaseCost;
 		let batchPostAdddedCost = this.gConf.feeParams.batchPostAdddedCost;
-		let postUnlockVaaSingle = this.gConf.feeParams.postUnlockVaaSingle;
+		let postUnlockVaaSingle = process.env.POST_UNLOCK_VAA_SINGLE ? Number(process.env.POST_UNLOCK_VAA_SINGLE) : this.gConf.feeParams.postUnlockVaaSingle;
 		let postUnlockVaaBase = this.gConf.feeParams.postUnlockVaaBase;
 		let postUnlockVaaPerItem = this.gConf.feeParams.postUnlockVaaPerItem;
-		let solTxCost = this.gConf.feeParams.solTxCost;
+		let solTxCost = process.env.SOL_TX_COST ? Number(process.env.SOL_TX_COST) : this.gConf.feeParams.solTxCost;
 		let additionalSolfulfillCost = this.gConf.feeParams.additionalSolfulfillCost;
 		if (qr.auctionMode === AUCTION_MODES.DONT_CARE) {
 			postAuctionCost = 0;
