@@ -289,6 +289,7 @@ export class DriverService {
 		// const rawTrx = trx.serialize();
 		// // Calculate hash from signed transaction (before sending)
 		// const calculatedHash = trx.signatures[0] ? binary_to_base58(trx.signatures[0]) : '';
+		logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
 		let txHash = await this.solanaSender.createAndSendJitoBundle(
 			[{
 				instructions: instructions,
