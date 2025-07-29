@@ -81,11 +81,11 @@ export class SolanaMultiTxSender {
 		}
 	}
 
-	getRandomJitoTransferIx(): TransactionInstruction {
+	getRandomJitoTransferIx(tipAmount: number | null = null): TransactionInstruction {
 		const ix = SystemProgram.transfer({
 			fromPubkey: this.walletConfig.solana.publicKey,
 			toPubkey: this.chooseJitoTipAccount(),
-			lamports: Math.floor(this.minJitoTipAmount * 10 ** 9),
+			lamports: Math.floor(tipAmount || this.minJitoTipAmount * 10 ** 9),
 		});
 		return ix;
 	}
@@ -97,6 +97,7 @@ export class SolanaMultiTxSender {
 			lookupTables: AddressLookupTableAccount[];
 		}[],
 		timeoutSeconds: number,
+		tipAmount: number | null = null,
 	): Promise<string> {
 		if (txDatas.length > 5) {
 			throw new Error('Cannot send more than 5 transactions in a single bundle');
@@ -108,7 +109,7 @@ export class SolanaMultiTxSender {
 			const txData = txDatas[i];
 			let instructions = txData.instructions;
 			if (i === txDatas.length - 1) {
-				instructions.push(this.getRandomJitoTransferIx());
+				instructions.push(this.getRandomJitoTransferIx(tipAmount));
 			}
 			const msg = MessageV0.compile({
 				payerKey: this.walletConfig.solana.publicKey,
@@ -142,7 +143,7 @@ export class SolanaMultiTxSender {
 		const bundleId = res.data.result;
 
 		const timeout = timeoutSeconds * 1000;
-		const interval = 1000;
+		const interval = 500;
 		const startTime = Date.now();
 
 		while (Date.now() - startTime < timeout && (await this.connection.getBlockHeight()) <= lastValidBlockHeight) {
