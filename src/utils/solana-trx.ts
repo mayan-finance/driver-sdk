@@ -49,6 +49,8 @@ export class SolanaMultiTxSender {
 
 	private minJitoTipAmount = Number(process.env.MIN_JITO_TIP || 0.0001);
 	private maxJitoTipAmount = Number(process.env.MAX_JITO_TIP || 0.0002);
+	private minBidJitoTipAmount = Number(process.env.MIN_BID_JITO_TIP || 0.00001);
+	private maxBidJitoTipAmount = Number(process.env.MAX_BID_JITO_TIP || 0.0005);
 
 	constructor(
 		private rpcConfig: RpcConfig,
@@ -75,10 +77,19 @@ export class SolanaMultiTxSender {
 				this.maxJitoTipAmount,
 				Math.max(data[0]['landed_tips_75th_percentile'], this.minJitoTipAmount),
 			);
+			this.minBidJitoTipAmount = Math.min(
+				this.maxBidJitoTipAmount,
+				data[0]['landed_tips_95th_percentile'],
+				Math.max(data[0]['landed_tips_75th_percentile'] + data[0]['landed_tips_50th_percentile'], this.minBidJitoTipAmount),
+			);
 			// console.log(`Updated jito tips: ${this.minJitoTipAmount}`);
 		} catch (error) {
 			logger.error(`Error updating jito tips: ${error}`);
 		}
+	}
+
+	getBidJitoTipAmount(): number {
+		return this.minBidJitoTipAmount;
 	}
 
 	getRandomJitoTransferIx(tipAmount: number | null = null): TransactionInstruction {

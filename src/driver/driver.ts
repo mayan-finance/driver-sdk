@@ -288,7 +288,7 @@ export class DriverService {
 					}],
 					2,
 					false,
-					process.env.BID_JITO_TIP ? Number(process.env.BID_JITO_TIP) : 0.000018447,
+					this.solanaSender.getBidJitoTipAmount(),
 				).catch((error: any) => {
 					logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
 				});
