@@ -158,7 +158,7 @@ export class AuctionFulfillerConfig {
 
 		if (output64 > maxAllowedOutput) {
 			output64 = maxAllowedOutput;
-			logger.warn(
+			logger.info(
 				`Output is too much more than minAmountOut. limiting bid to minAmountOut * 1.1 for ${swap.sourceTxHash}`,
 			);
 		}
