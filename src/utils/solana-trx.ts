@@ -47,8 +47,10 @@ export class SolanaMultiTxSender {
 		new PublicKey('3AVi9Tg9Uo68tJfuvoKvqKNWKkC5wPdSSdeBnizKZ6jT'),
 	];
 
+	private minJitoTipAmountEnv = Number(process.env.MIN_JITO_TIP || 0.0001);
 	private minJitoTipAmount = Number(process.env.MIN_JITO_TIP || 0.0001);
 	private maxJitoTipAmount = Number(process.env.MAX_JITO_TIP || 0.0002);
+	private minBidJitoTipAmountEnv = Number(process.env.MIN_BID_JITO_TIP || 0.0001);
 	private minBidJitoTipAmount = Number(process.env.MIN_BID_JITO_TIP || 0.00001);
 	private maxBidJitoTipAmount = Number(process.env.MAX_BID_JITO_TIP || 0.0005);
 
@@ -75,12 +77,12 @@ export class SolanaMultiTxSender {
 			const { data } = await axios.get('https://bundles.jito.wtf/api/v1/bundles/tip_floor');
 			this.minJitoTipAmount = Math.min(
 				this.maxJitoTipAmount,
-				Math.max(data[0]['landed_tips_75th_percentile'], this.minJitoTipAmount),
+				Math.max(data[0]['landed_tips_75th_percentile'], this.minJitoTipAmountEnv),
 			);
 			this.minBidJitoTipAmount = Math.min(
 				this.maxBidJitoTipAmount,
 				data[0]['landed_tips_95th_percentile'],
-				Math.max(data[0]['landed_tips_75th_percentile'] + data[0]['landed_tips_50th_percentile'], this.minBidJitoTipAmount),
+				Math.max(data[0]['landed_tips_75th_percentile'] + data[0]['landed_tips_50th_percentile'], this.minBidJitoTipAmountEnv),
 			);
 			// console.log(`Updated jito tips: ${this.minJitoTipAmount}`);
 		} catch (error) {
