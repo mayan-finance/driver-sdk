@@ -82,9 +82,9 @@ export class SolanaMultiTxSender {
 			this.minBidJitoTipAmount = Math.min(
 				this.maxBidJitoTipAmount,
 				data[0]['landed_tips_95th_percentile'],
-				Math.max(data[0]['landed_tips_75th_percentile'] + data[0]['landed_tips_50th_percentile'], this.minBidJitoTipAmountEnv),
+				Math.max(data[0]['landed_tips_75th_percentile'], this.minBidJitoTipAmountEnv),
+				// Math.max(data[0]['landed_tips_75th_percentile'] + data[0]['landed_tips_50th_percentile'], this.minBidJitoTipAmountEnv),
 			);
-			// console.log(`Updated jito tips: ${this.minJitoTipAmount}`);
 		} catch (error) {
 			logger.error(`Error updating jito tips: ${error}`);
 		}
