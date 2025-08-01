@@ -280,7 +280,7 @@ export class DriverService {
 		if (useJito) {
 			logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
 			try {
-				this.solanaSender.createAndSendJitoBundle(
+				let txHash = await this.solanaSender.createAndSendJitoBundle(
 					[{
 						instructions: instructions,
 						signers: signers,
@@ -289,10 +289,8 @@ export class DriverService {
 					2,
 					false,
 					this.solanaSender.getBidJitoTipAmount(),
-				).catch((error: any) => {
-					logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
-				});
-				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
+				);
+				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, txHash, undefined, previousAmount);
 			} catch (error: any) {
 				logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
 				throw error;
@@ -335,18 +333,24 @@ export class DriverService {
 
 		// Race between the two - whoever completes first wins
 		try {
-			let result;
-			if (rawTrx) {
-				result = await Promise.race([
-					txConfirmationPromise!.then(() => ({
-						source: 'transaction-confirmation', hash: txHash
-					})),
-					auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
-				]);
-			} else {
-				result = await auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }));
-				txHash = (await this.auctionFulfillerCfg.auctionListener.getAuctionState(swap.auctionStateAddr, false))?.signature;
-			}
+			// let result;
+			// if (rawTrx) {
+			// 	result = await Promise.race([
+			// 		txConfirmationPromise!.then(() => ({
+			// 			source: 'transaction-confirmation', hash: txHash
+			// 		})),
+			// 		auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
+			// 	]);
+			// } else {
+			// 	result = await auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }));
+			// 	txHash = (await this.auctionFulfillerCfg.auctionListener.getAuctionState(swap.auctionStateAddr, false))?.signature;
+			// }
+			let result = await Promise.race([
+				txConfirmationPromise!.then(() => ({
+					source: 'transaction-confirmation', hash: txHash
+				})),
+				auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
+			]);
 
 			logger.info(`[BidRace] ✅ Bid completed via ${result.source} for ${swap.sourceTxHash} with hash: ${txHash}`);
 		} catch (error: any) {
