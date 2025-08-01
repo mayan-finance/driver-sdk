@@ -333,24 +333,18 @@ export class DriverService {
 
 		// Race between the two - whoever completes first wins
 		try {
-			// let result;
-			// if (rawTrx) {
-			// 	result = await Promise.race([
-			// 		txConfirmationPromise!.then(() => ({
-			// 			source: 'transaction-confirmation', hash: txHash
-			// 		})),
-			// 		auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
-			// 	]);
-			// } else {
-			// 	result = await auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }));
-			// 	txHash = (await this.auctionFulfillerCfg.auctionListener.getAuctionState(swap.auctionStateAddr, false))?.signature;
-			// }
-			let result = await Promise.race([
-				txConfirmationPromise!.then(() => ({
-					source: 'transaction-confirmation', hash: txHash
-				})),
-				auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
-			]);
+			let result;
+			if (rawTrx) {
+				result = await Promise.race([
+					txConfirmationPromise!.then(() => ({
+						source: 'transaction-confirmation', hash: txHash
+					})),
+					auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }))
+				]);
+			} else {
+				result = await auctionEventPromise.then(() => ({ source: 'auction-listener', hash: txHash }));
+				txHash = (await this.auctionFulfillerCfg.auctionListener.getAuctionState(swap.auctionStateAddr, false))?.signature;
+			}
 
 			logger.info(`[BidRace] ✅ Bid completed via ${result.source} for ${swap.sourceTxHash} with hash: ${txHash}`);
 		} catch (error: any) {
