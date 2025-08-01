@@ -280,7 +280,7 @@ export class DriverService {
 		if (useJito) {
 			logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
 			try {
-				let txHash = await this.solanaSender.createAndSendJitoBundle(
+				this.solanaSender.createAndSendJitoBundle(
 					[{
 						instructions: instructions,
 						signers: signers,
@@ -289,8 +289,10 @@ export class DriverService {
 					2,
 					false,
 					this.solanaSender.getBidJitoTipAmount(),
-				);
-				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, txHash, undefined, previousAmount);
+				).catch((error: any) => {
+					logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
+				});
+				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
 			} catch (error: any) {
 				logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
 				throw error;
