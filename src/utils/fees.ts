@@ -74,7 +74,7 @@ export class FeeService {
 		const destUsdc = this.tokenList.getNativeUsdc(qr.toChainId);
 		const destEth = this.tokenList.getEth(qr.toChainId);
 
-		let shrinkedStateCost = this.gConf.feeParams.shrinkedStateCost; // state cost after shrink rent
+		let shrinkedStateCost = process.env.SHRINKED_STATE_COST ? Number(process.env.SHRINKED_STATE_COST) : this.gConf.feeParams.shrinkedStateCost; // state cost after shrink rent
 		let sourceStateCost = this.gConf.feeParams.sourceStateCost; // source state rent
 		let solanaSimpleCost = this.gConf.feeParams.solanaSimpleCost; // state cost + tx fees
 		let postAuctionCost = this.gConf.feeParams.postAuctionCost; // 2x because we might post twice + tx costss
