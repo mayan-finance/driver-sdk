@@ -214,6 +214,8 @@ export class AuctionFulfillerConfig {
 		// (fulfillAmountInWithProfit * output64) / normalizedEffectiveAmountInBigInt
 		const bidAmountWithProfitBigInt = (fulfillAmountInWithProfit * output64) / normalizedEffectiveAmountInBigInt;
 
+		logger.info(`[BID] bidBpsMargin ${bidBpsMargin} | fulfillAmountInWithProfit ${fulfillAmountInWithProfit} | bidAmountWithProfitBigInt ${bidAmountWithProfitBigInt} for swap ${swap.sourceTxHash}`);
+
 		// Convert to normalized decimals (WORMHOLE_DECIMALS or token decimals)
 		const targetDecimals = Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
 		const bidAmount64WithProfit = (bidAmountWithProfitBigInt * BigInt(10 ** targetDecimals)) / BigInt(10 ** swap.toToken.decimals);
