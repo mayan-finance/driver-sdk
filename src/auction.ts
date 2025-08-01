@@ -247,12 +247,12 @@ export class AuctionFulfillerConfig {
 		///// Bidding war logic
 		let changed = false;
 		if (lastBidFromAuctionListener && normalizedBidAmount > lastBidFromAuctionListener) {
-			normalizedBidAmount = lastBidFromAuctionListener + (normalizedBidAmount - lastBidFromAuctionListener) / 4n + 1n;
+			normalizedBidAmount = lastBidFromAuctionListener + (normalizedBidAmount - lastBidFromAuctionListener) / 10n + 1n;
 			changed = true
 		}
 
 		if (lastBid && normalizedBidAmount > lastBid) {
-			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 4n + 1n;
+			normalizedBidAmount = lastBid + (normalizedBidAmount - lastBid) / 10n + 1n;
 			changed = true;
 		}
 
@@ -352,7 +352,7 @@ export class AuctionFulfillerConfig {
 		if (swap.toToken.contract === driverToken.contract) {
 			bidBpsMargin = 0.9; // 1 bps if no swap is included
 		} else if (!swap.toToken.pythUsdPriceId) {
-			bidBpsMargin = 50; // 50 bps if no pyth price id (probably meme coin,...)
+			bidBpsMargin = 40; // 50 bps if no pyth price id (probably meme coin,...)
 		}
 		return bidBpsMargin;
 	}
