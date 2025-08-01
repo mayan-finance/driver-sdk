@@ -165,6 +165,7 @@ export class SolanaMultiTxSender {
 				const bundleStatuses = await getBundleStatuses(
 					[bundleId],
 					`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
+					this.rpcConfig.solana.jitoUUID || '',
 				);
 
 				if (bundleStatuses && bundleStatuses.value && bundleStatuses.value.length > 0) {
@@ -193,6 +194,7 @@ export class SolanaMultiTxSender {
 			const bundleStatuses = await getBundleStatuses(
 				[bundleId],
 				`${this.rpcConfig.solana.jitoEndpoint}/api/v1/bundles`,
+				this.rpcConfig.solana.jitoUUID || '',
 			);
 			if (bundleStatuses && bundleStatuses.value && bundleStatuses.value.length > 0) {
 				return bundleStatuses.value[0].transactions[0];
@@ -481,7 +483,11 @@ export async function getCurrentSolanaTimeMS(connection: Connection, retry: numb
 	}
 }
 
-async function getBundleStatuses(bundleIds: string[], jitoApiUrl: string): Promise<any> {
+async function getBundleStatuses(bundleIds: string[], jitoApiUrl: string, jitoUUID: string): Promise<any> {
+	let headers: { [key: string]: string } = { 'Content-Type': 'application/json' };
+	if (jitoUUID) {
+		headers['x-jito-auth'] = jitoUUID;
+	}
 	const response = await axios.post(
 		jitoApiUrl,
 		{
@@ -491,7 +497,7 @@ async function getBundleStatuses(bundleIds: string[], jitoApiUrl: string): Promi
 			params: [bundleIds],
 		},
 		{
-			headers: { 'Content-Type': 'application/json' },
+			headers: headers,
 		},
 	);
 
