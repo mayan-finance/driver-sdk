@@ -279,24 +279,19 @@ export class DriverService {
 		let useJito = process.env.BID_WITH_JITO === 'true';
 		if (useJito) {
 			logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
-			try {
-				this.solanaSender.createAndSendJitoBundle(
-					[{
-						instructions: instructions,
-						signers: signers,
-						lookupTables: [],
-					}],
-					2,
-					false,
-					this.solanaSender.getBidJitoTipAmount(),
-				).catch((error: any) => {
-					logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
-				});
-				await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
-			} catch (error: any) {
+			this.solanaSender.createAndSendJitoBundle(
+				[{
+					instructions: instructions,
+					signers: signers,
+					lookupTables: [],
+				}],
+				2,
+				false,
+				this.solanaSender.getBidJitoTipAmount(),
+			).catch((error: any) => {
 				logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
-				throw error;
-			}
+			});
+			await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
 		} else {
 			// Create and sign transaction to calculate hash upfront
 			const { trx } = await this.solanaSender.createOptimizedVersionedTransaction(
