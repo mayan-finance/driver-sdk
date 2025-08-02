@@ -30,7 +30,7 @@
     "@improbable-eng/grpc-web-node-http-transport": "^0.15.0",
     "@solana/buffer-layout": "^4.0.1",
     "@solana/spl-token": "^0.4.6",
-    "@solana/web3.js": "^1.91.8",
+    "@solana/web3.js": "^1.98.4",
     "@triton-one/yellowstone-grpc": "^4.0.2",
     "axios": "^1.7.2",
     "decimal.js": "^10.4.3",
