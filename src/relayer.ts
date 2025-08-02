@@ -57,12 +57,22 @@ export class Relayer {
 	private async tryProgressFulfill(swap: Swap) {
 		const isSolDst = swap.destChain === CHAIN_ID_SOLANA;
 		const isSolSrc = swap.sourceChain === CHAIN_ID_SOLANA;
-		let [destState, destEvmOrder, sourceState, sourceEvmOrder] = await Promise.all([
-			isSolDst ? getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
-			!isSolDst ? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash) : null,
-			isSolSrc ? getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr)) : null,
-			!isSolSrc ? this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash) : null,
-		]);
+
+		let destState: SwiftDestState | null = null;
+		let destEvmOrder: EvmStoredOrder | null = null;
+		let sourceState: SwiftSourceState | null = null;
+		let sourceEvmOrder: EvmStoredOrder | null = null;
+		try {
+			[destState, destEvmOrder, sourceState, sourceEvmOrder] = await Promise.all([
+				isSolDst ? getSwiftStateDest(this.solanaConnection, new PublicKey(swap.stateAddr)).catch(() => null) : null,
+				!isSolDst ? this.walletHelper.getReadContract(swap.destChain).orders(swap.orderHash).catch(() => null) : null,
+				isSolSrc ? getSwiftStateSrc(this.solanaConnection, new PublicKey(swap.stateAddr)).catch(() => null) : null,
+				!isSolSrc ? this.walletHelper.getReadContract(swap.sourceChain).orders(swap.orderHash).catch(() => null) : null,
+			]);
+		} catch (err) {
+			logger.error(`Error getting state for ${swap.sourceTxHash} because ${err}`);
+			return;
+		}
 
 		switch (swap.status) {
 			case SWAP_STATUS.ORDER_SUBMITTED:
