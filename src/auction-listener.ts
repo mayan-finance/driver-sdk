@@ -71,7 +71,7 @@ export class AuctionListener {
 		if (state && !forceSolana) {
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
-			logger.warn(`[AuctionListener] No auction state found for auctionStateAddr: ${auctionStateAddr}. Getting from solana ...`);
+			logger.debug(`[AuctionListener] No auction state found for auctionStateAddr: ${auctionStateAddr}. Getting from solana ...`);
 			const auctionState = await getAuctionStateFromSolana(this.solanaConnection, new PublicKey(auctionStateAddr));
 			if (auctionState) {
 				state = {
