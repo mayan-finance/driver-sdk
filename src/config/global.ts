@@ -46,4 +46,6 @@ export type GlobalConfig = {
 	isRebalancerEnabled: boolean;
 	minUsdcOrderAmount: number | undefined;
 	waitForRebalanceTransferIfNeededSeconds: number;
+
+	expiredSwapTime: number | undefined;
 };

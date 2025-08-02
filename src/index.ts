@@ -79,6 +79,7 @@ export async function main() {
 		isRebalancerEnabled: process.env.IS_REBALANCER_ENABLED === 'true',
 		minUsdcOrderAmount: process.env.MIN_USDC_ORDER_AMOUNT ? parseInt(process.env.MIN_USDC_ORDER_AMOUNT) : undefined,
 		waitForRebalanceTransferIfNeededSeconds: process.env.WAIT_FOR_REBALANCE_TRANSFER_IF_NEEDED_SECONDS ? parseInt(process.env.WAIT_FOR_REBALANCE_TRANSFER_IF_NEEDED_SECONDS) : 10,
+		expiredSwapTime: process.env.EXPIRED_SWAP_TIME ? parseInt(process.env.EXPIRED_SWAP_TIME) : undefined,
 	};
 
 	const contracts: ContractsConfig = {
