@@ -81,7 +81,7 @@ const sizeCheckFormat = format((info) => {
 class DuplicateLoggerWrapper {
     private logger: Logger;
     private recentMessages: Map<string, number> = new Map();
-    private readonly duplicateWindowMs = 3000; // 1 second
+    private readonly duplicateWindowMs = 500; // 0.5 second
 
     constructor(logger: Logger) {
         this.logger = logger;
