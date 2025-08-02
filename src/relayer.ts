@@ -272,7 +272,7 @@ export class Relayer {
 						}
 						try {
 							logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-							await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
+							await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0), Date.now() - (auctionState?.firstBidTime ?? 0));
 							logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 							lastBidTimestamp = auctionState.timestamp;
 						} catch (err) {
@@ -287,7 +287,7 @@ export class Relayer {
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll evm Bidding for ${swap.sourceTxHash}...`);
-						await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
+						await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0), Date.now() - (auctionState?.firstBidTime ?? 0));
 						logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 					} catch (err) {
 						logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
@@ -377,7 +377,7 @@ export class Relayer {
 						}
 						try {
 							logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
-							await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+							await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n, Date.now() - (auctionState?.firstBidTime ?? 0));
 							logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
 							lastBidTimestamp = auctionState.timestamp;
 						} catch (err) {
@@ -392,7 +392,7 @@ export class Relayer {
 				} else {
 					try {
 						logger.info(`In bid-and-fullfilll solana Bidding for ${swap.sourceTxHash}...`);
-						await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
+						await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n, Date.now() - (auctionState?.firstBidTime ?? 0));
 						logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
 					} catch (err) {
 						logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);

@@ -80,6 +80,7 @@ export async function main() {
 		minUsdcOrderAmount: process.env.MIN_USDC_ORDER_AMOUNT ? parseInt(process.env.MIN_USDC_ORDER_AMOUNT) : undefined,
 		waitForRebalanceTransferIfNeededSeconds: process.env.WAIT_FOR_REBALANCE_TRANSFER_IF_NEEDED_SECONDS ? parseInt(process.env.WAIT_FOR_REBALANCE_TRANSFER_IF_NEEDED_SECONDS) : 10,
 		expiredSwapTime: process.env.EXPIRED_SWAP_TIME ? parseInt(process.env.EXPIRED_SWAP_TIME) : undefined,
+		skipBidIfTimeNotPassedFromFirstBid: process.env.SKIP_BID_IF_TIME_NOT_PASSED_FROM_FIRST_BID ? parseInt(process.env.SKIP_BID_IF_TIME_NOT_PASSED_FROM_FIRST_BID) : undefined,
 	};
 
 	const contracts: ContractsConfig = {

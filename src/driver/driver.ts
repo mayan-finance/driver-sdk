@@ -185,7 +185,7 @@ export class DriverService {
 		}
 	}
 
-	async bid(swap: Swap, lastBid: bigint = 0n): Promise<void> {
+	async bid(swap: Swap, lastBid: bigint = 0n, timePassedFromFirstBid: number = 0): Promise<void> {
 		if (this.pendingAuctionCount > driverConfig.maxPendingOrders) {
 			sendAlert('FILLED_PENDING', `Filled pending auction ${this.pendingAuctionCount}`);
 			throw new Error(`Not bidding ${swap.sourceTxHash} because we have too many pending orders`);
@@ -275,6 +275,11 @@ export class DriverService {
 		// Store auction state before bidding for comparison
 		const stateBefore = await this.auctionFulfillerCfg.auctionListener?.getAuctionState(swap.auctionStateAddr);
 		const previousAmount = stateBefore?.amountPromised || 0n;
+
+		if (this.globalConfig.skipBidIfTimeNotPassedFromFirstBid && timePassedFromFirstBid < this.globalConfig.skipBidIfTimeNotPassedFromFirstBid) {
+			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because timePassedFromFirstBid ${timePassedFromFirstBid} is less than skipBidIfTimeNotPassedFromFirstBid ${this.globalConfig.skipBidIfTimeNotPassedFromFirstBid}`);
+			return;
+		}
 
 		let useJito = process.env.BID_WITH_JITO === 'true';
 		if (useJito) {

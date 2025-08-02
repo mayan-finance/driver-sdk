@@ -48,4 +48,5 @@ export type GlobalConfig = {
 	waitForRebalanceTransferIfNeededSeconds: number;
 
 	expiredSwapTime: number | undefined;
+	skipBidIfTimeNotPassedFromFirstBid: number | undefined;
 };
