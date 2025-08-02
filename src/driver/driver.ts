@@ -291,6 +291,7 @@ export class DriverService {
 			).catch((error: any) => {
 				logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
 			});
+			await new Promise(resolve => setTimeout(resolve, 100));
 			await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
 		} else {
 			// Create and sign transaction to calculate hash upfront
