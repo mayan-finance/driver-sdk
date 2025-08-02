@@ -47,6 +47,17 @@ export class AuctionListener {
 	 */
 	public async getAuctionState(auctionStateAddr: string, forceSolana: boolean = false): Promise<BidState | null> {
 		let state = this.bidStatesMap.get(auctionStateAddr) || null;
+		if (!state && !forceSolana) {
+			let numPolls = 0;
+			while (numPolls < 25) {
+				numPolls++;
+				state = this.bidStatesMap.get(auctionStateAddr) || null;
+				if (state) {
+					break;
+				}
+				await new Promise(resolve => setTimeout(resolve, 20));
+			}
+		}
 
 		let deleted = false;
 		if (state && state.isClosed) {
