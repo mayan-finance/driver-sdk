@@ -544,7 +544,7 @@ export class FailsafeSolanaConnectionHandler {
 		for (let rpcUrl of rpcUrls.split(',')) {
 			this.connections.push(new Connection(rpcUrl, {
 				commitment: 'confirmed',
-				fetch: fetchWithTimeout,
+				// fetch: fetchWithTimeout,
 			}));
 		}
 
