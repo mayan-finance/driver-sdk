@@ -4,7 +4,7 @@ import * as io from 'socket.io-client';
 import { ContractsConfig, MayanForwarderAddress } from '../config/contracts';
 import { MayanEndpoints } from '../config/endpoints';
 import { GlobalConfig } from '../config/global';
-import { TokenList } from '../config/tokens';
+import { Token, TokenList } from '../config/tokens';
 import { WalletConfig } from '../config/wallet';
 import { StateCloser } from '../driver/state-closer';
 import { Relayer } from '../relayer';
@@ -14,6 +14,8 @@ import { DriverService } from '../driver/driver';
 import { delay } from '../utils/util';
 import { FutureManager } from '../future-manager';
 import { ExpenseParams, FeeService } from '../utils/fees';
+import { AuctionFulfillerConfig } from '../auction';
+import { CHAIN_ID_SOLANA } from '../config/chains';
 
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
@@ -35,6 +37,7 @@ export class MayanExplorerWatcher {
 		private readonly stateCloser: StateCloser,
 		private readonly futureManager: FutureManager,
 		private readonly feeSvc: FeeService,
+		private readonly auctionFulfillerCfg: AuctionFulfillerConfig,
 	) {
 		this.initiateAddresses = [];
 		this.initiateAddresses.push(MayanForwarderAddress);
@@ -150,6 +153,14 @@ export class MayanExplorerWatcher {
 					this.futureManager.add(this.feeSvc.getChainFeeDataFutureManagerKey(qr), this.feeSvc.getChainFeeDataFuture(qr), true);
 					this.futureManager.add(this.feeSvc.getAtaExistsFutureManagerKey(qr), this.feeSvc.getAtaExistsFuture(qr), true);
 
+					let driverToken: Token;
+					if (swap.destChain === CHAIN_ID_SOLANA) {
+						driverToken = this.driver.getDriverSolanaTokenForBidAndSwap(swap);
+					} else {
+						driverToken = this.driver.getDriverEvmTokenForBidAndSwap(swap);
+					}
+					this.futureManager.add(this.auctionFulfillerCfg.getTokenBalanceFutureManagerKey(driverToken), this.auctionFulfillerCfg.getTokenBalanceFuture(driverToken), true);
+
 					logger.info(
 						`Received explorer swap with ` +
 						'\x1b[32m' +
@@ -254,6 +265,14 @@ export class MayanExplorerWatcher {
 			this.futureManager.add(this.feeSvc.getPriceFutureManagerKey(qr), this.feeSvc.getPriceFuture(qr), true);
 			this.futureManager.add(this.feeSvc.getChainFeeDataFutureManagerKey(qr), this.feeSvc.getChainFeeDataFuture(qr), true);
 			this.futureManager.add(this.feeSvc.getAtaExistsFutureManagerKey(qr), this.feeSvc.getAtaExistsFuture(qr), true);
+
+			let driverToken: Token;
+			if (swap.destChain === CHAIN_ID_SOLANA) {
+				driverToken = this.driver.getDriverSolanaTokenForBidAndSwap(swap);
+			} else {
+				driverToken = this.driver.getDriverEvmTokenForBidAndSwap(swap);
+			}
+			this.futureManager.add(this.auctionFulfillerCfg.getTokenBalanceFutureManagerKey(driverToken), this.auctionFulfillerCfg.getTokenBalanceFuture(driverToken), true);
 
 			this.relayer.relay(swap);
 		} catch (err) {

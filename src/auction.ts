@@ -20,6 +20,7 @@ import { createRebalance, DB_PATH } from './utils/sqlite3';
 import { GlobalConfig } from './config/global';
 import { SimpleCache } from './cache';
 import { AuctionListener } from './auction-listener';
+import { FutureManager } from './future-manager';
 export class AuctionFulfillerConfig {
 	private readonly bidAggressionPercent = driverConfig.bidAggressionPercent;
 	private readonly fulfillAggressionPercent = driverConfig.fulfillAggressionPercent;
@@ -49,6 +50,7 @@ export class AuctionFulfillerConfig {
 		private readonly tokenList: TokenList,
 		private readonly rebalancer: Rebalancer,
 		public readonly auctionListener: AuctionListener,
+		private readonly futureManager: FutureManager,
 	) { }
 
 	async normalizedBidAmount(
@@ -62,13 +64,19 @@ export class AuctionFulfillerConfig {
 		},
 		lastBid?: bigint,
 	): Promise<bigint> {
-		const balance = await this.getTokenBalance(driverToken);
+		let balance;
+		try {
+			balance = await this.futureManager.await(this.getTokenBalanceFutureManagerKey(driverToken));
+		} catch (e) {
+			balance = await this.getTokenBalanceFuture(driverToken);
+		}
+
 		let balanceWithRebalance = balance;
 		if (this.gConf.isRebalancerEnabled && context.isDstChainValidForRebalance && context.isDriverTokenUSDC) {
 			try {
 				balanceWithRebalance = balance + Math.max(await this.rebalancer.fetchSuiUsdcBalance(), MIN_PULL_AMOUNT);
 			} catch (error) {
-				logger.error(`Error fetching solana usdc balance ${error}`);
+				logger.error(`Error fetching sui usdc balance ${error}`);
 				balanceWithRebalance = balance;
 			}
 		}
@@ -689,7 +697,7 @@ export class AuctionFulfillerConfig {
 		}
 	}
 
-	async getTokenBalance(token: Token): Promise<number> {
+	async getTokenBalanceFuture(token: Token): Promise<number> {
 		if (token.wChainId === CHAIN_ID_SOLANA) {
 			if (token.contract === ethers.ZeroAddress) {
 				const balance = await this.connection.getBalance(this.walletConfig.solana.publicKey);
@@ -719,5 +727,9 @@ export class AuctionFulfillerConfig {
 		} else {
 			throw new Error(`Unsupported chain ${token.wChainId}`);
 		}
+	}
+
+	getTokenBalanceFutureManagerKey(token: Token): string {
+		return `auction-fulfiller-token-balance-${token.contract}-${token.wChainId}`;
 	}
 }

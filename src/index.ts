@@ -175,9 +175,22 @@ export async function main() {
 		swapRouters,
 	);
 	await evmFulFiller.init();
+
+	const auctionFulfillerCfg = new AuctionFulfillerConfig(
+		globalConfig,
+		rpcConfig,
+		solanaConnection,
+		evmProviders,
+		walletConf,
+		swapRouters,
+		tokenList,
+		rebalancer,
+		auctionListener,
+		futureManager,
+	);
 	const driverSvc = new DriverService(
 		new SimpleFulfillerConfig(),
-		new AuctionFulfillerConfig(globalConfig, rpcConfig, solanaConnection, evmProviders, walletConf, swapRouters, tokenList, rebalancer, auctionListener),
+		auctionFulfillerCfg,
 		globalConfig,
 		solanaConnection,
 		walletConf,
@@ -225,6 +238,7 @@ export async function main() {
 		stateCloser,
 		futureManager,
 		feeSvc,
+		auctionFulfillerCfg,
 	);
 	watcher.init();
 }

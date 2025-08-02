@@ -269,7 +269,7 @@ export class Relayer {
 							logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 							lastBidTimestamp = auctionState.timestamp;
 						} catch (err) {
-							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+							logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
 					}
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
@@ -284,7 +284,7 @@ export class Relayer {
 						await this.driverService.bid(swap, BigInt(auctionState?.amountPromised ?? 0));
 						logger.info(`In bid-and-fullfilll evm done bid for ${swap.sourceTxHash}...`);
 					} catch (err) {
-						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+						logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 					}
 				}
 			}
@@ -373,7 +373,7 @@ export class Relayer {
 							logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
 							lastBidTimestamp = auctionState.timestamp;
 						} catch (err) {
-							logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+							logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
 					}
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
@@ -388,7 +388,7 @@ export class Relayer {
 						await this.driverService.bid(swap, auctionState?.amountPromised ?? 0n);
 						logger.info(`In bid-and-fullfilll solana done bid for ${swap.sourceTxHash}...`);
 					} catch (err) {
-						logger.warn(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
+						logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 					}
 				}
 			}
