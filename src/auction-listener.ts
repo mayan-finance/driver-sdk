@@ -72,7 +72,21 @@ export class AuctionListener {
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
 			logger.debug(`[AuctionListener] No auction state found for auctionStateAddr: ${auctionStateAddr}. Getting from solana ...`);
-			const auctionState = await getAuctionStateFromSolana(this.solanaConnection, new PublicKey(auctionStateAddr));
+			const connection = new Connection(this.solanaConnection.rpcEndpoint, {
+				commitment: 'confirmed',
+				fetch: function (input: RequestInfo | URL, init?: RequestInit & { timeout?: number }): Promise<Response> {
+					return fetch(input, {
+						...init,
+						signal: AbortSignal.timeout(500),
+					});
+				},
+			});
+			let auctionState = null;
+			try {
+				auctionState = await getAuctionStateFromSolana(connection, new PublicKey(auctionStateAddr));
+			} catch (error) {
+				logger.error(`[AuctionListener] Error getting auction state from solana: ${error}`);
+			}
 			if (auctionState) {
 				state = {
 					auctionStateAddr,
