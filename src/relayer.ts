@@ -255,11 +255,14 @@ export class Relayer {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
+				let debugStart = Date.now();
 				let solanaTime = new Date().getTime();
 				let [auctionState] = await Promise.all([
 					// getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
+
+				logger.info(`In bid-and-fullfilll evm getAuctionState took ${Date.now() - debugStart}ms for ${swap.sourceTxHash}`);
 				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 					const ensureTime = process.env.BID_WITH_JITO === 'true' ? 0 : 500;
