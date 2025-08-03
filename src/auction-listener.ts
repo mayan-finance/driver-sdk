@@ -32,6 +32,8 @@ export class AuctionListener {
 	private bidStatesMap: Map<string, BidState> = new Map();
 	private bidOrder: string[] = [];
 
+	private registeredWatchers: Map<string, number> = new Map();
+
 	constructor(
 		private readonly driverSolanaAddress: string,
 		private readonly solanaConnection: Connection,
@@ -39,6 +41,59 @@ export class AuctionListener {
 		private readonly rpcConfig: RpcConfig,
 		private readonly bidStateThreshold: number = 100,
 	) { }
+
+	public async registerConnectionWatcher(auctionStateAddr: string, durationMs: number = 5000, timeoutMs: number = 500): Promise<void> {
+		if (this.registeredWatchers.has(auctionStateAddr)) {
+			return;
+		}
+
+		// clean 
+		const keys = Array.from(this.registeredWatchers.keys());
+		for (let i = 0; i < keys.length; i++) {
+			if (Date.now() - this.registeredWatchers.get(keys[i]!)! > durationMs) {
+				this.registeredWatchers.delete(keys[i]);
+			}
+		}
+
+		const connection = new Connection(this.solanaConnection.rpcEndpoint, {
+			commitment: 'confirmed',
+			fetch: function (input: RequestInfo | URL, init?: RequestInit & { timeout?: number }): Promise<Response> {
+				return fetch(input, {
+					...init,
+					signal: AbortSignal.timeout(timeoutMs),
+				});
+			},
+		});
+
+		this.registeredWatchers.set(auctionStateAddr, Date.now());
+
+		const start = Date.now();
+		while (Date.now() - start < durationMs) {
+			try {
+				const auctionState = await getAuctionStateFromSolana(connection, new PublicKey(auctionStateAddr));
+				let state = this.bidStatesMap.get(auctionStateAddr) || null;
+				if (auctionState) {
+					state = {
+						auctionStateAddr,
+						orderHash: '',
+						orderId: '',
+						amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
+						winner: auctionState?.winner || '',
+						signature: '',
+						timestamp: Date.now(),
+						firstBidTime: Date.now(),
+						order: null,
+						validFrom: auctionState?.validFrom || 0,
+						sequence: auctionState?.sequence || BigInt(0),
+						isClosed: state?.isClosed || false,
+					};
+					this.storeBidState(state);
+				}
+			} catch (error) {
+				logger.error(`[AuctionListener] WATCHER: Error getting auction state from solana: ${error}`);
+			}
+		}
+	}
 
 	/**
 	 * Get auction state from memory if it exists
