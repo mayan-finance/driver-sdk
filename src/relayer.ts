@@ -256,17 +256,18 @@ export class Relayer {
 			let lastBidTimestamp = null;
 			while (winner === null) {
 				let debugStart = Date.now();
-				let solanaTime = new Date().getTime() / 1000;
 				let [auctionState] = await Promise.all([
 					// getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
+				let solanaTime = new Date().getTime() / 1000 - 1;
 
 				logger.info(`In bid-and-fullfilll evm getAuctionState took ${Date.now() - debugStart}ms for ${swap.sourceTxHash}`);
 				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 					const ensureTime = process.env.BID_WITH_JITO === 'true' ? 0 : 500;
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - ensureTime || auctionState.isClosed) {
+						logger.info(`debuggg: ${auctionState.validFrom}, ${solanaTime}, ${Date.now()}, ${auctionState.firstBidTime}, ${this.gConf.auctionTimeSeconds * 1000 - ensureTime}, ${auctionState.isClosed} src-tx: ${swap.sourceTxHash}`);
 						logger.info(`Auction is ended for ${swap.sourceTxHash} and I'm not the winner`);
 						return;
 					} else {
@@ -282,6 +283,7 @@ export class Relayer {
 							logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
 					}
+					continue;
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
@@ -363,16 +365,16 @@ export class Relayer {
 			let winner = null;
 			let lastBidTimestamp = null;
 			while (winner === null) {
-				let solanaTime = new Date().getTime() / 1000;
 				let [auctionState] = await Promise.all([
 					// getCurrentSolanaTimeMS(this.solanaConnection),
 					this.auctionListener.getAuctionState(swap.auctionStateAddr),
 				]);
 				// this.auctionListener.getAuctionState(swap.auctionStateAddr, true); // force solana to get the latest state without await
+				let solanaTime = new Date().getTime() / 1000 - 1;
 				if (auctionState && auctionState.winner !== this.walletConfig.solana.publicKey.toString()) {
 					const ensureTime = process.env.BID_WITH_JITO === 'true' ? 0 : 500;
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime) || Date.now() - auctionState.firstBidTime > this.gConf.auctionTimeSeconds * 1000 - ensureTime || auctionState.isClosed) {
-						// logger.info(`debuggg: ${auctionState.validFrom}, ${solanaTime}, ${Date.now()}, ${auctionState.firstBidTime}, ${this.gConf.auctionTimeSeconds * 1000 - ensureTime}, ${auctionState.isClosed}`);
+						logger.info(`debuggg: ${auctionState.validFrom}, ${solanaTime}, ${Date.now()}, ${auctionState.firstBidTime}, ${this.gConf.auctionTimeSeconds * 1000 - ensureTime}, ${auctionState.isClosed} src-tx: ${swap.sourceTxHash}`);
 						logger.info(`Auction is ended for ${swap.sourceTxHash} and I'm not the winner`);
 						return;
 					} else {
@@ -388,6 +390,7 @@ export class Relayer {
 							logger.error(`Failed to bid on ${swap.sourceTxHash} because ${err}`);
 						}
 					}
+					continue;
 				} else if (auctionState && auctionState.winner === this.walletConfig.solana.publicKey.toString()) {
 					if (!this.isAuctionOpenToBid(auctionState, solanaTime)) {
 						winner = auctionState.winner;
