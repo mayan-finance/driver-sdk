@@ -94,12 +94,45 @@ export class AuctionListener {
 		}
 	}
 
+	private async updateFromFastListenerApi(auctionStateAddr: string, timeoutMs: number = 100): Promise<void> {
+		const response = await axios.get(`http://localhost:8080/auctions/${auctionStateAddr}`, {
+			timeout: timeoutMs
+		});
+
+		const apiData = response.data;
+		let state = this.bidStatesMap.get(auctionStateAddr) || null;
+
+		if (apiData && apiData.auction_state) {
+			state = {
+				auctionStateAddr,
+				orderHash: state?.orderHash || '',
+				orderId: state?.orderId || '',
+				amountPromised: BigInt(apiData.current_winner_amount || '0'),
+				winner: apiData.current_winner_driver || '',
+				signature: apiData.winning_signature || '',
+				timestamp: Date.now(),
+				firstBidTime: apiData.first_bid_time || Date.now(),
+				order: state?.order || null,
+				validFrom: state?.validFrom || 0,
+				sequence: state?.sequence || BigInt(0),
+				isClosed: state?.isClosed || false,
+			};
+			this.storeBidState(state);
+		}
+	}
+
 	/**
 	 * Get auction state from memory if it exists
 	 * @param auctionStateAddr The auction state address to lookup
 	 * @returns BidState if found, null otherwise
 	 */
 	public async getAuctionState(auctionStateAddr: string, forceSolana: boolean = false): Promise<BidState | null> {
+		try {
+			await this.updateFromFastListenerApi(auctionStateAddr);
+		} catch (error) {
+			logger.error(`[AuctionListener] Error updating auction state from FastListener API: ${error}`);
+		}
+
 		let state = this.bidStatesMap.get(auctionStateAddr) || null;
 
 		let deleted = false;
@@ -189,6 +222,12 @@ export class AuctionListener {
 				this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
 				logger.info(`[AuctionListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} > previous: ${existingState.amountPromised}, driver: ${bidState.winner}`);
 			} else {
+				const updatedBidState: BidState = {
+					...existingState,
+					validFrom: existingState.validFrom || bidState.validFrom,
+					sequence: existingState.sequence || bidState.sequence,
+				};
+				this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
 				logger.debug(`[AuctionListener] Skipping bid update for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} <= existing: ${existingState.amountPromised}`);
 			}
 			return;
