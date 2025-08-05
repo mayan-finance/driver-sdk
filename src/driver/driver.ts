@@ -419,8 +419,8 @@ export class DriverService {
 		previousAmount: bigint,
 		txHash?: string,
 	): Promise<void> {
-		const timeout = 10_000; // 10 seconds timeout
-		const pollInterval = 100; // Check every 100ms
+		const timeout = 5_000; // 10 seconds timeout
+		const pollInterval = 20; // Check every 20ms
 		const startTime = Date.now();
 		const driverAddress = this.walletConfig.solana.publicKey.toString();
 		const auctionListener = this.auctionFulfillerCfg.auctionListener;
