@@ -10,6 +10,7 @@ import { Connection, PublicKey } from '@solana/web3.js';
 import { GlobalConfig } from './config/global';
 import { reconstructOrderHash32 } from './utils/order-hash';
 import { getAuctionState as getAuctionStateFromSolana } from './utils/state-parser';
+import axios from 'axios';
 
 const coder = new BorshInstructionCoder(SwiftAuction);
 
@@ -54,44 +55,42 @@ export class AuctionListener {
 				this.registeredWatchers.delete(keys[i]);
 			}
 		}
-
-		const connection = new Connection(this.solanaConnection.rpcEndpoint, {
-			commitment: 'processed',
-			fetch: function (input: RequestInfo | URL, init?: RequestInit & { timeout?: number }): Promise<Response> {
-				return fetch(input, {
-					...init,
-					signal: AbortSignal.timeout(timeoutMs),
-				});
-			},
-		});
-
 		this.registeredWatchers.set(auctionStateAddr, Date.now());
 
 		const start = Date.now();
 		while (Date.now() - start < durationMs) {
 			try {
-				const auctionState = await getAuctionStateFromSolana(connection, new PublicKey(auctionStateAddr));
+				// Fetch auction state from API instead of directly from Solana
+				const response = await axios.get(`http://localhost:8080/auctions/${auctionStateAddr}`, {
+					timeout: timeoutMs
+				});
+
+				const apiData = response.data;
 				let state = this.bidStatesMap.get(auctionStateAddr) || null;
-				if (auctionState) {
+
+				if (apiData && apiData.auction_state) {
 					state = {
 						auctionStateAddr,
-						orderHash: '',
-						orderId: '',
-						amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
-						winner: auctionState?.winner || '',
-						signature: '',
+						orderHash: state?.orderHash || '',
+						orderId: state?.orderId || '',
+						amountPromised: BigInt(apiData.current_winner_amount || '0'),
+						winner: apiData.current_winner_driver || '',
+						signature: apiData.winning_signature || '',
 						timestamp: Date.now(),
-						firstBidTime: Date.now(),
-						order: null,
-						validFrom: auctionState?.validFrom || 0,
-						sequence: auctionState?.sequence || BigInt(0),
+						firstBidTime: apiData.first_bid_time || Date.now(),
+						order: state?.order || null,
+						validFrom: state?.validFrom || 0,
+						sequence: state?.sequence || BigInt(0),
 						isClosed: state?.isClosed || false,
 					};
 					this.storeBidState(state);
 				}
 			} catch (error) {
-				logger.error(`[AuctionListener] WATCHER: Error getting auction state from solana: ${error}`);
+				logger.error(`[AuctionListener] WATCHER: Error getting auction state from API: ${error}`);
 			}
+
+			// Add a small delay to avoid hammering the API
+			await new Promise(resolve => setTimeout(resolve, 30));
 		}
 	}
 
