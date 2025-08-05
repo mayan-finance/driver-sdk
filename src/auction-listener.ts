@@ -222,12 +222,14 @@ export class AuctionListener {
 				this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
 				logger.info(`[AuctionListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} > previous: ${existingState.amountPromised}, driver: ${bidState.winner}`);
 			} else {
-				const updatedBidState: BidState = {
-					...existingState,
-					validFrom: existingState.validFrom || bidState.validFrom,
-					sequence: existingState.sequence || bidState.sequence,
-				};
-				this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
+				if (existingState.validFrom < bidState.validFrom) {
+					const updatedBidState: BidState = {
+						...existingState,
+						validFrom: bidState.validFrom,
+						sequence: bidState.sequence,
+					};
+					this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
+				}
 				logger.debug(`[AuctionListener] Skipping bid update for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} <= existing: ${existingState.amountPromised}`);
 			}
 			return;
