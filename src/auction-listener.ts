@@ -9,7 +9,7 @@ import { AuctionAddressSolana } from './config/contracts';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { GlobalConfig } from './config/global';
 import { reconstructOrderHash32 } from './utils/order-hash';
-import { getAuctionState as getAuctionStateFromSolana } from './utils/state-parser';
+import { AuctionState, getAuctionState as getAuctionStateFromSolana } from './utils/state-parser';
 import axios from 'axios';
 
 const coder = new BorshInstructionCoder(SwiftAuction);
@@ -121,6 +121,41 @@ export class AuctionListener {
 		}
 	}
 
+	private async updateFromSolana(auctionStateAddr: string): Promise<void> {
+		const connection = new Connection(this.solanaConnection.rpcEndpoint, {
+			commitment: 'processed',
+			fetch: function (input: RequestInfo | URL, init?: RequestInit & { timeout?: number }): Promise<Response> {
+				return fetch(input, {
+					...init,
+					signal: AbortSignal.timeout(500),
+				});
+			},
+		});
+		let state = this.bidStatesMap.get(auctionStateAddr) || null;
+		try {
+			const auctionState = await getAuctionStateFromSolana(connection, new PublicKey(auctionStateAddr));
+			if (auctionState) {
+				state = {
+					auctionStateAddr,
+					orderHash: state?.orderHash || '',
+					orderId: state?.orderId || '',
+					amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
+					winner: auctionState?.winner || '',
+					signature: state?.signature || '',
+					timestamp: state?.timestamp || Date.now(),
+					firstBidTime: state?.firstBidTime || Date.now(),
+					order: state?.order || null,
+					validFrom: auctionState?.validFrom || 0,
+					sequence: auctionState?.sequence || state?.sequence || BigInt(0),
+					isClosed: state?.isClosed || false,
+				};
+				this.storeBidState(state);
+			}
+		} catch (error) {
+			logger.error(`[AuctionListener] Error getting auction state from solana: ${error}`);
+		}
+	}
+
 	/**
 	 * Get auction state from memory if it exists
 	 * @param auctionStateAddr The auction state address to lookup
@@ -143,47 +178,19 @@ export class AuctionListener {
 			state = null;
 		}
 
-		let firstBidTime = state?.firstBidTime || Date.now();
 		if (state && !forceSolana) {
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state.orderId} in memory`);
 		} else {
 			logger.debug(`[AuctionListener] No auction state found for auctionStateAddr: ${auctionStateAddr}. Getting from solana ...`);
-			const connection = new Connection(this.solanaConnection.rpcEndpoint, {
-				commitment: 'processed',
-				fetch: function (input: RequestInfo | URL, init?: RequestInit & { timeout?: number }): Promise<Response> {
-					return fetch(input, {
-						...init,
-						signal: AbortSignal.timeout(500),
-					});
-				},
-			});
-			let auctionState = null;
-			try {
-				auctionState = await getAuctionStateFromSolana(connection, new PublicKey(auctionStateAddr));
-			} catch (error) {
-				logger.error(`[AuctionListener] Error getting auction state from solana: ${error}`);
-			}
-			if (auctionState) {
-				state = {
-					auctionStateAddr,
-					orderHash: '',
-					orderId: '',
-					amountPromised: BigInt(auctionState?.amountPromised.toString() || '0'),
-					winner: auctionState?.winner || '',
-					signature: '',
-					timestamp: Date.now(),
-					firstBidTime: firstBidTime,
-					order: null,
-					validFrom: auctionState?.validFrom || 0,
-					sequence: auctionState?.sequence || BigInt(0),
-					isClosed: deleted,
-				};
-			}
-			if (state) {
-				this.storeBidState(state);
-			}
+			await this.updateFromSolana(auctionStateAddr);
+			state = this.bidStatesMap.get(auctionStateAddr) || null;
 			logger.debug(`[AuctionListener] Retrieved auction state for order: ${state?.orderId} from solana`);
 		}
+
+		if (state?.validFrom == 0) {
+			await this.updateFromSolana(auctionStateAddr);
+		}
+
 		return state;
 	}
 
@@ -222,7 +229,7 @@ export class AuctionListener {
 				this.bidStatesMap.set(bidState.auctionStateAddr, updatedBidState);
 				logger.info(`[AuctionListener] Updated bid state for order: ${bidState.orderId}, new amount: ${bidState.amountPromised} > previous: ${existingState.amountPromised}, driver: ${bidState.winner}`);
 			} else {
-				if (existingState.validFrom < bidState.validFrom) {
+				if (bidState.validFrom && bidState.validFrom > 0) {
 					const updatedBidState: BidState = {
 						...existingState,
 						validFrom: bidState.validFrom,
