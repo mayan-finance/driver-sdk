@@ -167,9 +167,9 @@ export class MayanExplorerWatcher {
 						`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
 					);
 
-					this.auctionFulfillerCfg.auctionListener.registerConnectionWatcher(swap.auctionStateAddr).catch(err => {
-						logger.error(`Error registering connection watcher for auction state addr ${swap.auctionStateAddr}: ${err}`);
-					});
+					// this.auctionFulfillerCfg.auctionListener.registerConnectionWatcher(swap.auctionStateAddr).catch(err => {
+					// 	logger.error(`Error registering connection watcher for auction state addr ${swap.auctionStateAddr}: ${err}`);
+					// });
 					await this.relayer.relay(swap);
 				} catch (err) {
 					logger.warn(`Error handling explorer swap with ${err}`);
