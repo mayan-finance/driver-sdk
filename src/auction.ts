@@ -37,8 +37,8 @@ export class AuctionFulfillerConfig {
 	private readonly forceBid = false;
 
 	private readonly cache = new SimpleCache();
-	private readonly getEvmQuoteCache = this.cache.wrap(this.getEvmEquivalentOutput.bind(this), 3000);
-	private readonly getSolanaQuoteCache = this.cache.wrap(this.getSolanaEquivalentOutput.bind(this), 3000);
+	private readonly getEvmQuoteCache = this.cache.wrap(this.getEvmEquivalentOutput.bind(this), 5000);
+	private readonly getSolanaQuoteCache = this.cache.wrap(this.getSolanaEquivalentOutput.bind(this), 5000);
 
 	constructor(
 		private readonly gConf: GlobalConfig,
