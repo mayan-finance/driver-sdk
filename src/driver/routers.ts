@@ -521,7 +521,8 @@ export class SwapRouters {
 			const tx = response.data.data[0].tx;
 
 			if (tx.to.toLowerCase() !== OkxDexRouterContracts[swapParams.whChainId].toLowerCase()) {
-				throw new Error(`Invalid okx router address ${tx.to}`);
+				tx.to = OkxDexRouterContracts[swapParams.whChainId];
+				// throw new Error(`Invalid okx router address ${tx.to}`);
 			}
 
 			if (swapParams.srcToken !== '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
