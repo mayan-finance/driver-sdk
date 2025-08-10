@@ -93,9 +93,9 @@ export class SwapRouters {
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				quoteFunction = this.getUniswapQuote.bind(this);
-			} else if (swapRetries % 2 === 1) {
-				quotename = '1inch';
-				quoteFunction = this.get1InchQuote.bind(this);
+				// } else if (swapRetries % 2 === 1) {
+				// 	quotename = '1inch';
+				// 	quoteFunction = this.get1InchQuote.bind(this);
 			}
 
 			return await quoteFunction(swapParams, retries);
@@ -124,11 +124,11 @@ export class SwapRouters {
 			if (swapParams.whChainId === CHAIN_ID_UNICHAIN && swapRetries % 2 === 1) {
 				quotename = 'uniswap';
 				swapFunction = this.getUniswapSwap.bind(this);
-			} else if (swapParams.whChainId === CHAIN_ID_LINEA && swapRetries % 2 === 1) {
-				quotename = '1inch';
-				swapFunction = this.get1InchSwap.bind(this);
+				// } else if (swapParams.whChainId === CHAIN_ID_LINEA && swapRetries % 2 === 1) {
+				// 	quotename = '1inch';
+				// 	swapFunction = this.get1InchSwap.bind(this);
 			} else {
-				switch (swapRetries % 4) {
+				switch (swapRetries % 3) {
 					case 1:
 						quotename = '0x';
 						swapFunction = this.get0xSwap.bind(this);
@@ -137,11 +137,21 @@ export class SwapRouters {
 						quotename = 'okx';
 						swapFunction = this.getOkxSwap.bind(this);
 						break;
-					case 3:
-						quotename = '1inch';
-						swapFunction = this.get1InchSwap.bind(this);
-						break;
 				}
+				// switch (swapRetries % 4) {
+				// 	case 1:
+				// 		quotename = '0x';
+				// 		swapFunction = this.get0xSwap.bind(this);
+				// 		break;
+				// 	case 2:
+				// 		quotename = 'okx';
+				// 		swapFunction = this.getOkxSwap.bind(this);
+				// 		break;
+				// 	case 3:
+				// 		quotename = '1inch';
+				// 		swapFunction = this.get1InchSwap.bind(this);
+				// 		break;
+				// }
 			}
 
 			return await swapFunction(swapParams, retries);
