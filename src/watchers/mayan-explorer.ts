@@ -11,6 +11,7 @@ import { Relayer } from '../relayer';
 import { Swap } from '../swap.dto';
 import logger from '../utils/logger';
 import { DriverService } from '../driver/driver';
+import { statsd } from '../utils/metrics';
 
 export class MayanExplorerWatcher {
 	private initiateAddresses: string[] = [];
@@ -135,6 +136,9 @@ export class MayanExplorerWatcher {
 							'\x1b[32m' +
 							`https://explorer.mayan.finance/swap/${swap.sourceTxHash}`,
 					);
+
+					const receiveDelayMs = Date.now() - new Date(rawSwap.initiatedAt).getTime();
+					statsd.timingMs('swift.driver.socketDelay', receiveDelayMs);
 
 					await this.relayer.relay(swap);
 				} catch (err) {

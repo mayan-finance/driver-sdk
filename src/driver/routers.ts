@@ -20,6 +20,7 @@ import { RpcConfig } from '../config/rpc';
 import { writeUint24BE } from '../utils/buffer';
 import { EvmProviders } from '../utils/evm-providers';
 import { hmac256base64 } from '../utils/hmac';
+import { timed } from '../utils/metrics';
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const okxWebsite = 'https://www.okx.com';
@@ -81,6 +82,7 @@ export class SwapRouters {
 		}
 	}
 
+	@timed('getEvmQuote')
 	async getQuote(
 		swapParams: EVMQuoteParams,
 		swapRetries: number,
@@ -113,6 +115,7 @@ export class SwapRouters {
 		}
 	}
 
+	@timed('getEvmSwap')
 	async getSwap(
 		swapParams: EVMSwapParams,
 		swapRetries: number,
@@ -388,6 +391,7 @@ export class SwapRouters {
 		}
 	}
 
+	@timed('getOkxQuote')
 	async getOkxQuote(
 		swapParams: EVMQuoteParams,
 		retries: number = 3,
@@ -458,6 +462,7 @@ export class SwapRouters {
 		}
 	}
 
+	@timed('getOkxSwap')
 	async getOkxSwap(
 		swapParams: EVMSwapParams,
 		retries: number = 7,
@@ -547,6 +552,7 @@ export class SwapRouters {
 		}
 	}
 
+	@timed('get0xQuote')
 	async get0xQuote(
 		swapParams: EVMQuoteParams,
 		retries: number = 3,
@@ -601,6 +607,7 @@ export class SwapRouters {
 		}
 	}
 
+	@timed('get0xSwap')
 	async get0xSwap(
 		swapParams: EVMSwapParams,
 		retries: number = 7,
