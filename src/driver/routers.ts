@@ -186,7 +186,7 @@ export class SwapRouters {
 			let isRateLimited = false;
 			if (err.response && err.response.status === 429) {
 				isRateLimited = true;
-				await delay(200);
+				await delay(2000);
 			}
 			if (isRateLimited && retries > 0) {
 				return this.getUniswapQuote(swapParams, retries - 1);
@@ -226,7 +226,7 @@ export class SwapRouters {
 			let isRateLimited = false;
 			if (err.response && err.response.status === 429) {
 				isRateLimited = true;
-				await delay(200);
+				await delay(2000);
 			}
 			if (isRateLimited && retries > 0) {
 				return this.getUniswapSwap(swapParams, retries - 1);
@@ -326,7 +326,7 @@ export class SwapRouters {
 			let isRateLimited = false;
 			if (err.response && err.response.status === 429) {
 				isRateLimited = true;
-				await delay(200);
+				await delay(2000);
 			}
 			if (isRateLimited && retries > 0) {
 				return this.get1InchQuote(swapParams, retries - 1);
@@ -511,7 +511,9 @@ export class SwapRouters {
 			const tx = response.data.data[0].tx;
 
 			if (tx.to.toLowerCase() !== OkxDexRouterContracts[swapParams.whChainId].toLowerCase()) {
-				throw new Error(`Invalid okx router address ${tx.to}`);
+				console.warn(`Invalid okx router address ${tx.to}`);
+				tx.to = OkxDexRouterContracts[swapParams.whChainId];
+				// throw new Error(`Invalid okx router address ${tx.to}`);
 			}
 
 			if (swapParams.srcToken !== '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee') {
@@ -536,7 +538,7 @@ export class SwapRouters {
 			let isRateLimited = false;
 			if (err.response && err.response.status === 429) {
 				isRateLimited = true;
-				await delay(200);
+				await delay(2000);
 			}
 			if (isRateLimited && retries > 0) {
 				return this.getOkxSwap(swapParams, retries - 1);
@@ -585,7 +587,7 @@ export class SwapRouters {
 			let isRateLimited = false;
 			if (err.response && err.response.status === 429) {
 				isRateLimited = true;
-				await delay(200);
+				await delay(2000);
 			}
 			if (isRateLimited) {
 				console.log(
@@ -659,7 +661,7 @@ export class SwapRouters {
 			let isRateLimited = false;
 			if (err.response && err.response.status === 429) {
 				isRateLimited = true;
-				await delay(200);
+				await delay(2000);
 			}
 			if (isRateLimited && retries > 0) {
 				return this.get0xSwap(swapParams, retries - 1);

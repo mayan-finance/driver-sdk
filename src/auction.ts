@@ -132,6 +132,9 @@ export class AuctionFulfillerConfig {
 		let bidBpsMargin = 1.5; // 1.5 bps for swap
 		if (swap.toToken.contract === driverToken.contract) {
 			bidBpsMargin = 1; // 1 bps if no swap is included
+			if (swap.sourceChain === 44 || swap.destChain === 44) {
+				bidBpsMargin = 2; // 2 bps for unichain because balance is hard
+			}
 		} else if (!swap.toToken.pythUsdPriceId) {
 			bidBpsMargin = 50; // 50 bps if no pyth price id (probably meme coin,...)
 		}

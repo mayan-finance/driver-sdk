@@ -386,7 +386,8 @@ export class Relayer {
 
 			let alreadyRegisteredWinner =
 				swap.auctionMode === AUCTION_MODES.DONT_CARE ||
-				(!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
+				(!!destState?.winner && destState?.winner === this.walletConfig.solana.publicKey.toString());
+				// (!!destState?.winner && destState?.winner !== '11111111111111111111111111111111');
 			const stateToAss = getAssociatedTokenAddressSync(
 				new PublicKey(swap.toToken.mint),
 				new PublicKey(swap.stateAddr),
@@ -413,12 +414,12 @@ export class Relayer {
 				try {
 					await this.driverService.fulfill(swap);
 					break;
-				} catch (err) {
+				} catch (err: any) {
 					if (fulfillRetries > 3) {
 						throw err;
 					} else {
 						logger.warn(
-							`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err}. Retrying...`,
+							`Fulfilling ${swap.sourceTxHash} failed On try ${fulfillRetries} because ${err} ${err.stack}. Retrying...`,
 						);
 						fulfillRetries++;
 					}
