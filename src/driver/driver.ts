@@ -704,6 +704,10 @@ export class DriverService {
 			sendLossAlert(swap.orderId, `${(fulfillAmount - effectiveAmntIn) * expenses.fromTokenPrice}`);
 		}
 
+		if ((fulfillAmount - effectiveAmntIn) * expenses.fromTokenPrice > 200 || fulfillAmount > effectiveAmntIn * 1.2) {
+			throw new Error(`Fulfill amount is too high for ${swap.sourceTxHash} - fulfillAmount: ${fulfillAmount}, effectiveAmntIn: ${effectiveAmntIn}, fromprice: ${expenses.fromTokenPrice}`);
+		}
+
 		insertTransactionLog(
 			DB_PATH,
 			`${swap.sourceTxHash}__${swap.orderId}`,
