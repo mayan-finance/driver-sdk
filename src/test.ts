@@ -60,22 +60,24 @@ async function main() {
 
 
 
-    let url = 'https://bundles.jito.wtf/api/v1/bundles/tip_floor';
-    let response = await axios.get(url);
-    // [
-    //     {
-    //     "time": "2025-07-30T02:26:54+00:00",
-    //     "landed_tips_25th_percentile": 0.0000015750000000000002,
-    //     "landed_tips_50th_percentile": 0.000006264500000000001,
-    //     "landed_tips_75th_percentile": 0.000034694500000000005,
-    //     "landed_tips_95th_percentile": 0.0010141,
-    //     "landed_tips_99th_percentile": 0.005139953829999986,
-    //     "ema_landed_tips_50th_percentile": 0.0000061535582920159765
-    //     }
-    // ]
-    let x = response.data[0].landed_tips_75th_percentile + response.data[0].landed_tips_50th_percentile;
-    x = x < response.data[0].landed_tips_95th_percentile ? x : response.data[0].landed_tips_95th_percentile;
-    console.log(x);
+    // let url = 'https://bundles.jito.wtf/api/v1/bundles/tip_floor';
+    // let response = await axios.get(url);
+    // // [
+    // //     {
+    // //     "time": "2025-07-30T02:26:54+00:00",
+    // //     "landed_tips_25th_percentile": 0.0000015750000000000002,
+    // //     "landed_tips_50th_percentile": 0.000006264500000000001,
+    // //     "landed_tips_75th_percentile": 0.000034694500000000005,
+    // //     "landed_tips_95th_percentile": 0.0010141,
+    // //     "landed_tips_99th_percentile": 0.005139953829999986,
+    // //     "ema_landed_tips_50th_percentile": 0.0000061535582920159765
+    // //     }
+    // // ]
+    // let x = response.data[0].landed_tips_75th_percentile + response.data[0].landed_tips_50th_percentile;
+    // x = x < response.data[0].landed_tips_95th_percentile ? x : response.data[0].landed_tips_95th_percentile;
+    // console.log(x);
+
+    console.log(BigInt(12) / BigInt(13));
 
     process.exit(0);
 }

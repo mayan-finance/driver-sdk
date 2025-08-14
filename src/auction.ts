@@ -274,9 +274,11 @@ export class AuctionFulfillerConfig {
 		///// Bidding war logic end
 
 		// Calculate bidAmountIn using integer arithmetic
-		// bidAmountIn = normalizedBidAmount * effectiveAmountIn / output / 10^decimals / (1 - bpsFees/10000)
-		const bidAmountInNumerator = normalizedBidAmount * normalizedEffectiveAmountInBigInt * 10000n;
-		const bidAmountInDenominator = output64 * BigInt(10 ** targetDecimals) * (10000n - bpsFees);
+		// bidAmountIn = normalizedBidAmount * effectiveAmountIn / output / (1 - bpsFees/10000)
+		const realBidAmount64 = normalizedBidAmount * 10n ** BigInt(Math.max(0, swap.toToken.decimals - WORMHOLE_DECIMALS));
+		const bidAmountInNumerator = realBidAmount64 * normalizedEffectiveAmountInBigInt * 10000n;
+		const bidAmountInDenominator = output64 * (10000n - bpsFees);
+
 		swap.bidAmountIn = Number(bidAmountInNumerator / bidAmountInDenominator) / 10 ** driverToken.decimals;
 
 		logger.info(`in bid: bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
@@ -356,13 +358,23 @@ export class AuctionFulfillerConfig {
 	}
 
 	private getBpsMargin(driverToken: Token, swap: Swap): number {
-		let bidBpsMargin = 1.3; // 1.5 bps for swap
+		let bidBpsMargin = 1.3;
 		if (swap.toToken.contract === driverToken.contract) {
-			bidBpsMargin = 0.9; // 1 bps if no swap is included
+			bidBpsMargin = 0.9;
 		} else if (!swap.toToken.pythUsdPriceId) {
-			bidBpsMargin = 40; // 50 bps if no pyth price id (probably meme coin,...)
+			bidBpsMargin = 40;
 		}
 		return bidBpsMargin;
+	}
+
+	private getFulfillBpsMargin(driverToken: Token, swap: Swap): number {
+		let fulfillBpsMargin = 13;
+		if (swap.toToken.contract === driverToken.contract) {
+			fulfillBpsMargin = 3;
+		} else if (!swap.toToken.pythUsdPriceId) {
+			fulfillBpsMargin = 50;
+		}
+		return fulfillBpsMargin;
 	}
 
 	/**
@@ -476,8 +488,7 @@ export class AuctionFulfillerConfig {
 			logger.info(`swap.bidAmountIn is not set for swap ${swap.sourceTxHash}`);
 			if (swap.bidAmount64) {
 				// Convert bid amount to driver token decimals
-				const targetDecimals = Math.min(swap.toToken.decimals, WORMHOLE_DECIMALS);
-				const bidOut64 = swap.bidAmount64 * BigInt(10 ** (swap.toToken.decimals - targetDecimals));
+				const bidOut64 = swap.bidAmount64 * 10n ** BigInt(Math.max(0, swap.toToken.decimals - WORMHOLE_DECIMALS));
 
 				// Calculate bid amount in using exact arithmetic
 				// Formula: (bidOut * effectiveAmountIn / output) / (1 - bpsFees/10000)
@@ -492,6 +503,12 @@ export class AuctionFulfillerConfig {
 			bidAmountInBigInt = BigInt(Math.floor(swap.bidAmountIn * 10 ** driverToken.decimals));
 		}
 
+		if (swap.bidAmountIn && swap.bidAmountIn < normalizedEffectiveAmountIn * (10000 - this.getFulfillBpsMargin(driverToken, swap)) / 10000) {
+			let oldBidAmountIn = swap.bidAmountIn;
+			swap.bidAmountIn = normalizedEffectiveAmountIn * (10000 - this.getFulfillBpsMargin(driverToken, swap)) / 10000;
+			bidAmountInBigInt = BigInt(Math.floor(swap.bidAmountIn * 10 ** driverToken.decimals));
+			logger.info(`update bidAmountIn for ${swap.sourceTxHash} from ${oldBidAmountIn} to ${swap.bidAmountIn}`);
+		}
 		logger.info(`bidAmountIn ${swap.bidAmountIn} for swap ${swap.sourceTxHash}`);
 
 		// Calculate minimum fulfill amount using integer arithmetic
