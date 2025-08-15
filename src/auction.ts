@@ -362,7 +362,7 @@ export class AuctionFulfillerConfig {
 		if (swap.toToken.contract === driverToken.contract) {
 			bidBpsMargin = 0.9;
 		} else if (!swap.toToken.pythUsdPriceId) {
-			bidBpsMargin = 40;
+			bidBpsMargin = 20;
 		}
 		return bidBpsMargin;
 	}
