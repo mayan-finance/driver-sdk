@@ -281,6 +281,11 @@ export class DriverService {
 			return;
 		}
 
+		if (stateBefore?.winner === this.walletConfig.solana.publicKey.toString() && stateBefore.amountPromised >= normalizedBidAmount) {
+			logger.info(`Shall not bid on tx: ${swap.sourceTxHash} because we are the winner`);
+			return;
+		}
+
 		let useJito = process.env.BID_WITH_JITO === 'true';
 		if (useJito) {
 			logger.info(`Sending bid transaction for ${swap.sourceTxHash} with normalizedBidAmount ${normalizedBidAmount} using jito`);
