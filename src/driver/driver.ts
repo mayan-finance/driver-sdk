@@ -307,9 +307,7 @@ export class DriverService {
 			).catch((error: any) => {
 				logger.error(`Error sending bid transaction for ${swap.sourceTxHash} using jito: ${error.message}`);
 			});
-			this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount).catch((error: any) => {
-				logger.error(`[BidRace] ❌ Error waiting for bid event for ${swap.sourceTxHash}: ${error.message}`);
-			});
+			await this.sendTransactionAndWaitForEvents(swap, normalizedBidAmount, undefined, undefined, previousAmount);
 		} else {
 			// Create and sign transaction to calculate hash upfront
 			const { trx } = await this.solanaSender.createOptimizedVersionedTransaction(
