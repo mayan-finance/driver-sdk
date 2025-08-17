@@ -198,6 +198,7 @@ export class DriverService {
 		const toToken = swap.toToken;
 		const normalizedMinAmountOut = BigInt(swap.minAmountOut64);
 
+		let start = Date.now();
 		const expenses = await this.feeService.calculateSwiftExpensesAndUSDInFromToken({
 			isGasless: swap.gasless,
 			auctionMode: swap.auctionMode,
@@ -210,6 +211,7 @@ export class DriverService {
 			gasDrop: swap.gasDrop.toNumber(),
 			destAddress: swap.destAddress,
 		}, swap.orderId);
+		logger.info(`[TIME] calculateSwiftExpensesAndUSDInFromToken ${swap.sourceTxHash}: ${Date.now() - start}ms`);
 		logger.info(`[EXPENSES] ${swap.sourceTxHash}: ${expenses.fulfillAndUnlock}:${expenses.fulfillCost}:${expenses.unlockSource}`);
 		const effectiveAmountIn = swap.fromAmount.toNumber() - expenses.fulfillAndUnlock;
 
@@ -241,6 +243,7 @@ export class DriverService {
 			isDriverTokenUSDC,
 			isDstChainValidForRebalance,
 		};
+		start = Date.now();
 		let normalizedBidAmount = await this.auctionFulfillerCfg.normalizedBidAmount(
 			driverToken,
 			effectiveAmountIn,
@@ -249,6 +252,7 @@ export class DriverService {
 			context,
 			lastBid,
 		);
+		logger.info(`[TIME] normalizedBidAmount ${swap.sourceTxHash}: ${Date.now() - start}ms`);
 
 		if (normalizedBidAmount < normalizedMinAmountOut) {
 			logger.error(
@@ -261,6 +265,7 @@ export class DriverService {
 		// logger.info(`debugggggg not bid`);
 		// return;
 
+		start = Date.now();
 		const bidIx = await this.solanaIxService.getBidIx(
 			this.walletConfig.solana.publicKey,
 			new PublicKey(swap.auctionStateAddr),
@@ -268,6 +273,7 @@ export class DriverService {
 			swap,
 			fromToken.decimals,
 		);
+		logger.info(`[TIME] getBidIx ${swap.sourceTxHash}: ${Date.now() - start}ms`);
 
 		let instructions = [bidIx];
 		let signers = [this.walletConfig.solana];

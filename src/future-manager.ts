@@ -21,7 +21,7 @@ export class FutureManager {
         // Set up periodic cleanup if interval is provided
         if (autoCleanupIntervalMs && autoCleanupIntervalMs > 0) {
             this.cleanupInterval = setInterval(() => {
-                this.cleanup();
+                this.cleanup(5000);
             }, autoCleanupIntervalMs);
         }
     }
