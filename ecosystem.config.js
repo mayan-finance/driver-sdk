@@ -1,18 +1,18 @@
 module.exports = {
-    apps: [
-      {
-        name: "driver",
-        script: "node_modules/.bin/ts-node",
-        args: "src/index.ts", // path to your entry TypeScript file
-        watch: ["src"],
-        ignore_watch: ["node_modules", "logs"],
-        interpreter: "none",
-        env: {
-          NODE_ENV: "development",
-        },
-        env_production: {
-          NODE_ENV: "production",
-        },
+  apps: [
+    {
+      name: "driver",
+      script: "/root/.bun/bin/bun",
+      args: "run src/index.ts",     // or: "x ts-node src/index.ts" if you must use ts-node
+      interpreter: "none",
+      watch: ["src"],
+      ignore_watch: ["node_modules", "logs"],
+      env: {
+        NODE_ENV: "development",
       },
-    ],
-  };
+      env_production: {
+        NODE_ENV: "production",
+      },
+    },
+  ],
+};
