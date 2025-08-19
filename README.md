@@ -22,7 +22,7 @@ Make sure you have sqlite3 binary available in your PATH.
 Install NodeJS (node 20 is recommended)
 
 ```bash
-npm install
+npm ci
 npx ts-node .
 ```
 
