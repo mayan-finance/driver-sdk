@@ -501,8 +501,8 @@ export class Relayer {
 		return false;
 	}
 
-	private isAuctionOpenToBid(auction: AuctionState, solanaTime: number): boolean {
-		if (auction.validFrom <= solanaTime) {
+	private isAuctionOpenToBid(auction: AuctionState, solanaTimeMs: number): boolean {
+		if (auction.validFrom + 2 <= solanaTimeMs / 1000) { // extra 2s for possible clock drift
 			return false;
 		}
 		return true;
