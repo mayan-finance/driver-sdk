@@ -286,16 +286,16 @@ export class Unlocker {
 			let totalVolume = filteredOrders.reduce((acc, order) => acc + Number(order.volume), 0);
 			let volumeSteps = Math.ceil(totalVolume / volumeStep);
 
-			if (
-				filteredOrders.length < this.gConf.batchUnlockThreshold &&
-				volumeSteps < this.gConf.batchUnlockThreshold - 2
-			) {
-				logger.verbose(
-					`Not enough swaps to select and post for ${sourceChainId} to ${destChainId}. min ${filteredOrders.length} ${volumeStep} ${desiredUnlockValue}`,
-				);
-				delete this.locks[lockKey];
-				return;
-			}
+			// if (
+			// 	filteredOrders.length < this.gConf.batchUnlockThreshold &&
+			// 	volumeSteps < this.gConf.batchUnlockThreshold - 2
+			// ) {
+			// 	logger.verbose(
+			// 		`Not enough swaps to select and post for ${sourceChainId} to ${destChainId}. min ${filteredOrders.length} ${volumeStep} ${desiredUnlockValue}`,
+			// 	);
+			// 	delete this.locks[lockKey];
+			// 	return;
+			// }
 
 			filteredOrders = filteredOrders.slice(0, MAX_BATCH_SIZE); // we can not put more than 8 this in one udp solana trx without luts or hitting inner instruction limit
 
